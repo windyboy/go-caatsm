@@ -153,8 +153,3 @@ func ValidateConfig(cfg *Config) error {
 	fmt.Println("config validation passed")
 	return nil
 }
-
-// func logAndReturnError(log *logrus.Logger, msg string) error {
-// 	log.Error(msg)
-// 	return fmt.Errorf(msg)
-// }

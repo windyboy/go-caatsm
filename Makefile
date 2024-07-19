@@ -3,7 +3,7 @@ APP_NAME = tele-proc
 GO_FILES = $(shell find . -name '*.go' -type f)
 CONFIG_DIR = configs
 BUILD_DIR = build
-MAIN_RECEIVER = ./cmd/receiver/main.go
+MAIN_RECEIVER = ./cmd/main/main.go
 
 # Default target
 .PHONY: all
@@ -41,7 +41,7 @@ run-test:
 .PHONY: test
 test:
 	@echo "Running tests..."
-	@go test ./...
+	@ginkgo  -r -v
 
 # Clean build artifacts
 .PHONY: clean
