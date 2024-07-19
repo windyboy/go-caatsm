@@ -22,9 +22,7 @@ type AFTNParser struct {
 
 // Parse parses a generic AFTN message based on its type.
 func (p AFTNParser) Parse(text string) (interface{}, error) {
-	config := config.GetMyConfig()
-
-	data := ParseBody(text, config)
+	data := ParseBody(text)
 
 	switch data["type"] {
 	case "ARR":

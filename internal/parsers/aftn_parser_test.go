@@ -1,43 +1,13 @@
 package parsers
 
 import (
-	"caatsm/internal/config"
 	"caatsm/internal/domain"
-	"regexp"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 
 var _ = Describe("AFTN Parser", func() {
-	var testConfig *config.Config
-
-	BeforeEach(func() {
-		testConfig = &config.Config{
-			Body: []config.BodyConfig{
-				{
-					Name: "ARR",
-					Patterns: []config.PatternConfig{
-						{
-							Pattern:    `^\((?P<type>[A-Z]{3})\-(?P<number>[A-Z0-9]+)\-(?P<ssr>[A-Z0-9]+)\-(?P<departure>[A-Z]{4})\-(?P<arrival>[A-Z]{4})\)$`,
-							Expression: regexp.MustCompile(`^\((?P<type>[A-Z]{3})\-(?P<number>[A-Z0-9]+)\-(?P<ssr>[A-Z0-9]+)\-(?P<departure>[A-Z]{4})\-(?P<arrival>[A-Z]{4})\)$`),
-						},
-					},
-				},
-				{
-					Name: "DEP",
-					Patterns: []config.PatternConfig{
-						{
-							Pattern:    `^\((?P<type>[A-Z]{3})\-(?P<number>[A-Z0-9]+)\-(?P<ssr>[A-Z0-9]+)\-(?P<departure>[A-Z]{4})\-(?P<departure_time>\d{4})\-(?P<arrival>[A-Z]{4})\)$`,
-							Expression: regexp.MustCompile(`^\((?P<type>[A-Z]{3})\-(?P<number>[A-Z0-9]+)\-(?P<ssr>[A-Z0-9]+)\-(?P<departure>[A-Z]{4})\-(?P<departure_time>\d{4})\-(?P<arrival>[A-Z]{4})\)$`),
-						},
-					},
-				},
-			},
-		}
-		config.SetMyConfig(testConfig)
-	})
-
 	Describe("Parse", func() {
 		It("should parse ARR messages correctly", func() {
 			message := "(ARR-AB123-SSR1234-KJFK-KLAX)"
@@ -80,7 +50,7 @@ var _ = Describe("AFTN Parser", func() {
 		It("should parse a valid AFTN message", func() {
 			rawMessage := `ZCZC TMQ2611 151524
 FF SENDERAA
-151524 RECEIVER
+151524 RECEIVERAA
 (ARR-AB123-SSR1234-KJFK-KLAX)`
 
 			aftnMessage, err := ParseAFTN(rawMessage)
@@ -117,7 +87,7 @@ TMQ2611
 				},
 				TimeAndReceiver: domain.TimeAndReceiver{
 					Time:     "151524",
-					Receiver: "RECEIVER",
+					Receiver: "RECEIVAA",
 				},
 				Category: "ARR",
 			}
@@ -134,11 +104,11 @@ TMQ2611
 				},
 				PriorityAndSender: domain.PriorityAndSender{
 					Priority: "FF",
-					Sender:   "",
+					Sender:   "SENDERAA",
 				},
 				TimeAndReceiver: domain.TimeAndReceiver{
 					Time:     "151524",
-					Receiver: "RECEIVER",
+					Receiver: "RECEIVAA",
 				},
 				Category: "ARR",
 			}
@@ -160,7 +130,7 @@ TMQ2611
 				},
 				TimeAndReceiver: domain.TimeAndReceiver{
 					Time:     "151524",
-					Receiver: "RECEIVER",
+					Receiver: "RECEIVAA",
 				},
 				Category: "ARR",
 			}
@@ -182,7 +152,7 @@ TMQ2611
 				},
 				TimeAndReceiver: domain.TimeAndReceiver{
 					Time:     "151524",
-					Receiver: "RECEIVERAA",
+					Receiver: "INVALID",
 				},
 				Category: "ARR",
 			}

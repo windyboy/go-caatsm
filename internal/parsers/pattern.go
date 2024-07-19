@@ -5,24 +5,23 @@ import (
 	"regexp"
 )
 
-var bodyTypePattern = regexp.MustCompile(`^\(([A-Z]{3})(.*\n?)+\)$`)
+var (
+	bodyTypePattern = regexp.MustCompile(`^\(([A-Z]{3})(.*\n?)+\)$`)
+)
 
-// FindPatterns detects the message body type based on the configuration.
-func FindPatterns(messageBody string, config *config.Config) *config.BodyConfig {
+func FindPatterns(messageBody string) *config.BodyConfig {
 	if match := bodyTypePattern.FindStringSubmatch(messageBody); len(match) > 1 {
 		name := match[1]
-		for _, body := range config.Body {
-			if body.Name == name {
-				return &body
-			}
+		patters := config.GetBodyPatterns()
+		if body, found := patters[name]; found {
+			return &body
 		}
 	}
 	return nil
 }
 
-// ParseBody parses the message body and extracts the data based on the patterns defined in the configuration.
-func ParseBody(messageBody string, config *config.Config) map[string]string {
-	if body := FindPatterns(messageBody, config); body != nil {
+func ParseBody(messageBody string) map[string]string {
+	if body := FindPatterns(messageBody); body != nil {
 		for _, pattern := range body.Patterns {
 			if matches := pattern.Expression.FindStringSubmatch(messageBody); matches != nil {
 				result := make(map[string]string)
