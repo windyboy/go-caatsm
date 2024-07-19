@@ -6,9 +6,6 @@ import (
 )
 
 var _ = Describe("Pattern Parser", func() {
-	// BeforeEach(func() {
-	// 	config.SetMyConfig(config.GetMyConfig())
-	// })
 
 	Describe("FindPatterns", func() {
 		It("should return the correct BodyConfig based on the message body", func() {
