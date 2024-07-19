@@ -41,6 +41,22 @@ func (p AFTNParser) Parse(text string) (interface{}, error) {
 			DepartureTime:    data["departure_time"],
 			Destination:      data["arrival"],
 		}, nil
+	case "FPL":
+		return &domain.FPL{
+			Category:                data["type"],
+			FlightNumber:            data["number"],
+			FlightRulesAndType:      data["indicator"],
+			AircraftID:              data["aircraft"],
+			SSRModeAndCode:          data["surve"],
+			DepartureAirport:        data["departure"],
+			DepartureTime:           data["departure_time"],
+			CruisingSpeedAndLevel:   data["speed"] + data["level"],
+			Route:                   data["route"],
+			DestinationAndTotalTime: data["destination"] + data["estt"],
+			AlternateAirport:        data["alter"],
+			OtherInfo:               data["pbn"] + " " + data["nav"] + " " + "REG/" + data["reg"] + " " + "EET/" + data["eet"] + " " + "SEL/" + data["sel"] + " " + "PER/" + data["performance"] + " " + "RIF/" + data["rif"],
+			SupplementaryInfo:       "RMK/" + data["remark"],
+		}, nil
 	default:
 		return nil, fmt.Errorf("invalid message type")
 	}

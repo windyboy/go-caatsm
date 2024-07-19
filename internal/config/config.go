@@ -49,6 +49,7 @@ type PatternConfig struct {
 const (
 	arrPatternString = `^\((?P<type>[A-Z]{3})-(?P<number>[A-Z0-9]+)-(?P<ssr>[A-Z0-9]+)-(?P<departure>[A-Z]{4})-(?P<arrival>[A-Z]{4})\)$`
 	depPatternString = `^\((?P<type>[A-Z]{3})-(?P<number>[A-Z0-9]+)-(?P<ssr>[A-Z0-9]+)-(?P<departure>[A-Z]{4})-(?P<departure_time>\d{4})-(?P<arrival>[A-Z]{4})\)$`
+	fplPatternString = `^\((?P<type>[A-Z]{3})\-(?P<number>[A-Z]+\d+)\-(?P<indicator>[A-Z]{2})(?:.*\s*)?\-(?P<aircraft>[A-Z]+\d+\/?[A-Z]?)\s*\-(?P<surve>.*)\s*\-(?P<departure>[A-Z]{4})(?P<departure_time>\d{4})\s*\-(?P<speed>[A-Z]+\d+)(?P<level>[A-Z0-9]+)\s(?P<route>.*)\s*\-(?P<destination>[A-Z]{4})(?P<estt>\d{4})\s(?P<alter>[A-Z]{4})\s*\-(?P<pbn>PBN\/[A-Z0-9]+)\s(?P<nav>NAV\/\w+)\sREG\/(?P<reg>[A-Z0-9]+)\sEET\/(?P<eet>\w{4}\d{4})\sSEL\/(?P<sel>\w+)\sPER\/(?P<performance>\w)\sRIF\/(?P<rif>\w+\s[A-Z0-9]+\s[A-Z]+)\s*RMK\/(?P<remark>.*)\)$`
 )
 
 // Initialize the bodyPatterns map
@@ -68,6 +69,15 @@ var bodyPatterns = map[string]BodyConfig{
 				Pattern:    depPatternString,
 				Comments:   "Pattern for DEP message",
 				Expression: regexp.MustCompile(depPatternString),
+			},
+		},
+	},
+	"FPL": {
+		Patterns: []PatternConfig{
+			{
+				Pattern:    fplPatternString,
+				Comments:   "Pattern for FPL message",
+				Expression: regexp.MustCompile(fplPatternString),
 			},
 		},
 	},

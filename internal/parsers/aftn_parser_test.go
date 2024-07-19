@@ -37,6 +37,34 @@ var _ = Describe("AFTN Parser", func() {
 			Expect(depMessage.Destination).To(Equal("KLAX"))
 		})
 
+		It("should parse FPL messages correctly", func() {
+			message := `(FPL-CCA1532-IS
+-A332/H
+-SDE3FGHIJ4J5M1RWY/LB101
+-ZSSS2035
+-K0859S1040 PIAKS G330 PIMOL A539 BTO W82 DOGAR
+-ZBAA0153 ZBYN
+-PBN/A1B2B3B4B5D1L1 NAV/ABAS REG/B6513 EET/ZBPE0112 SEL/KMAL PER/C RIF/FRT N640 ZBYN RMK/TCAS EQUIPPED)`
+			parser := AFTNParser{}
+			parsedMessage, err := parser.Parse(message)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(parsedMessage).To(BeAssignableToTypeOf(&domain.FPL{}))
+			fplMessage := parsedMessage.(*domain.FPL)
+			Expect(fplMessage.FlightNumber).To(Equal("CCA1532"))
+			Expect(fplMessage.FlightRulesAndType).To(Equal("IS"))
+			Expect(fplMessage.AircraftID).To(Equal("A332/H"))
+			Expect(fplMessage.SSRModeAndCode).To(Equal("SDE3FGHIJ4J5M1RWY/LB101"))
+			Expect(fplMessage.DepartureAirport).To(Equal("ZSSS"))
+			Expect(fplMessage.DepartureTime).To(Equal("2035"))
+			Expect(fplMessage.CruisingSpeedAndLevel).To(Equal("K0859S1040"))
+			Expect(fplMessage.Route).To(Equal("PIAKS G330 PIMOL A539 BTO W82 DOGAR"))
+			Expect(fplMessage.DestinationAndTotalTime).To(Equal("ZBAA0153"))
+			Expect(fplMessage.AlternateAirport).To(Equal("ZBYN"))
+			Expect(fplMessage.OtherInfo).To(Equal("PBN/A1B2B3B4B5D1L1 NAV/ABAS REG/B6513 EET/ZBPE0112 SEL/KMAL PER/C RIF/FRT N640 ZBYN"))
+			Expect(fplMessage.SupplementaryInfo).To(Equal("RMK/TCAS EQUIPPED"))
+
+		})
+
 		It("should return an error for invalid message types", func() {
 			message := "(XYZ-AB123-SSR1234-KJFK-KLAX)"
 			parser := AFTNParser{}
