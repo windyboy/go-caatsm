@@ -1,0 +1,47 @@
+# Compiled Object files, Static and Dynamic libs (Shared Objects)
+*.o
+*.a
+*.so
+
+# Folders
+/bin/
+/pkg/
+/build/
+
+# Architecture specific extensions/prefixes
+*.[568vq]
+[568vq].out
+
+# IDEs and editors
+/.idea/
+*.swp
+*.swo
+.vscode/
+*.sublime-workspace
+
+# OS generated files
+.DS_Store*
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Go specific
+go.sum
+go.mod
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+# Project-specific
+configs/*.toml
+
+# Logs
+*.log
+
+# Dependency directories (remove the comment below if you want to ignore them)
+#vendor/
