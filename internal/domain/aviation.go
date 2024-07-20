@@ -1,5 +1,7 @@
 package domain
 
+import "time"
+
 /*
 ZCZC TMQ1324 150631
 FF ZBTJZPZX
@@ -24,5 +26,11 @@ type ParsedMessage struct {
 	SecondaryAddresses []string // Additional recipient addresses
 	Originator         string   // Sender of the message
 	OriginatorDateTime string   // Date and time when the originator sent the message
+	Category           string   // Category of the message
 	BodyAndFooter      string
+	BodyData           interface{}
+	ReceivedAt         time.Time
+	ParsedAt           time.Time
+	DispatchedAt       time.Time
+	NeedDispatch       bool
 }
