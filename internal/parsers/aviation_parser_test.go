@@ -1,8 +1,6 @@
 package parsers
 
 import (
-	"fmt"
-
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -112,7 +110,7 @@ NNNN
 			Expect(parsedMessage.SecondaryAddresses).To(Equal([]string{"GG EDDNYNYX"}))
 			Expect(parsedMessage.Originator).To(Equal("BERLINTWR"))
 			Expect(parsedMessage.OriginatorDateTime).To(Equal("230714"))
-			fmt.Print(parsedMessage.BodyAndFooter)
+			// fmt.Print(parsedMessage.BodyAndFooter)
 			Expect(parsedMessage.BodyAndFooter).To(Equal(`
 Q) EDMM/QOATT/IV/BO/A/000/999/4814N01120E005
 A) EDDM
