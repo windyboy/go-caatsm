@@ -1,6 +1,8 @@
 package parsers
 
 import (
+	"fmt"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -26,7 +28,8 @@ THUNDERSTORMS EXPECTED
 ALTERNATE ROUTES ADVISED)
 
 NNNN`
-			parsedHeader := ParseHeader(message)
+			parsedHeader, err := ParseHeader(message)
+			Expect(err).ToNot(HaveOccurred())
 			Expect(parsedHeader.StartIndicator).To(Equal("ZCZC"))
 			Expect(parsedHeader.MessageID).To(Equal("TAF6789"))
 			Expect(parsedHeader.DateTime).To(Equal("160530"))
@@ -68,7 +71,8 @@ SEVERE THUNDERSTORM FORECASTED
 ALL DEPARTURES/ARRIVALS EXPECTED TO BE DELAYED)
 
 NNNN`
-			parsedHeader := ParseHeader(message)
+			parsedHeader, err := ParseHeader(message)
+			Expect(err).ToNot(HaveOccurred())
 			Expect(parsedHeader.StartIndicator).To(Equal("ZCZC"))
 			Expect(parsedHeader.MessageID).To(Equal("NOTAM1122"))
 			Expect(parsedHeader.DateTime).To(Equal("171000"))
@@ -94,10 +98,12 @@ Q) EDMM/QOATT/IV/BO/A/000/999/4814N01120E005
 A) EDDM
 B) 2307150600 C) 2307151800
 E) AERODROME CONTROL TOWER HOURS OF SERVICE
-    0600-1800 DUE TO MAINTENANCE
-NNNN`
+   0600-1800 DUE TO MAINTENANCE
+NNNN
+`
 
-			parsedMessage := ParseHeader(message)
+			parsedMessage, err := ParseHeader(message)
+			Expect(err).ToNot(HaveOccurred())
 			Expect(parsedMessage.StartIndicator).To(Equal("ZCZC"))
 			Expect(parsedMessage.MessageID).To(Equal("NOTAM1234"))
 			Expect(parsedMessage.DateTime).To(Equal("230715"))
@@ -106,7 +112,15 @@ NNNN`
 			Expect(parsedMessage.SecondaryAddresses).To(Equal([]string{"GG EDDNYNYX"}))
 			Expect(parsedMessage.Originator).To(Equal("BERLINTWR"))
 			Expect(parsedMessage.OriginatorDateTime).To(Equal("230714"))
-			Expect(parsedMessage.BodyAndFooter).To(ContainSubstring("Q) EDMM/QOATT/IV/BO/A/000/999/4814N01120E005\nA) EDDM\nB) 2307150600 C) 2307151800\nE) AERODROME CONTROL TOWER HOURS OF SERVICE\n    0600-1800 DUE TO MAINTENANCE\nNNNN"))
+			fmt.Print(parsedMessage.BodyAndFooter)
+			Expect(parsedMessage.BodyAndFooter).To(Equal(`
+Q) EDMM/QOATT/IV/BO/A/000/999/4814N01120E005
+A) EDDM
+B) 2307150600 C) 2307151800
+E) AERODROME CONTROL TOWER HOURS OF SERVICE
+0600-1800 DUE TO MAINTENANCE
+NNNN
+`))
 		})
 	})
 })
