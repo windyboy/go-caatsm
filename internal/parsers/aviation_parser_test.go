@@ -125,7 +125,7 @@ NNNN
 	})
 	Describe("ParseBody", func() {
 		Context("with ARR body", func() {
-			parser := DefaultBodyParser()
+			parser := NewBodyParser()
 			It("should parse the body (ARR-AB123-SSR1234-KJFK-KLAX) correctly", func() {
 				body := "(ARR-AB123-SSR1234-KJFK-KLAX)"
 				parsedBody, err := parser.Parse(body)
@@ -143,7 +143,7 @@ NNNN
 		})
 
 		Context("with DEP body", func() {
-			parser := DefaultBodyParser()
+			parser := NewBodyParser()
 			It("should parse the body (DEP-AB123-SSR1234-KJFK-1500-KLAX) correctly", func() {
 				body := "(DEP-AB123-SSR1234-KJFK-1500-KLAX)"
 				parsedBody, err := parser.Parse(body)
@@ -161,7 +161,7 @@ NNNN
 		})
 
 		Context("with FPL body", func() {
-			parser := DefaultBodyParser()
+			parser := NewBodyParser()
 			It("should parse the body correctly", func() {
 				body := `(FPL-CCA1532-IS
 -A332/H

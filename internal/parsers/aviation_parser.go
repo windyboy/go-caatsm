@@ -4,8 +4,8 @@ import (
 	"caatsm/internal/config"
 	"caatsm/internal/domain"
 	"caatsm/pkg/utils"
-	"errors" // Import errors package to handle errors
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -17,46 +17,56 @@ const (
 )
 
 type BodyParser struct {
-	bodyPattern map[string]config.BodyConfig // Injected configuration for body patterns.
+	bodyPatterns map[string]config.BodyConfig
 }
 
-func DefaultBodyParser() *BodyParser {
-	return &BodyParser{bodyPattern: config.GetBodyPatterns()}
+// NewBodyParser initializes a BodyParser with the default body patterns.
+func NewBodyParser() *BodyParser {
+	return &BodyParser{bodyPatterns: config.GetBodyPatterns()}
 }
 
+// GetBodyPatterns returns the body patterns used by the parser.
 func (bp *BodyParser) GetBodyPatterns() map[string]config.BodyConfig {
-	return bp.bodyPattern
+	return bp.bodyPatterns
 }
 
+// SetBodyPatterns sets the body patterns for the parser.
 func (bp *BodyParser) SetBodyPatterns(patterns map[string]config.BodyConfig) {
-	bp.bodyPattern = patterns
+	bp.bodyPatterns = patterns
 }
 
+// Parse attempts to parse the body text using the configured patterns.
 func (bp *BodyParser) Parse(body string) (interface{}, error) {
 	log := utils.Logger
-	data := make(map[string]string)
 	for _, pattern := range bp.GetBodyPatterns() {
 		for i, p := range pattern.Patterns {
-			log.Debugf("Trying pattern %d: %s\n %s\n", i, p.Comments, p.Pattern)
+			log.Debugf("Trying pattern %d: %s\n%s\n", i, p.Comments, p.Pattern)
 			re := p.Expression
 			match := re.FindStringSubmatch(body)
 			if match != nil {
-				log.Debugf("Matched : %v \n", match)
-				for i, name := range re.SubexpNames() {
-					if i != 0 && name != "" {
-						data[name] = match[i]
-					}
-				}
-				return CreateBodyData(data)
+				log.Debugf("Matched: %v\n", match)
+				data := extractData(match, re)
+				return createBodyData(data)
 			}
 			log.Debugf("No match for pattern %d\n", i)
 		}
 	}
-	log.Errorf("No matching pattern found for body: %s", body)
-	return data, errors.New("no matching pattern found for body")
+	return nil, fmt.Errorf("no matching pattern found for body: %s", body)
 }
 
-func CreateBodyData(data map[string]string) (interface{}, error) {
+// extractData extracts named groups from the regex match.
+func extractData(match []string, re *regexp.Regexp) map[string]string {
+	data := make(map[string]string)
+	for i, name := range re.SubexpNames() {
+		if i != 0 && name != "" {
+			data[name] = match[i]
+		}
+	}
+	return data
+}
+
+// createBodyData creates the appropriate domain object based on the type of message.
+func createBodyData(data map[string]string) (interface{}, error) {
 	switch data["type"] {
 	case "ARR":
 		return &domain.ARR{
@@ -106,12 +116,13 @@ func CreateBodyData(data map[string]string) (interface{}, error) {
 	}
 }
 
+// Parse parses the raw text message and returns a ParsedMessage.
 func Parse(rawText string) (*domain.ParsedMessage, error) {
 	message, err := ParseHeader(rawText)
 	if err != nil {
 		return nil, err
 	}
-	bodyParser := DefaultBodyParser()
+	bodyParser := NewBodyParser()
 	bodyData, err := bodyParser.Parse(message.BodyAndFooter)
 	if err != nil {
 		return nil, err
@@ -121,27 +132,23 @@ func Parse(rawText string) (*domain.ParsedMessage, error) {
 	return &message, nil
 }
 
-// ParseHeader parses the header of the message and returns a ParsedMessage struct
+// parseHeader parses the header of the message and returns a ParsedMessage struct.
 func ParseHeader(fullMessage string) (domain.ParsedMessage, error) {
-	fullMessage = strings.TrimSpace(fullMessage) // Trim leading and trailing spaces
-	lines := strings.Split(fullMessage, "\n")    // Split the message into lines
+	fullMessage = strings.TrimSpace(fullMessage)
+	lines := strings.Split(fullMessage, "\n")
 
-	// Parse the start indicator line
 	startIndicator, messageID, dateTime, err := parseStartIndicator(lines[0])
 	if err != nil {
-		return domain.ParsedMessage{}, err // Return error if parsing fails
+		return domain.ParsedMessage{}, err
 	}
 
-	// Parse the priority indicator and primary address line
 	priorityIndicator, primaryAddress, err := parsePriorityAndPrimary(lines[1])
 	if err != nil {
-		return domain.ParsedMessage{}, err // Return error if parsing fails
+		return domain.ParsedMessage{}, err
 	}
 
-	// Parse the remaining lines
 	secondaryAddresses, originator, originatorDateTime, bodyAndFooter := parseRemainingLines(lines[2:])
 
-	// Return the parsed message as a domain.ParsedMessage struct
 	return domain.ParsedMessage{
 		StartIndicator:     startIndicator,
 		MessageID:          messageID,
@@ -156,27 +163,25 @@ func ParseHeader(fullMessage string) (domain.ParsedMessage, error) {
 	}, nil
 }
 
-// parseStartIndicator parses the start indicator line
+// parseStartIndicator parses the start indicator line.
 func parseStartIndicator(line string) (string, string, string, error) {
-	if strings.HasPrefix(line, StartIndicatorPrefix) {
-		parts := strings.Fields(line)
-		if len(parts) >= 3 {
-			return parts[0], parts[1], parts[2], nil
-		}
+	parts := strings.Fields(line)
+	if len(parts) >= 3 && strings.HasPrefix(parts[0], StartIndicatorPrefix) {
+		return parts[0], parts[1], parts[2], nil
 	}
-	return "", "", "", errors.New("invalid start indicator line format")
+	return "", "", "", fmt.Errorf("invalid start indicator line format: %s", line)
 }
 
-// parsePriorityAndPrimary parses the priority indicator and primary address line
+// parsePriorityAndPrimary parses the priority indicator and primary address line.
 func parsePriorityAndPrimary(line string) (string, string, error) {
 	parts := strings.Fields(line)
 	if len(parts) >= 2 {
 		return parts[0], parts[1], nil
 	}
-	return "", "", errors.New("invalid priority indicator line format")
+	return "", "", fmt.Errorf("invalid priority indicator line format: %s", line)
 }
 
-// parseRemainingLines parses the remaining lines of the message
+// parseRemainingLines parses the remaining lines of the message.
 func parseRemainingLines(lines []string) ([]string, string, string, string) {
 	var (
 		secondaryAddresses []string
@@ -189,14 +194,12 @@ func parseRemainingLines(lines []string) ([]string, string, string, string) {
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
 		if headerEnded {
-			// Append line to body and footer if header has ended
 			bodyAndFooter.WriteString(line + "\n")
 		} else {
 			switch {
 			case line == EndHeaderMarker:
-				// Ignore end header marker
+				// End header marker, do nothing
 			case strings.HasPrefix(line, "."):
-				// Parse originator and originatorDateTime
 				originatorInfo := strings.Fields(line[1:])
 				if len(originatorInfo) >= 2 {
 					originator = originatorInfo[0]
@@ -204,11 +207,9 @@ func parseRemainingLines(lines []string) ([]string, string, string, string) {
 				}
 				headerEnded = true
 			case strings.HasPrefix(line, BeginPartMarker) || strings.HasPrefix(line, "("):
-				// Mark header as ended and append line to body and footer
 				headerEnded = true
 				bodyAndFooter.WriteString(line + "\n")
 			default:
-				// Append line to secondary addresses
 				secondaryAddresses = append(secondaryAddresses, line)
 			}
 		}
