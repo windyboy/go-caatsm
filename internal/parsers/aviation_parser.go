@@ -7,6 +7,7 @@ import (
 	"errors" // Import errors package to handle errors
 	"fmt"
 	"strings"
+	"time"
 )
 
 const (
@@ -115,6 +116,7 @@ func Parse(rawText string) (*domain.ParsedMessage, error) {
 	if err != nil {
 		return nil, err
 	}
+	message.ParsedAt = time.Now()
 	message.BodyData = bodyData
 	return &message, nil
 }
@@ -150,6 +152,7 @@ func ParseHeader(fullMessage string) (domain.ParsedMessage, error) {
 		Originator:         originator,
 		OriginatorDateTime: originatorDateTime,
 		BodyAndFooter:      bodyAndFooter,
+		ReceivedAt:         time.Now(),
 	}, nil
 }
 
