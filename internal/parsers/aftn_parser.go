@@ -60,12 +60,12 @@ func (p *AFTNParser) Parse(rawMessage string) (*domain.AFTN, error) {
 		return nil, err
 	}
 
-	text, bodyType, err := parseTextInfo(strings.Join(lines[3:], "\n"))
+	body, category, err := extractBodyAndCategory(strings.Join(lines[3:], "\n"))
 	if err != nil {
 		return nil, err
 	}
 
-	bodyData, err := p.extractBodyData(text)
+	bodyData, err := p.extractBodyData(body)
 	if err != nil {
 		return nil, err
 	}
@@ -79,8 +79,8 @@ func (p *AFTNParser) Parse(rawMessage string) (*domain.AFTN, error) {
 		Header:            header,
 		PriorityAndSender: priorityAndSender,
 		TimeAndReceiver:   timeAndReceiver,
-		Text:              text,
-		Category:          bodyType,
+		Body:              body,
+		Category:          category,
 		BodyData:          aftn,
 		ReceivedTime:      time.Now(),
 	}, nil
@@ -124,7 +124,7 @@ func parseTimeAndReceiver(line string) (domain.TimeAndReceiver, error) {
 }
 
 // parseTextInfo parses the text and extracts the body type from an AFTN message.
-func parseTextInfo(text string) (string, string, error) {
+func extractBodyAndCategory(text string) (string, string, error) {
 	match := textPattern.FindStringSubmatch(text)
 	if len(match) > 1 {
 		return match[0], match[1], nil

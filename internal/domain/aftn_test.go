@@ -26,7 +26,7 @@ var _ = Describe("AFTN", func() {
 				Time:     "151524",
 				Receiver: "ZGGGZPZX",
 			},
-			Text:         "Test message",
+			Body:         "Test message",
 			ReceivedTime: time.Now(),
 			Category:     "Test",
 			BodyData:     nil,
@@ -45,7 +45,7 @@ var _ = Describe("AFTN", func() {
 			Expect(unmarshalled.Header).To(Equal(original.Header))
 			Expect(unmarshalled.PriorityAndSender).To(Equal(original.PriorityAndSender))
 			Expect(unmarshalled.TimeAndReceiver).To(Equal(original.TimeAndReceiver))
-			Expect(unmarshalled.Text).To(Equal(original.Text))
+			Expect(unmarshalled.Body).To(Equal(original.Body))
 			Expect(unmarshalled.Category).To(Equal(original.Category))
 		})
 	})

@@ -11,7 +11,7 @@ type AFTN struct {
 	Header            Header            `json:"header"`              // 报文头部信息
 	PriorityAndSender PriorityAndSender `json:"priority_and_sender"` // 优先级和发送地址信息
 	TimeAndReceiver   TimeAndReceiver   `json:"time_and_receiver"`   // 时间和接收地址信息
-	Text              string            `json:"text"`                // 报文内容
+	Body              string            `json:"body"`                // 报文内容
 	ReceivedTime      time.Time         `json:"received_time"`       // 收报时间，表示电报接收到的时间
 	Category          string            `json:"category"`
 	BodyData          interface{}       `json:"body_data"`
