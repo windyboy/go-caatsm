@@ -67,10 +67,10 @@ func extractData(match []string, re *regexp.Regexp) map[string]string {
 
 // createBodyData creates the appropriate domain object based on the type of message.
 func createBodyData(data map[string]string) (interface{}, error) {
-	switch data["type"] {
+	switch data["category"] {
 	case "ARR":
 		return &domain.ARR{
-			Category:         data["type"],
+			Category:         data["category"],
 			AircraftID:       data["number"],
 			SSRModeAndCode:   data["ssr"],
 			DepartureAirport: data["departure"],
@@ -78,7 +78,7 @@ func createBodyData(data map[string]string) (interface{}, error) {
 		}, nil
 	case "DEP":
 		return &domain.DEP{
-			Category:         data["type"],
+			Category:         data["category"],
 			AircraftID:       data["number"],
 			SSRModeAndCode:   data["ssr"],
 			DepartureAirport: data["departure"],
@@ -87,7 +87,7 @@ func createBodyData(data map[string]string) (interface{}, error) {
 		}, nil
 	case "FPL":
 		return &domain.FPL{
-			Category:                data["type"],
+			Category:                data["category"],
 			FlightNumber:            data["number"],
 			ReferenceData:           data["reference_data"],
 			AircraftID:              data["aircraft"],
@@ -112,7 +112,7 @@ func createBodyData(data map[string]string) (interface{}, error) {
 			Remarks:              data["remark"],
 		}, nil
 	default:
-		return nil, fmt.Errorf("invalid message type: %s", data["type"])
+		return nil, fmt.Errorf("invalid message type: %s", data["category"])
 	}
 }
 

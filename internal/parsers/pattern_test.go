@@ -27,7 +27,7 @@ var _ = Describe("Pattern Parser", func() {
 			message := "(ARR-AB123-SSR1234-KJFK-KLAX)"
 			parsedData := ParseBody(message)
 			Expect(parsedData).NotTo(BeNil())
-			Expect(parsedData["type"]).To(Equal("ARR"))
+			Expect(parsedData["category"]).To(Equal("ARR"))
 			Expect(parsedData["number"]).To(Equal("AB123"))
 			Expect(parsedData["ssr"]).To(Equal("SSR1234"))
 			Expect(parsedData["departure"]).To(Equal("KJFK"))

@@ -49,29 +49,29 @@ const (
 	// arrPatternString represents the regular expression pattern used to match arrival patterns.
 	// The pattern matches strings in the format: "(TYPE-NUMBER-SSR-DEPARTURE-ARRIVAL)".
 	// The pattern captures the following named groups:
-	// - type: the three-letter type code
+	// - category: the three-letter category code
 	// - number: the alphanumeric flight number
 	// - ssr: the alphanumeric SSR code
 	// - departure: the four-letter departure airport code
 	// - arrival: the four-letter arrival airport code
-	arrPatternString = `^\((?P<type>[A-Z]{3})-(?P<number>[A-Z0-9]+)-(?P<ssr>[A-Z0-9]+)-(?P<departure>[A-Z]{4})-(?P<arrival>[A-Z]{4})\)$`
+	arrPatternString = `^\((?P<category>[A-Z]{3})-(?P<number>[A-Z0-9]+)-(?P<ssr>[A-Z0-9]+)-(?P<departure>[A-Z]{4})-(?P<arrival>[A-Z]{4})\)$`
 
 	// depPatternString represents the regular expression pattern used to match departure patterns.
 	// The pattern matches strings in the format: "(TYPE-NUMBER-SSR-DEPARTURE-DEPARTURE_TIME-ARRIVAL)".
 	// The pattern captures the following named groups:
-	// - type: the three-letter type code
+	// - category: the three-letter category code
 	// - number: the alphanumeric flight number
 	// - ssr: the alphanumeric SSR code
 	// - departure: the four-letter departure airport code
 	// - departure_time: the four-digit departure time
 	// - arrival: the four-letter arrival airport code
-	depPatternString = `^\((?P<type>[A-Z]{3})-(?P<number>[A-Z0-9]+)-(?P<ssr>[A-Z0-9]+)-(?P<departure>[A-Z]{4})-(?P<departure_time>\d{4})-(?P<arrival>[A-Z]{4})\)$`
+	depPatternString = `^\((?P<category>[A-Z]{3})-(?P<number>[A-Z0-9]+)-(?P<ssr>[A-Z0-9]+)-(?P<departure>[A-Z]{4})-(?P<departure_time>\d{4})-(?P<arrival>[A-Z]{4})\)$`
 
 	// fplPatternString is a regular expression designed to parse and extract detailed information from formatted flight plan strings.
 	// The flight plan string is expected to follow a specific format, encapsulated by parentheses and containing various segments separated by hyphens.
 	// Each segment captures a different aspect of the flight plan, as detailed below:
 	//
-	// - type: Matches a three-letter flight type code.
+	// - category: Matches a three-letter flight category code.
 	// - number: Matches the flight number, consisting of letters followed by digits.
 	// - indicator: Matches a two-letter indicator.
 	// - aircraft: Matches the aircraft registration or type, which may include a slash and an optional letter.
@@ -94,7 +94,7 @@ const (
 	// - remark: Matches remarks, capturing any characters in this segment.
 	//
 	// The regular expression uses named capture groups for each segment, allowing for easy extraction of specific information from a matched flight plan string.
-	fplPatternString = `\((?P<type>[A-Z]{3})\-(?P<number>[A-Z]+\d+)\-(?P<indicator>[A-Z]{2})(.*\n)?(.*\n)?\-(?P<aircraft>[A-Z]+\d+\/?[A-Z]?)\s*\-(?P<surve>.*)(.*\n)?\-(?P<departure>[A-Z]{4})(?P<departure_time>\d{4})(.*\n)?\-(?P<speed>[A-Z]+\d+)(?P<level>[A-Z0-9]+)\s(?P<route>.*)(.*\n)?\-(?P<destination>[A-Z]{4})(?P<estt>\d{4})\s(?P<alter>[A-Z]{4})(.*\n)?\-(?P<pbn>PBN\/[A-Z0-9]+)\s(?P<nav>NAV\/\w+)\sREG\/(?P<reg>[A-Z0-9]+)\sEET\/(?P<eet>\w{4}\d{4})\sSEL\/(?P<sel>\w+)\sPER\/(?P<performance>\w)\sRIF\/(?P<rif>\w+\s[A-Z0-9]+\s[A-Z]+)\s*RMK\/(?P<remark>.*)\)$`
+	fplPatternString = `\((?P<category>[A-Z]{3})\-(?P<number>[A-Z]+\d+)\-(?P<indicator>[A-Z]{2})(.*\n)?(.*\n)?\-(?P<aircraft>[A-Z]+\d+\/?[A-Z]?)\s*\-(?P<surve>.*)(.*\n)?\-(?P<departure>[A-Z]{4})(?P<departure_time>\d{4})(.*\n)?\-(?P<speed>[A-Z]+\d+)(?P<level>[A-Z0-9]+)\s(?P<route>.*)(.*\n)?\-(?P<destination>[A-Z]{4})(?P<estt>\d{4})\s(?P<alter>[A-Z]{4})(.*\n)?\-(?P<pbn>PBN\/[A-Z0-9]+)\s(?P<nav>NAV\/\w+)\sREG\/(?P<reg>[A-Z0-9]+)\sEET\/(?P<eet>\w{4}\d{4})\sSEL\/(?P<sel>\w+)\sPER\/(?P<performance>\w)\sRIF\/(?P<rif>\w+\s[A-Z0-9]+\s[A-Z]+)\s*RMK\/(?P<remark>.*)\)$`
 )
 
 // Initialize the bodyPatterns map
