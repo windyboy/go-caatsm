@@ -15,17 +15,27 @@ var _ = Describe("FPL", func() {
 		original = FPL{
 			Category:                "FPL",
 			FlightNumber:            "AB123",
+			ReferenceData:           "Ref123", // Example reference data
 			AircraftID:              "ABCD1234",
 			SSRModeAndCode:          "A1234",
 			FlightRulesAndType:      "IFR",
-			AircraftAndEquipment:    "B738",
 			CruisingSpeedAndLevel:   "N0450F350",
 			DepartureAirport:        "JFK",
 			DepartureTime:           time.Now().Format("150405"), // HHMMSS format
 			Route:                   "DCT GAYEL J95 BUF DCT",
 			DestinationAndTotalTime: "LAX0500", // Example format
+			AlternateAirport:        "SFO",     // Example alternate airport
 			OtherInfo:               "Test flight",
 			SupplementaryInfo:       "Supplementary information",
+			SurveillanceEquipment:   "SDE3FGHIJ4J5M1RWY",
+			EstimatedArrivalTime:    "0153", // Example estimated arrival time
+			PBN:                     "A1B2B3B4B5D1L1",
+			NavigationEquipment:     "NAV/ABAS",
+			EstimatedElapsedTime:    "EET/ZBPE0112",
+			SELCALCode:              "KMAL",
+			PerformanceCategory:     "C",
+			RerouteInformation:      "RIF/FRT N640 ZBYN", // Example reroute information
+			Remarks:                 "RMK/TCAS EQUIPPED", // Example remarks
 		}
 	})
 
@@ -55,7 +65,6 @@ var _ = Describe("FPL", func() {
 				AircraftID:              "ABCD1234",
 				SSRModeAndCode:          "A1234",
 				FlightRulesAndType:      "IFR",
-				AircraftAndEquipment:    "B738",
 				CruisingSpeedAndLevel:   "N0450F350",
 				DepartureAirport:        "JFK",
 				DepartureTime:           "150405",

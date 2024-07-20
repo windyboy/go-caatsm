@@ -195,6 +195,6 @@ func ValidateConfig(cfg *Config) error {
 	if cfg.Subscription.Topic == "" {
 		return fmt.Errorf("subscription topic is required")
 	}
-	fmt.Println("config validation passed")
+	// fmt.Println("config validation passed")
 	return nil
 }
