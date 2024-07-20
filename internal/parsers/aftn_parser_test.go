@@ -2,16 +2,10 @@ package parsers
 
 import (
 	"caatsm/internal/domain"
-	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
-
-func TestAFTNParser(t *testing.T) {
-	RegisterFailHandler(Fail)
-	RunSpecs(t, "AFTNParser Suite")
-}
 
 var _ = Describe("AFTN Parser", func() {
 	Describe("Parse", func() {
