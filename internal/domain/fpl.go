@@ -57,7 +57,6 @@ type FPL struct {
 	AlternateAirport        string `json:"alternate_airport,omitempty"`   // 目的地备降机场（可选）: Alternate airport (e.g., 'ZBYN').
 	OtherInfo               string `json:"other_info,omitempty"`          // 其他信息（可选）: Other information.
 	SupplementaryInfo       string `json:"supplementary_info,omitempty"`  // 补充信息（可选）: Supplementary information.
-	SurveillanceEquipment   string `json:"surveillance_equipment"`        // 监视设备信息: Surveillance equipment information (e.g., 'SDE3FGHIJ4J5M1RWY').
 	EstimatedArrivalTime    string `json:"estimated_arrival_time"`        // 预计到达时间: Estimated time of arrival (e.g., '0153').
 	PBN                     string `json:"pbn"`                           // 性能导航: Performance-based navigation equipment (e.g., 'A1B2B3B4B5D1L1').
 	NavigationEquipment     string `json:"navigation_equipment"`          // 导航设备: Navigation equipment (e.g., 'NAV/ABAS').
@@ -97,9 +96,6 @@ func (f *FPL) Validate() error {
 	}
 	if f.DestinationAndTotalTime == "" {
 		return fmt.Errorf("destination and total time is required")
-	}
-	if f.SurveillanceEquipment == "" {
-		return fmt.Errorf("surveillance equipment is required")
 	}
 	if f.EstimatedArrivalTime == "" {
 		return fmt.Errorf("estimated arrival time is required")

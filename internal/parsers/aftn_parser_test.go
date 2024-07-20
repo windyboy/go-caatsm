@@ -2,20 +2,32 @@ package parsers
 
 import (
 	"caatsm/internal/domain"
+	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 
+func TestAFTNParser(t *testing.T) {
+	RegisterFailHandler(Fail)
+	RunSpecs(t, "AFTNParser Suite")
+}
+
 var _ = Describe("AFTN Parser", func() {
 	Describe("Parse", func() {
+		var parser *AFTNParser
+		BeforeEach(func() {
+			parser = DefaultParser()
+		})
+
 		It("should parse ARR messages correctly", func() {
 			message := "(ARR-AB123-SSR1234-KJFK-KLAX)"
-			parser := AFTNParser{}
-			parsedMessage, err := parser.Parse(message)
+			// parser := DefaultParser()
+			parsedMessage, err := parser.ParseBody(message)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(parsedMessage).To(BeAssignableToTypeOf(&domain.ARR{}))
 			arrMessage := parsedMessage.(*domain.ARR)
+
 			Expect(arrMessage.Category).To(Equal("ARR"))
 			Expect(arrMessage.AircraftID).To(Equal("AB123"))
 			Expect(arrMessage.SSRModeAndCode).To(Equal("SSR1234"))
@@ -25,11 +37,11 @@ var _ = Describe("AFTN Parser", func() {
 
 		It("should parse DEP messages correctly", func() {
 			message := "(DEP-AB123-SSR1234-KJFK-1500-KLAX)"
-			parser := AFTNParser{}
-			parsedMessage, err := parser.Parse(message)
+			parsedMessage, err := parser.ParseBody(message)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(parsedMessage).To(BeAssignableToTypeOf(&domain.DEP{}))
 			depMessage := parsedMessage.(*domain.DEP)
+			Expect(depMessage.Category).To(Equal("DEP"))
 			Expect(depMessage.AircraftID).To(Equal("AB123"))
 			Expect(depMessage.SSRModeAndCode).To(Equal("SSR1234"))
 			Expect(depMessage.DepartureAirport).To(Equal("KJFK"))
@@ -45,8 +57,7 @@ var _ = Describe("AFTN Parser", func() {
 -K0859S1040 PIAKS G330 PIMOL A539 BTO W82 DOGAR
 -ZBAA0153 ZBYN
 -PBN/A1B2B3B4B5D1L1 NAV/ABAS REG/B6513 EET/ZBPE0112 SEL/KMAL PER/C RIF/FRT N640 ZBYN RMK/TCAS EQUIPPED)`
-			parser := AFTNParser{}
-			parsedMessage, err := parser.Parse(message)
+			parsedMessage, err := parser.ParseBody(message)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(parsedMessage).To(BeAssignableToTypeOf(&domain.FPL{}))
 			fplMessage := parsedMessage.(*domain.FPL)
@@ -60,28 +71,32 @@ var _ = Describe("AFTN Parser", func() {
 			Expect(fplMessage.Route).To(Equal("PIAKS G330 PIMOL A539 BTO W82 DOGAR"))
 			Expect(fplMessage.DestinationAndTotalTime).To(Equal("ZBAA0153"))
 			Expect(fplMessage.AlternateAirport).To(Equal("ZBYN"))
+			// fmt.Println(fplMessage.OtherInfo)
 			Expect(fplMessage.OtherInfo).To(Equal("PBN/A1B2B3B4B5D1L1 NAV/ABAS REG/B6513 EET/ZBPE0112 SEL/KMAL PER/C RIF/FRT N640 ZBYN"))
 			Expect(fplMessage.SupplementaryInfo).To(Equal("RMK/TCAS EQUIPPED"))
-
+			Expect(fplMessage.PBN).To(Equal("PBN/A1B2B3B4B5D1L1"))
+			// fmt.Println(fplMessage.EstimatedElapsedTime)
+			Expect(fplMessage.EstimatedElapsedTime).To(Equal("ZBPE0112"))
+			Expect(fplMessage.SELCALCode).To(Equal("KMAL"))
+			Expect(fplMessage.PerformanceCategory).To(Equal("C"))
+			Expect(fplMessage.RerouteInformation).To(Equal("FRT N640 ZBYN"))
+			Expect(fplMessage.Remarks).To(Equal("TCAS EQUIPPED"))
 		})
 
 		It("should return an error for invalid message types", func() {
 			message := "(XYZ-AB123-SSR1234-KJFK-KLAX)"
-			parser := AFTNParser{}
-			_, err := parser.Parse(message)
+			_, err := parser.ParseBody(message)
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(Equal("invalid message type"))
+			Expect(err.Error()).To(Equal("invalid message type: XYZ"))
 		})
-	})
 
-	Describe("ParseAFTN", func() {
 		It("should parse a valid AFTN message", func() {
 			rawMessage := `ZCZC TMQ2611 151524
 FF SENDERAA
 151524 RECEIVERAA
 (ARR-AB123-SSR1234-KJFK-KLAX)`
 
-			aftnMessage, err := ParseAFTN(rawMessage)
+			aftnMessage, err := parser.Parse(rawMessage)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(aftnMessage).NotTo(BeNil())
 			Expect(aftnMessage.Header.StartSignal).To(Equal("ZCZC"))
@@ -95,9 +110,9 @@ FF SENDERAA
 TMQ2611
 151524`
 
-			_, err := ParseAFTN(rawMessage)
+			_, err := parser.Parse(rawMessage)
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(Equal("invalid AFTN message format"))
+			Expect(err.Error()).To(Equal("invalid AFTN message format: insufficient lines"))
 		})
 	})
 
@@ -164,7 +179,7 @@ TMQ2611
 			}
 			err := ValidateAFTN(aftnMessage)
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(Equal("invalid priority code"))
+			Expect(err.Error()).To(Equal("invalid priority code: ZZ"))
 		})
 
 		It("should return an error for invalid address format", func() {

@@ -27,7 +27,6 @@ var _ = Describe("FPL", func() {
 			AlternateAirport:        "SFO",     // Example alternate airport
 			OtherInfo:               "Test flight",
 			SupplementaryInfo:       "Supplementary information",
-			SurveillanceEquipment:   "SDE3FGHIJ4J5M1RWY",
 			EstimatedArrivalTime:    "0153", // Example estimated arrival time
 			PBN:                     "A1B2B3B4B5D1L1",
 			NavigationEquipment:     "NAV/ABAS",

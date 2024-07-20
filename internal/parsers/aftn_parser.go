@@ -3,6 +3,7 @@ package parsers
 import (
 	"caatsm/internal/config"
 	"caatsm/internal/domain"
+	"caatsm/pkg/utils"
 	"fmt"
 	"regexp"
 	"strings"
@@ -16,65 +17,32 @@ var (
 	emptyLineRemove = regexp.MustCompile(`(?m)^\s*$`)
 )
 
+// AFTNParser is responsible for parsing AFTN messages.
 type AFTNParser struct {
-	BodyPattern *config.BodyConfig
+	bodyPattern map[string]config.BodyConfig // Injected configuration for body patterns.
 }
 
-// Parse parses a generic AFTN message based on its type.
-func (p AFTNParser) Parse(text string) (interface{}, error) {
-	data := ParseBody(text)
-
-	switch data["type"] {
-	case "ARR":
-		return &domain.ARR{
-			Category:         data["type"],
-			AircraftID:       data["number"],
-			SSRModeAndCode:   data["ssr"],
-			DepartureAirport: data["departure"],
-			ArrivalAirport:   data["arrival"],
-		}, nil
-	case "DEP":
-		return &domain.DEP{
-			AircraftID:       data["number"],
-			SSRModeAndCode:   data["ssr"],
-			DepartureAirport: data["departure"],
-			DepartureTime:    data["departure_time"],
-			Destination:      data["arrival"],
-		}, nil
-	case "FPL":
-		return &domain.FPL{
-			Category:                data["type"],
-			FlightNumber:            data["number"],
-			FlightRulesAndType:      data["indicator"],
-			AircraftID:              data["aircraft"],
-			SSRModeAndCode:          data["surve"],
-			DepartureAirport:        data["departure"],
-			DepartureTime:           data["departure_time"],
-			CruisingSpeedAndLevel:   data["speed"] + data["level"],
-			Route:                   data["route"],
-			DestinationAndTotalTime: data["destination"] + data["estt"],
-			AlternateAirport:        data["alter"],
-			OtherInfo:               data["pbn"] + " " + data["nav"] + " " + "REG/" + data["reg"] + " " + "EET/" + data["eet"] + " " + "SEL/" + data["sel"] + " " + "PER/" + data["performance"] + " " + "RIF/" + data["rif"],
-			SupplementaryInfo:       "RMK/" + data["remark"],
-		}, nil
-	default:
-		return nil, fmt.Errorf("invalid message type")
-	}
+// NewAFTNParser creates a new instance of AFTNParser.
+func NewAFTNParser(myPatterns map[string]config.BodyConfig) *AFTNParser {
+	return &AFTNParser{bodyPattern: myPatterns}
 }
 
-// removeEmptyLines removes empty lines from a given text.
-func removeEmptyLines(text string) string {
-	cleanedText := emptyLineRemove.ReplaceAllString(text, "")
-	return strings.ReplaceAll(cleanedText, "\n\n", "\n")
+// DefaultParser creates a new instance of AFTNParser with default patterns.
+func DefaultParser() *AFTNParser {
+	return &AFTNParser{bodyPattern: config.GetBodyPatterns()}
 }
 
-// ParseAFTN parses an AFTN message from raw text.
-func ParseAFTN(rawMessage string) (*domain.AFTN, error) {
+func (p *AFTNParser) GetBodyPatterns() map[string]config.BodyConfig {
+	return p.bodyPattern
+}
+
+// Parse is the main method to parse an AFTN message.
+func (p *AFTNParser) Parse(rawMessage string) (*domain.AFTN, error) {
 	cleanedText := removeEmptyLines(rawMessage)
 	lines := strings.Split(cleanedText, "\n")
 
 	if len(lines) < 4 {
-		return nil, fmt.Errorf("invalid AFTN message format")
+		return nil, fmt.Errorf("invalid AFTN message format: insufficient lines")
 	}
 
 	header, err := parseHeader(lines[0])
@@ -92,12 +60,17 @@ func ParseAFTN(rawMessage string) (*domain.AFTN, error) {
 		return nil, err
 	}
 
-	text, bodyType, err := parseText(strings.Join(lines[3:], "\n"))
+	text, bodyType, err := parseTextInfo(strings.Join(lines[3:], "\n"))
 	if err != nil {
 		return nil, err
 	}
 
-	bodyData, err := parseBodyData(text)
+	bodyData, err := p.extractBodyData(text)
+	if err != nil {
+		return nil, err
+	}
+
+	aftn, err := p.createAFTN(bodyData)
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +81,7 @@ func ParseAFTN(rawMessage string) (*domain.AFTN, error) {
 		TimeAndReceiver:   timeAndReceiver,
 		Text:              text,
 		Category:          bodyType,
-		BodyData:          bodyData,
+		BodyData:          aftn,
 		ReceivedTime:      time.Now(),
 	}, nil
 }
@@ -117,7 +90,7 @@ func ParseAFTN(rawMessage string) (*domain.AFTN, error) {
 func parseHeader(line string) (domain.Header, error) {
 	parts := strings.Fields(line)
 	if len(parts) < 3 {
-		return domain.Header{}, fmt.Errorf("invalid header format")
+		return domain.Header{}, fmt.Errorf("invalid header format: %s", line)
 	}
 	return domain.Header{
 		StartSignal: parts[0],
@@ -130,7 +103,7 @@ func parseHeader(line string) (domain.Header, error) {
 func parsePriorityAndSender(line string) (domain.PriorityAndSender, error) {
 	parts := strings.Fields(line)
 	if len(parts) < 2 {
-		return domain.PriorityAndSender{}, fmt.Errorf("invalid priority and sender format")
+		return domain.PriorityAndSender{}, fmt.Errorf("invalid priority and sender format: %s", line)
 	}
 	return domain.PriorityAndSender{
 		Priority: parts[0],
@@ -142,7 +115,7 @@ func parsePriorityAndSender(line string) (domain.PriorityAndSender, error) {
 func parseTimeAndReceiver(line string) (domain.TimeAndReceiver, error) {
 	parts := strings.Fields(line)
 	if len(parts) < 2 {
-		return domain.TimeAndReceiver{}, fmt.Errorf("invalid time and receiver format")
+		return domain.TimeAndReceiver{}, fmt.Errorf("invalid time and receiver format: %s", line)
 	}
 	return domain.TimeAndReceiver{
 		Time:     parts[0],
@@ -150,23 +123,108 @@ func parseTimeAndReceiver(line string) (domain.TimeAndReceiver, error) {
 	}, nil
 }
 
-// parseText parses the text and extracts the body type from an AFTN message.
-func parseText(text string) (string, string, error) {
+// parseTextInfo parses the text and extracts the body type from an AFTN message.
+func parseTextInfo(text string) (string, string, error) {
 	match := textPattern.FindStringSubmatch(text)
 	if len(match) > 1 {
 		return match[0], match[1], nil
 	}
-	return "", "", fmt.Errorf("invalid text format")
+	return "", "", fmt.Errorf("invalid text format: %s", text)
 }
 
-// parseBodyData parses the body data of an AFTN message.
-func parseBodyData(text string) (interface{}, error) {
-	bodyParser := AFTNParser{}
-	bodyData, err := bodyParser.Parse(text)
+func (p *AFTNParser) ParseBody(body string) (interface{}, error) {
+	bodyData, err := p.extractBodyData(body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse body data: %w", err)
+		return nil, err
 	}
-	return bodyData, nil
+
+	aftn, err := p.createAFTN(bodyData)
+	if err != nil {
+		return nil, err
+	}
+
+	return aftn, nil
+}
+
+// parseBody parses the body data of an AFTN message.
+func (p *AFTNParser) createAFTN(data map[string]string) (interface{}, error) {
+	switch data["type"] {
+	case "ARR":
+		return &domain.ARR{
+			Category:         data["type"],
+			AircraftID:       data["number"],
+			SSRModeAndCode:   data["ssr"],
+			DepartureAirport: data["departure"],
+			ArrivalAirport:   data["arrival"],
+		}, nil
+	case "DEP":
+		return &domain.DEP{
+			Category:         data["type"],
+			AircraftID:       data["number"],
+			SSRModeAndCode:   data["ssr"],
+			DepartureAirport: data["departure"],
+			DepartureTime:    data["departure_time"],
+			Destination:      data["arrival"],
+		}, nil
+	case "FPL":
+		return &domain.FPL{
+			Category:                data["type"],
+			FlightNumber:            data["number"],
+			ReferenceData:           data["reference_data"],
+			AircraftID:              data["aircraft"],
+			SSRModeAndCode:          data["surve"],
+			FlightRulesAndType:      data["indicator"],
+			CruisingSpeedAndLevel:   data["speed"] + data["level"],
+			DepartureAirport:        data["departure"],
+			DepartureTime:           data["departure_time"],
+			Route:                   data["route"],
+			DestinationAndTotalTime: data["destination"] + data["estt"],
+			AlternateAirport:        data["alter"],
+			OtherInfo: fmt.Sprintf("%s %s REG/%s EET/%s SEL/%s PER/%s RIF/%s",
+				data["pbn"], data["nav"], data["reg"], data["eet"], data["sel"], data["performance"], data["rif"]),
+			SupplementaryInfo:    "RMK/" + data["remark"],
+			EstimatedArrivalTime: data["estimated_arrival_time"],
+			PBN:                  data["pbn"],
+			NavigationEquipment:  data["nav"],
+			EstimatedElapsedTime: data["eet"],
+			SELCALCode:           data["sel"],
+			PerformanceCategory:  data["performance"],
+			RerouteInformation:   data["rif"],
+			Remarks:              data["remark"],
+		}, nil
+	default:
+		return nil, fmt.Errorf("invalid message type: %s", data["type"])
+	}
+}
+
+// extractBodyData extracts the body data from an AFTN message.
+func (p *AFTNParser) extractBodyData(text string) (map[string]string, error) {
+	log := utils.Logger
+	data := make(map[string]string)
+	for _, pattern := range p.GetBodyPatterns() {
+		for i, p := range pattern.Patterns {
+			log.Debugf("Trying pattern %d: %s\n %s\n", i, p.Comments, p.Pattern)
+			re := p.Expression
+			match := re.FindStringSubmatch(text)
+			if match != nil {
+				log.Debugf("Matched : %v \n", match)
+				for i, name := range re.SubexpNames() {
+					if i != 0 && name != "" {
+						data[name] = match[i]
+					}
+				}
+				return data, nil
+			}
+			log.Debugf("No match for pattern %d\n", i)
+		}
+	}
+	log.Errorf("No matching pattern found for text: %s", text)
+	return nil, fmt.Errorf("no matching pattern found for text: %s", text)
+}
+
+// removeEmptyLines removes empty lines from a given text.
+func removeEmptyLines(text string) string {
+	return emptyLineRemove.ReplaceAllString(text, "")
 }
 
 // ValidateAFTN validates the fields of an AFTN message.
@@ -176,7 +234,7 @@ func ValidateAFTN(msg *domain.AFTN) error {
 	}
 
 	if !validPriority.MatchString(msg.PriorityAndSender.Priority) {
-		return fmt.Errorf("invalid priority code")
+		return fmt.Errorf("invalid priority code: %s", msg.PriorityAndSender.Priority)
 	}
 
 	if !validAddress.MatchString(msg.TimeAndReceiver.Receiver) || !validAddress.MatchString(msg.PriorityAndSender.Sender) {

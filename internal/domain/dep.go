@@ -52,7 +52,7 @@ Description: This field contains any additional relevant information. It is opti
 */
 // DEP 电报体中的起飞报文结构
 type DEP struct {
-	TelegramCategory     string `json:"telegram_category"`           // 电报类别
+	Category             string `json:"category"`                    // 电报类别
 	AircraftID           string `json:"aircraft_id"`                 // 航空器识别标志
 	SSRModeAndCode       string `json:"ssr_mode_and_code,omitempty"` // SSR 模式及编码（可选）
 	DepartureAirport     string `json:"departure_airport"`           // 起飞机场
@@ -65,7 +65,7 @@ type DEP struct {
 
 // Validate validates the DEP struct fields
 func (d *DEP) Validate() error {
-	if d.TelegramCategory == "" {
+	if d.Category == "" {
 		return fmt.Errorf("telegram category is required")
 	}
 	if d.AircraftID == "" {

@@ -13,7 +13,7 @@ var _ = Describe("DEP", func() {
 
 	BeforeEach(func() {
 		original = DEP{
-			TelegramCategory:     "DEP",
+			Category:             "DEP",
 			AircraftID:           "ABCD1234",
 			SSRModeAndCode:       "A1234",
 			DepartureAirport:     "JFK",
@@ -45,7 +45,7 @@ var _ = Describe("DEP", func() {
 
 		It("should fail validation for missing required fields", func() {
 			invalidDEP := DEP{
-				TelegramCategory: "DEP",
+				Category: "DEP",
 				// AircraftID is missing
 				DepartureAirport:     "JFK",
 				DepartureTime:        "150405",
