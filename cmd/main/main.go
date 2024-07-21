@@ -2,9 +2,8 @@ package main
 
 import (
 	"caatsm/internal/config"
+	"caatsm/internal/nats"
 	"caatsm/pkg/utils"
-
-	"github.com/sirupsen/logrus"
 )
 
 func main() {
@@ -19,8 +18,6 @@ func main() {
 
 	utils.Logger.Info("Loaded configuration successfully")
 
-	// Example usage
-	utils.Logger.WithFields(logrus.Fields{
-		"url": cfg.Nats.URL,
-	}).Info("NATS configuration")
+	subscribe := nats.NewNatsHandler(cfg)
+	subscribe.Subscribe()
 }

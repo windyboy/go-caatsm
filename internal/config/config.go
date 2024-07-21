@@ -5,6 +5,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/spf13/viper"
 )
@@ -29,10 +30,10 @@ type SubscriptionConfig struct {
 }
 
 type TimeoutsConfig struct {
-	ServerTimeout  string `mapstructure:"server_timeout"`
-	ReconnectWait  string `mapstructure:"reconnect_wait"`
-	CloseTimeout   string `mapstructure:"close_timeout"`
-	AckWaitTimeout string `mapstructure:"ack_wait_timeout"`
+	ServerTimeout  time.Duration `mapstructure:"server_timeout"`
+	ReconnectWait  time.Duration `mapstructure:"reconnect_wait"`
+	CloseTimeout   time.Duration `mapstructure:"close_timeout"`
+	AckWaitTimeout time.Duration `mapstructure:"ack_wait_timeout"`
 }
 
 type BodyConfig struct {
