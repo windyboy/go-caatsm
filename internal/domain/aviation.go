@@ -44,19 +44,6 @@ ReceivedAt: time.Time{}.
 ParsedAt: time.Time{}.
 DispatchedAt: time.Time{}.
 NeedDispatch: false.
-CallSign: "ABC123".
-FlightPlanID: "FP1234".
-Route: "NOR1.DCT".
-Altitude: "35000FT".
-Speed: "450KT".
-Position: "N55W011".
-EmergencyIndicator: "N".
-ReportType: "POS".
-SupplementaryInfo: "Additional info".
-FilingTime: "150600".
-OriginatorIndicator: "AB12".
-ServiceInformation: "Service info".
-NavigationAidInfo: "NAV details".
 */
 
 /*
@@ -95,19 +82,6 @@ ReceivedAt: time.Time{}.
 ParsedAt: time.Time{}.
 DispatchedAt: time.Time{}.
 NeedDispatch: false.
-CallSign: "DEF456".
-FlightPlanID: "FP5678".
-Route: "NOR2.DCT".
-Altitude: "36000FT".
-Speed: "500KT".
-Position: "N54W012".
-EmergencyIndicator: "Y".
-ReportType: "WX".
-SupplementaryInfo: "Weather related info".
-FilingTime: "120900".
-OriginatorIndicator: "CD34".
-ServiceInformation: "Service related info".
-NavigationAidInfo: "Navigation details".
 */
 
 // ParsedMessage holds the parsed data from an aviation message
