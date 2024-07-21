@@ -86,21 +86,21 @@ NeedDispatch: false.
 
 // ParsedMessage holds the parsed data from an aviation message
 type ParsedMessage struct {
-	StartIndicator     string      `json:"startIndicator"`               // "ZCZC".
-	MessageID          string      `json:"messageId"`                    // "TMQ1324".
-	DateTime           string      `json:"dateTime"`                     // "150631".
-	PriorityIndicator  string      `json:"priorityIndicator"`            // "FF".
-	PrimaryAddress     string      `json:"primaryAddress"`               // "ZBTJZPZX".
-	SecondaryAddresses []string    `json:"secondaryAddresses,omitempty"` // ["150630", "ZBACZQZX"].
-	Originator         string      `json:"originator,omitempty"`         // "".
-	OriginatorDateTime string      `json:"originatorDateTime,omitempty"` // "".
-	Category           string      `json:"category,omitempty"`           // "".
-	BodyAndFooter      string      `json:"bodyAndFooter,omitempty"`      // "CALLSIGN/ABC123\nFPL/AB1234-AB\nROUTE/NOR1.DCT\nALTITUDE/35000FT\nSPEED/450KT\nPOSITION/N55W011\nEMG/N\nRPT/POS\nSUP/Additional info\nFLIGHTPLANID/FP1234\nFILTIME/150600\nORIIND/AB12\nSERINFO/Service info\nNAVINFO/NAV details".
-	BodyData           interface{} `json:"bodyData,omitempty"`           // nil.
-	ReceivedAt         time.Time   `json:"receivedAt"`                   // time.Time{}.
-	ParsedAt           time.Time   `json:"parsedAt,omitempty"`           // time.Time{}.
-	DispatchedAt       time.Time   `json:"dispatchedAt,omitempty"`       // time.Time{}.
-	NeedDispatch       bool        `json:"needDispatch"`                 // false.
+	StartIndicator     string      `json:"startIndicator"`               // 电报开始标识: The start of the message indicator (e.g., 'ZCZC').
+	MessageID          string      `json:"messageId"`                    // 信息ID: The message ID (e.g., 'TMQ1324').
+	DateTime           string      `json:"dateTime"`                     // 日期时间: The date and time of the message (e.g., '150631').
+	PriorityIndicator  string      `json:"priorityIndicator"`            // 优先级标识: The priority level of the message (e.g., 'FF').
+	PrimaryAddress     string      `json:"primaryAddress"`               // 主要地址: The primary recipient address (e.g., 'ZBTJZPZX').
+	SecondaryAddresses []string    `json:"secondaryAddresses,omitempty"` // 次要地址: Additional recipient addresses (e.g., ['150630', 'ZBACZQZX']).
+	Originator         string      `json:"originator,omitempty"`         // 发件人: The sender of the message.
+	OriginatorDateTime string      `json:"originatorDateTime,omitempty"` // 发件日期时间: The date and time when the originator sent the message.
+	Category           string      `json:"category,omitempty"`           // 类别: The category of the message.
+	BodyAndFooter      string      `json:"bodyAndFooter,omitempty"`      // 正文和页脚: The body and footer of the message (e.g., 'CALLSIGN/ABC123\nFPL/AB1234-AB\n...').
+	BodyData           interface{} `json:"bodyData,omitempty"`           // 正文数据: Parsed body data.
+	ReceivedAt         time.Time   `json:"receivedAt"`                   // 接收时间: The time when the message was received.
+	ParsedAt           time.Time   `json:"parsedAt,omitempty"`           // 解析时间: The time when the message was parsed.
+	DispatchedAt       time.Time   `json:"dispatchedAt,omitempty"`       // 分发时间: The time when the message was dispatched.
+	NeedDispatch       bool        `json:"needDispatch"`                 // 需要分发: Indicates if the message needs to be dispatched.
 }
 
 // NewParsedMessage initializes a ParsedMessage with default values
