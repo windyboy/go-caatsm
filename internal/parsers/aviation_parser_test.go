@@ -124,10 +124,29 @@ NNNN
 		})
 	})
 	Describe("ParseBody", func() {
+
+		Context("with ARR body (ARR-CES5470-ZBTJ-ZSHC1614)", func() {
+			body := "(ARR-CES5470-ZBTJ-ZSHC1614)"
+			parser := NewBodyParser()
+			It("should parse the body correctly", func() {
+				parsedBody, err := parser.Parse(body)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(parsedBody).ToNot(BeNil())
+				Expect(parsedBody).To(BeAssignableToTypeOf(&domain.ARR{}))
+				arrMessage := parsedBody.(*domain.ARR)
+				Expect(arrMessage.Category).To(Equal("ARR"))
+				Expect(arrMessage.AircraftID).To(Equal("CES5470"))
+				Expect(arrMessage.DepartureAirport).To(Equal("ZBTJ"))
+				Expect(arrMessage.ArrivalAirport).To(Equal("ZSHC"))
+				Expect(arrMessage.ArrivalTime).To(Equal("1614"))
+			})
+
+		})
+
 		Context("with ARR body", func() {
 			parser := NewBodyParser()
-			It("should parse the body (ARR-AB123-SSR1234-KJFK-KLAX) correctly", func() {
-				body := "(ARR-AB123-SSR1234-KJFK-KLAX)"
+			It("should parse the body (ARR-AB123-SSR1234-KJFK-KLAX1234) correctly", func() {
+				body := "(ARR-AB123-SSR1234-KJFK-KLAX1234)"
 				parsedBody, err := parser.Parse(body)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(parsedBody).ToNot(BeNil())

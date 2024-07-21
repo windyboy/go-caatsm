@@ -55,7 +55,7 @@ const (
 	// - ssr: the alphanumeric SSR code
 	// - departure: the four-letter departure airport code
 	// - arrival: the four-letter arrival airport code
-	arrPatternString = `^\((?P<category>[A-Z]{3})-(?P<number>[A-Z0-9]+)-(?P<ssr>[A-Z0-9]+)-(?P<departure>[A-Z]{4})-(?P<arrival>[A-Z]{4})\)$`
+	arrPatternString = `^\((?P<category>[A-Z]{3})\-(?P<number>[A-Z0-9]+)(\-(?P<ssr>[A-Z]+[0-9]+))?\-(?P<departure>[A-Z]{4})\-(?P<arrival>[A-Z]{4})(?P<time>\d{4})\)$`
 
 	// depPatternString represents the regular expression pattern used to match departure patterns.
 	// The pattern matches strings in the format: "(TYPE-NUMBER-SSR-DEPARTURE-DEPARTURE_TIME-ARRIVAL)".
