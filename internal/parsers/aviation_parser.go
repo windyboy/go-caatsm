@@ -16,8 +16,11 @@ const (
 	BeginPartMarker      = "BEGIN PART"
 )
 
-var categoryRegex = regexp.MustCompile(`\(([A-Z]{3})(.*)\)`)
-var emptyLineRemove = regexp.MustCompile(`(?m)^\s*$`)
+var (
+	categoryRegex   = regexp.MustCompile(`\(([A-Z]{3})(.*)\)`)
+	emptyLineRemove = regexp.MustCompile(`(?m)^\s*$`)
+	bodyOnly        = regexp.MustCompile(`^(ZCZC(.|\n)*)NNNN$`)
+)
 
 type BodyParser struct {
 	bodyPatterns map[string]config.BodyConfig
@@ -159,14 +162,20 @@ func Parse(rawText string) (*domain.ParsedMessage, error) {
 }
 
 // removeEmptyLines removes empty lines from a given text.
-func removeEmptyLines(text string) string {
-	cleanedText := emptyLineRemove.ReplaceAllString(text, "")
-	return strings.ReplaceAll(cleanedText, "\n\n", "\n")
+func clean(text string) string {
+	cleanedMatch := emptyLineRemove.ReplaceAllString(text, "")
+	cleanText := strings.ReplaceAll(cleanedMatch, "\n\n", "\n")
+	if bodyOnly != nil {
+		bodyOnly := bodyOnly.FindStringSubmatch(cleanText)[1]
+		removeLast := bodyOnly[:len(bodyOnly)-1]
+		return removeLast
+	}
+	return ""
 }
 
 // parseHeader parses the header of the message and returns a ParsedMessage struct.
 func ParseHeader(fullMessage string) (domain.ParsedMessage, error) {
-	fullMessage = removeEmptyLines(fullMessage)
+	fullMessage = clean(fullMessage)
 	// fullMessage = strings.TrimSpace(fullMessage)
 	lines := strings.Split(fullMessage, "\n")
 

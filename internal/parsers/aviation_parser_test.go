@@ -9,6 +9,30 @@ import (
 
 var _ = Describe("Aviation Parser", func() {
 	Describe("ParseHeader", func() {
+
+		Context("with a real arr context", func() {
+			message := `ZCZC TMQ2530 141614
+
+
+GG ZBTJZXZX
+
+
+141614 ZSHCZTZX
+
+(ARR-CES5470-ZBTJ-ZSHC1614)
+
+NNNN`
+			It("get a clean body text", func() {
+				body := clean(message)
+				expexted := `ZCZC TMQ2530 141614
+GG ZBTJZXZX
+141614 ZSHCZTZX
+(ARR-CES5470-ZBTJ-ZSHC1614)`
+				// fmt.Printf("\n%v \n%v\n", []byte(body), []byte(expexted))
+				Expect(body).To(Equal(expexted))
+			})
+		})
+
 		It("should parse the header correctly", func() {
 			message := `
 			ZCZC TAF6789 160530
