@@ -1,0 +1,22 @@
+{
+    "zapConfig": {
+      "level": "debug",
+      "encoding": "json",
+      "outputPaths": ["stdout"],
+      "errorOutputPaths": ["stderr"],
+      "encoderConfig": {
+        "messageKey": "message",
+        "levelKey": "level",
+        "timeKey": "time",
+        "nameKey": "logger",
+        "callerKey": "caller",
+        "stacktraceKey": "stacktrace",
+        "lineEnding": "\n",
+        "levelEncoder": "lowercase",
+        "timeEncoder": "iso8601",
+        "durationEncoder": "string",
+        "callerEncoder": "short"
+      }
+    },
+    "lumberjackConfig": {}
+}

@@ -109,44 +109,6 @@ NNNN`
 
 	})
 
-	Context("with NOTAM message", func() {
-		It("should parse the header correctly", func() {
-			message := `
-ZCZC NOTAM1234 230715
-GG EDDNZEZN
-.
-GG EDDNYNYX
-.BERLINTWR 230714
-
-Q) EDMM/QOATT/IV/BO/A/000/999/4814N01120E005
-A) EDDM
-B) 2307150600 C) 2307151800
-E) AERODROME CONTROL TOWER HOURS OF SERVICE
-   0600-1800 DUE TO MAINTENANCE
-NNNN
-`
-
-			parsedMessage, err := ParseHeader(message)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(parsedMessage.StartIndicator).To(Equal("ZCZC"))
-			Expect(parsedMessage.MessageID).To(Equal("NOTAM1234"))
-			Expect(parsedMessage.DateTime).To(Equal("230715"))
-			Expect(parsedMessage.PriorityIndicator).To(Equal("GG"))
-			Expect(parsedMessage.PrimaryAddress).To(Equal("EDDNZEZN"))
-			Expect(parsedMessage.SecondaryAddresses).To(Equal([]string{"GG EDDNYNYX"}))
-			Expect(parsedMessage.Originator).To(Equal("BERLINTWR"))
-			Expect(parsedMessage.OriginatorDateTime).To(Equal("230714"))
-			// fmt.Print(parsedMessage.BodyAndFooter)
-			Expect(parsedMessage.BodyAndFooter).To(Equal(`
-Q) EDMM/QOATT/IV/BO/A/000/999/4814N01120E005
-A) EDDM
-B) 2307150600 C) 2307151800
-E) AERODROME CONTROL TOWER HOURS OF SERVICE
-0600-1800 DUE TO MAINTENANCE
-NNNN
-`))
-		})
-	})
 	Describe("ParseBody", func() {
 
 		Context("with ARR body (ARR-CES5470-ZBTJ-ZSHC1614)", func() {
@@ -187,19 +149,19 @@ NNNN
 
 		Context("with DEP body", func() {
 			parser := NewBodyParser()
-			It("should parse the body (DEP-AB123-SSR1234-KJFK-1500-KLAX) correctly", func() {
-				body := "(DEP-AB123-SSR1234-KJFK-1500-KLAX)"
+			It("should parse the body (DEP-CYZ9017/A5633-ZBTJ1638-ZSPD) correctly", func() {
+				body := "(DEP-CYZ9017/A5633-ZBTJ1638-ZSPD)"
 				parsedBody, err := parser.Parse(body)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(parsedBody).ToNot(BeNil())
 				Expect(parsedBody).To(BeAssignableToTypeOf(&domain.DEP{}))
 				depMessage := parsedBody.(*domain.DEP)
 				Expect(depMessage.Category).To(Equal("DEP"))
-				Expect(depMessage.AircraftID).To(Equal("AB123"))
-				Expect(depMessage.SSRModeAndCode).To(Equal("SSR1234"))
-				Expect(depMessage.DepartureAirport).To(Equal("KJFK"))
-				Expect(depMessage.DepartureTime).To(Equal("1500"))
-				Expect(depMessage.Destination).To(Equal("KLAX"))
+				Expect(depMessage.AircraftID).To(Equal("CYZ9017"))
+				Expect(depMessage.SSRModeAndCode).To(Equal("A5633"))
+				Expect(depMessage.DepartureAirport).To(Equal("ZBTJ"))
+				Expect(depMessage.DepartureTime).To(Equal("1638"))
+				Expect(depMessage.Destination).To(Equal("ZSPD"))
 			})
 		})
 

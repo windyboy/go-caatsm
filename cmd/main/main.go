@@ -3,20 +3,23 @@ package main
 import (
 	"caatsm/internal/config"
 	"caatsm/internal/nats"
-	"caatsm/pkg/utils"
+
+	"fmt"
 )
 
 func main() {
 	cfg, err := config.LoadConfig()
 	if err != nil {
-		utils.Logger.WithError(err).Fatal("Error loading config")
+		fmt.Printf("Error loading configuration: %v\n", err)
+		return
 	}
 
 	if err := config.ValidateConfig(cfg); err != nil {
-		utils.Logger.WithError(err).Fatal("Config validation error")
+		fmt.Printf("Invalid configuration: %v\n", err)
+		return
 	}
 
-	utils.Logger.Info("Loaded configuration successfully")
+	fmt.Println("Loaded configuration successfully")
 
 	subscribe := nats.NewNatsHandler(cfg)
 	subscribe.Subscribe()

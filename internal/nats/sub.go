@@ -27,7 +27,7 @@ func (n *NatsHandler) Subscribe() {
 	logger := watermill.NewStdLogger(false, false)
 	options := []nc.Option{
 		nc.RetryOnFailedConnect(true),
-		nc.Timeout(n.config.Timeouts.ServerTimeout),
+		nc.Timeout(n.config.Timeouts.Server),
 		nc.ReconnectWait(n.config.Timeouts.ReconnectWait),
 	}
 	jsConfig := nats.JetStreamConfig{Disabled: true}
@@ -35,8 +35,8 @@ func (n *NatsHandler) Subscribe() {
 	subscriber, err := nats.NewSubscriber(
 		nats.SubscriberConfig{
 			URL:            n.config.Nats.URL,
-			CloseTimeout:   n.config.Timeouts.CloseTimeout,
-			AckWaitTimeout: n.config.Timeouts.AckWaitTimeout,
+			CloseTimeout:   n.config.Timeouts.Close,
+			AckWaitTimeout: n.config.Timeouts.AckWait,
 			NatsOptions:    options,
 			Unmarshaler:    marshaler,
 			JetStream:      jsConfig,

@@ -3,7 +3,6 @@ package parsers
 import (
 	"caatsm/internal/config"
 	"caatsm/internal/domain"
-	"caatsm/pkg/utils"
 	"fmt"
 	"regexp"
 	"strings"
@@ -17,9 +16,9 @@ const (
 )
 
 var (
-	categoryRegex   = regexp.MustCompile(`\(([A-Z]{3})(.*)\)`)
+	categoryRegex   = regexp.MustCompile(`\((?P<category>[A-Z]+)-`)
 	emptyLineRemove = regexp.MustCompile(`(?m)^\s*$`)
-	bodyOnly        = regexp.MustCompile(`^(ZCZC(.|\n)*)NNNN$`)
+	bodyOnly        = regexp.MustCompile(`(.|\n)?((ZCZC(.|\n)*))NNNN$`)
 )
 
 type BodyParser struct {
@@ -43,30 +42,30 @@ func (bp *BodyParser) SetBodyPatterns(patterns map[string]config.BodyConfig) {
 
 // Parse attempts to parse the body text using the configured patterns.
 func (bp *BodyParser) Parse(body string) (interface{}, error) {
-	log := utils.Logger
+	// log := utils.Logger
 	body = strings.TrimSpace(body)
-	log.Info("Parsing body text", body)
+	// log.Info("Parsing body text", body)
 	category := findCategory(body)
 	if category == "" {
-		log.Error("No category found in body text")
+		// log.Error("No category found in body text")
 		return nil, fmt.Errorf("no category found in body text")
 	}
 	patters := bp.GetBodyPatterns()
-	log.Infof("body config [%s] %v\n", category, patters[category])
+	// log.Infof("body config [%s] %v\n", category, patters[category])
 	if patterConfig := patters[category]; patterConfig.Patterns != nil {
 
 		for _, p := range patterConfig.Patterns {
-			log.Infof("Trying pattern  %s\n%s\n", p.Comments, p.Pattern)
+			// log.Infof("Trying pattern  %s\n%s\n", p.Comments, p.Pattern)
 
 			re := p.Expression
 			match := re.FindStringSubmatch(body)
-			log.Info("Match: ", match)
+			// log.Info("Match: ", match)
 			if match != nil {
-				log.Infof("Matched: %v\n", match)
+				// log.Infof("Matched: %v\n", match)
 				data := extractData(match, re)
 				return createBodyData(data)
 			}
-			log.Infof("No match for pattern %s\n", p.Comments)
+			// log.Infof("No match for pattern %s\n", p.Comments)
 		}
 
 	}
@@ -75,9 +74,14 @@ func (bp *BodyParser) Parse(body string) (interface{}, error) {
 
 func findCategory(body string) string {
 	match := categoryRegex.FindStringSubmatch(body)
-	utils.Logger.Infof("Match: %v\n", match)
+	// utils.Logger.Infof("Match: %v\n", match)
 	if match != nil {
-		return match[1]
+		groups := categoryRegex.SubexpNames()
+		for i, name := range groups {
+			if i != 0 && name == "category" {
+				return match[i]
+			}
+		}
 	}
 	return ""
 }
@@ -168,7 +172,7 @@ func clean(text string) string {
 	if bodyOnly != nil {
 		match := bodyOnly.FindStringSubmatch(cleanText)
 		if len(match) > 1 {
-			bodyOnly := match[1]
+			bodyOnly := match[2]
 			if bodyOnly[len(bodyOnly)-1] == '\n' {
 				return bodyOnly[:len(bodyOnly)-1]
 			}

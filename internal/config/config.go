@@ -1,6 +1,7 @@
 package config
 
 import (
+	"caatsm/pkg/utils"
 	"fmt"
 	"os"
 	"regexp"
@@ -8,6 +9,9 @@ import (
 	"time"
 
 	"github.com/spf13/viper"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 var MyConfig *Config
@@ -30,10 +34,10 @@ type SubscriptionConfig struct {
 }
 
 type TimeoutsConfig struct {
-	ServerTimeout  time.Duration `mapstructure:"server_timeout"`
-	ReconnectWait  time.Duration `mapstructure:"reconnect_wait"`
-	CloseTimeout   time.Duration `mapstructure:"close_timeout"`
-	AckWaitTimeout time.Duration `mapstructure:"ack_wait_timeout"`
+	Server        time.Duration `mapstructure:"server"`
+	ReconnectWait time.Duration `mapstructure:"reconnect_wait"`
+	Close         time.Duration `mapstructure:"close"`
+	AckWait       time.Duration `mapstructure:"ack_wait"`
 }
 
 type BodyConfig struct {
@@ -46,7 +50,24 @@ type PatternConfig struct {
 	Expression *regexp.Regexp
 }
 
+// LoggerConfig represents the configuration for the logger.
+type LoggerConfig struct {
+	ZapConfig        zap.Config       `json:"zapConfig"`
+	LumberjackConfig LumberjackConfig `json:"lumberjackConfig"`
+}
+
+// LumberjackConfig represents the configuration for lumberjack logging.
+type LumberjackConfig struct {
+	Filename   string `json:"filename"`
+	MaxSize    int    `json:"maxSize"`
+	MaxBackups int    `json:"maxBackups"`
+	MaxAge     int    `json:"maxAge"`
+	Compress   bool   `json:"compress"`
+}
+
 const (
+	EnvProd = "prod"
+	// logConfigFile = "configs/log_config.json"
 	// arrPatternString represents the regular expression pattern used to match arrival patterns.
 	// The pattern matches strings in the format: "(TYPE-NUMBER-SSR-DEPARTURE-ARRIVAL)".
 	// The pattern captures the following named groups:
@@ -66,7 +87,7 @@ const (
 	// - departure: the four-letter departure airport code
 	// - departure_time: the four-digit departure time
 	// - arrival: the four-letter arrival airport code
-	depPatternString = `^\((?P<category>[A-Z]{3})-(?P<number>[A-Z0-9]+)-(?P<ssr>[A-Z0-9]+)-(?P<departure>[A-Z]{4})-(?P<departure_time>\d{4})-(?P<arrival>[A-Z]{4})\)$`
+	depPatternString = `^\((?P<category>[A-Z]{3})-(?P<number>[A-Z0-9]+)(\/(?P<ssr>[A-Z0-9]+))?-(?P<departure>[A-Z]{4})(?P<departure_time>\d{4})-(?P<arrival>[A-Z]{4})\)$`
 
 	// fplPatternString is a regular expression designed to parse and extract detailed information from formatted flight plan strings.
 	// The flight plan string is expected to follow a specific format, encapsulated by parentheses and containing various segments separated by hyphens.
@@ -185,6 +206,7 @@ func LoadConfig() (*Config, error) {
 		// log.Error(errMsg)
 		return nil, fmt.Errorf(errMsg)
 	}
+	// loadLoggerConfig()
 
 	// log.Debugf("Config loaded: %+v", config)
 	return &config, nil
@@ -205,4 +227,84 @@ func ValidateConfig(cfg *Config) error {
 	}
 	// fmt.Println("config validation passed")
 	return nil
+}
+
+func loadLoggerConfig() {
+	// log := utils.Logger
+	env := os.Getenv("GO_ENV")
+	if env == "" {
+		env = "dev"
+	}
+	// log.Infof("Environment: %s", env)
+
+	viper.SetConfigType("json")
+	viper.SetConfigName("logger." + env)
+	viper.AddConfigPath("configs")
+	// viper.SetEnvPrefix("tele")
+	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+
+	if err := viper.ReadInConfig(); err != nil {
+		errMsg := fmt.Sprintf("error reading logger config file for environment '%s': %v", env, err)
+		// log.Error(errMsg)
+		panic(errMsg)
+	}
+
+	// log.Debug("Logger config file read successfully")
+	// log.Debugf("Logger config keys: %v", viper.AllKeys())
+
+	var config LoggerConfig
+	if err := viper.Unmarshal(&config); err != nil {
+		errMsg := fmt.Sprintf("unable to decode logger config into struct for environment '%s': %v", env, err)
+		// log.Error(errMsg)
+		// return nil, fmt.Errorf(errMsg)
+		panic(errMsg)
+	}
+	var logWriter zapcore.WriteSyncer
+	if env == EnvProd {
+		logWriter = zapcore.AddSync(&lumberjack.Logger{
+			Filename:   config.LumberjackConfig.Filename,
+			MaxSize:    config.LumberjackConfig.MaxSize,
+			MaxBackups: config.LumberjackConfig.MaxBackups,
+			MaxAge:     config.LumberjackConfig.MaxAge,
+			Compress:   config.LumberjackConfig.Compress,
+		})
+	} else {
+		logWriter = zapcore.AddSync(os.Stdout)
+	}
+
+	encoder := zapcore.NewJSONEncoder(config.ZapConfig.EncoderConfig)
+	level := parseLogLevel(config.ZapConfig.Level.String())
+
+	core := zapcore.NewCore(
+		encoder,
+		logWriter,
+		level,
+	)
+
+	log := zap.New(core, zap.AddCaller(), zap.AddStacktrace(zapcore.ErrorLevel))
+	utils.Logger = log.Sugar()
+	// log.Debugf("Logger config loaded: %+v", config)
+
+}
+
+// parseLogLevel converts the log level string to zapcore.Level.
+func parseLogLevel(level string) zapcore.Level {
+	switch level {
+	case "debug":
+		return zapcore.DebugLevel
+	case "info":
+		return zapcore.InfoLevel
+	case "warn":
+		return zapcore.WarnLevel
+	case "error":
+		return zapcore.ErrorLevel
+	case "dpanic":
+		return zapcore.DPanicLevel
+	case "panic":
+		return zapcore.PanicLevel
+	case "fatal":
+		return zapcore.FatalLevel
+	default:
+		return zapcore.InfoLevel
+	}
 }

@@ -5,7 +5,7 @@
 
 # Folders
 /bin/
-/pkg/
+# /pkg/
 /build/
 
 # Architecture specific extensions/prefixes
@@ -28,7 +28,7 @@ ehthumbs.db
 Thumbs.db
 
 # Go specific
-go.sum
+# go.sum
 go.mod
 
 # Test binary, built with `go test -c`
@@ -38,7 +38,7 @@ go.mod
 *.out
 
 # Project-specific
-configs/*.toml
+# configs/*.toml
 
 # Logs
 *.log

@@ -1,0 +1,14 @@
+[nats]
+url = "nats://localhost:4222"
+client = "serial-client"
+cluster = "tele-cluster"
+
+[subscription]
+topic = "Telegram.Serial"
+queue = "tele-queue"
+
+[timeouts]
+server = "5s"
+reconnect_wait = "5s"
+close = "10s"
+ack_wait = "5s"
