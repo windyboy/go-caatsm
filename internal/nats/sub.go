@@ -3,7 +3,6 @@ package nats
 import (
 	"caatsm/internal/config"
 	"caatsm/internal/parsers"
-	"caatsm/pkg/utils"
 	"context"
 	"errors"
 	"fmt"
@@ -60,17 +59,19 @@ func (n *NatsHandler) Subscribe() {
 	}
 }
 func (n *NatsHandler) handleMessage(msg *message.Message) error {
-	log := utils.Logger
+	// log := utils.Logger
 	if msg.Payload == nil {
-		log.Error("empty message")
+		fmt.Println("empty message")
 		return fmt.Errorf("empty message")
 	}
 	payload := string(msg.Payload)
 	if parsed, err := parsers.Parse(payload); err != nil {
-		log.Error("error parsing message", err, map[string]interface{}{"payload": payload})
+		// log.Error("error parsing message", err, map[string]interface{}{"payload": payload})
+		fmt.Print("error parsing message", err)
 		return err
 	} else {
-		log.Info("message ", map[string]interface{}{"message": parsed})
+		// log.Info("message ", map[string]interface{}{"message": parsed})
+		fmt.Println("message ", parsed)
 	}
 	return nil
 }

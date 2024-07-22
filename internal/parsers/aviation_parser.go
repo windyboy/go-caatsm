@@ -18,7 +18,7 @@ const (
 var (
 	categoryRegex   = regexp.MustCompile(`\((?P<category>[A-Z]+)-`)
 	emptyLineRemove = regexp.MustCompile(`(?m)^\s*$`)
-	bodyOnly        = regexp.MustCompile(`(.|\n)?((ZCZC(.|\n)*))NNNN$`)
+	bodyOnly        = regexp.MustCompile(`(.|\n)?(ZCZC(.|\n)*)NNNN(.|\n)?$`)
 )
 
 type BodyParser struct {
@@ -169,16 +169,16 @@ func Parse(rawText string) (*domain.ParsedMessage, error) {
 func clean(text string) string {
 	cleanedText := emptyLineRemove.ReplaceAllString(text, "")
 	cleanText := strings.ReplaceAll(cleanedText, "\n\n", "\n")
-	if bodyOnly != nil {
-		match := bodyOnly.FindStringSubmatch(cleanText)
-		if len(match) > 1 {
-			bodyOnly := match[2]
-			if bodyOnly[len(bodyOnly)-1] == '\n' {
-				return bodyOnly[:len(bodyOnly)-1]
-			}
-			return bodyOnly
+	// if bodyOnly != nil {
+	match := bodyOnly.FindStringSubmatch(cleanText)
+	if len(match) > 1 {
+		bodyOnly := match[2]
+		if bodyOnly[len(bodyOnly)-1] == '\n' {
+			return bodyOnly[:len(bodyOnly)-1]
 		}
+		return bodyOnly
 	}
+	// }
 	return ""
 }
 

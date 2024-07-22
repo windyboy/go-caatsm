@@ -132,7 +132,21 @@ NNNN`
 		Context("with ARR body", func() {
 			parser := NewBodyParser()
 			It("should parse the body (ARR-AB123-SSR1234-KJFK-KLAX1234) correctly", func() {
-				body := "(ARR-AB123-SSR1234-KJFK-KLAX1234)"
+				body := " (ARR-AB123-SSR1234-KJFK-KLAX1234)"
+				parsedBody, err := parser.Parse(body)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(parsedBody).ToNot(BeNil())
+				Expect(parsedBody).To(BeAssignableToTypeOf(&domain.ARR{}))
+				arrMessage := parsedBody.(*domain.ARR)
+				Expect(arrMessage.Category).To(Equal("ARR"))
+				Expect(arrMessage.AircraftID).To(Equal("AB123"))
+				Expect(arrMessage.SSRModeAndCode).To(Equal("SSR1234"))
+				Expect(arrMessage.DepartureAirport).To(Equal("KJFK"))
+				Expect(arrMessage.ArrivalAirport).To(Equal("KLAX"))
+			})
+
+			It("should parse the body (ARR-JAE7433/A0132-RKSI-ZBTJ1604) correctly", func() {
+				body := " (ARR-JAE7433/A0132-RKSI-ZBTJ1604)"
 				parsedBody, err := parser.Parse(body)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(parsedBody).ToNot(BeNil())
@@ -198,6 +212,49 @@ NNNN`
 				Expect(fplMessage.PerformanceCategory).To(Equal("C"))
 				Expect(fplMessage.RerouteInformation).To(Equal("FRT N640 ZBYN"))
 				Expect(fplMessage.Remarks).To(Equal("TCAS EQUIPPED"))
+			})
+		})
+	})
+
+	Describe("Parse whole real message", func() {
+
+		Context("with a real arr message", func() {
+			message := `
+ZCZC TMQ2526 141605
+
+
+FF ZBTJZPZX
+
+
+141604 ZBACZQZX
+
+
+(ARR-JAE7433/A0132-RKSI-ZBTJ1604)
+
+
+
+
+
+
+
+NNNN
+`
+			It("should parse the whole message correctly", func() {
+				parsedMessage, err := Parse(message)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(parsedMessage).ToNot(BeNil())
+				Expect(parsedMessage.MessageID).To(Equal("TMQ2526"))
+				Expect(parsedMessage.DateTime).To(Equal("141605"))
+				Expect(parsedMessage.PrimaryAddress).To(Equal("ZBTJZPZX"))
+				Expect(parsedMessage.SecondaryAddresses).To(Equal([]string{"141604 ZBACZQZX"}))
+
+				arrmsg := parsedMessage.BodyData.(*domain.ARR)
+				Expect(arrmsg.Category).To(Equal("ARR"))
+				Expect(arrmsg.AircraftID).To(Equal("JAE7433"))
+				Expect(arrmsg.SSRModeAndCode).To(Equal("A0132"))
+				Expect(arrmsg.DepartureAirport).To(Equal("RKSI"))
+				Expect(arrmsg.ArrivalAirport).To(Equal("ZBTJ"))
+				Expect(arrmsg.ArrivalTime).To(Equal("1604"))
 			})
 		})
 	})
