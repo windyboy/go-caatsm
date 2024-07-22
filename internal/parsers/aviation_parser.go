@@ -163,12 +163,17 @@ func Parse(rawText string) (*domain.ParsedMessage, error) {
 
 // removeEmptyLines removes empty lines from a given text.
 func clean(text string) string {
-	cleanedMatch := emptyLineRemove.ReplaceAllString(text, "")
-	cleanText := strings.ReplaceAll(cleanedMatch, "\n\n", "\n")
+	cleanedText := emptyLineRemove.ReplaceAllString(text, "")
+	cleanText := strings.ReplaceAll(cleanedText, "\n\n", "\n")
 	if bodyOnly != nil {
-		bodyOnly := bodyOnly.FindStringSubmatch(cleanText)[1]
-		removeLast := bodyOnly[:len(bodyOnly)-1]
-		return removeLast
+		match := bodyOnly.FindStringSubmatch(cleanText)
+		if len(match) > 1 {
+			bodyOnly := match[1]
+			if bodyOnly[len(bodyOnly)-1] == '\n' {
+				return bodyOnly[:len(bodyOnly)-1]
+			}
+			return bodyOnly
+		}
 	}
 	return ""
 }
