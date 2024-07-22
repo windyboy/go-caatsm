@@ -24,7 +24,7 @@ var _ = Describe("Pattern Parser", func() {
 
 	Describe("ParseBody", func() {
 		It("should parse the message body and extract data based on patterns", func() {
-			message := "(ARR-AB123-SSR1234-KJFK-KLAX)"
+			message := "(ARR-AB123-SSR1234-KJFK-KLAX1234)"
 			parsedData := ParseBody(message)
 			Expect(parsedData).NotTo(BeNil())
 			Expect(parsedData["category"]).To(Equal("ARR"))
