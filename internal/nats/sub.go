@@ -67,6 +67,7 @@ func (n *NatsHandler) handleMessage(msg *message.Message) error {
 	payload := string(msg.Payload)
 	if parsed, err := parsers.Parse(payload); err != nil {
 		// log.Error("error parsing message", err, map[string]interface{}{"payload": payload})
+		parsed.Uuid = msg.UUID
 		fmt.Print("error parsing message", err)
 		return err
 	} else {

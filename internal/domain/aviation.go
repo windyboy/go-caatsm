@@ -86,7 +86,8 @@ NeedDispatch: false.
 
 // ParsedMessage holds the parsed data from an aviation message
 type ParsedMessage struct {
-	StartIndicator     string      `json:"startIndicator"`               // 电报开始标识: The start of the message indicator (e.g., 'ZCZC').
+	// StartIndicator     string      `json:"startIndicator"`               // 电报开始标识: The start of the message indicator (e.g., 'ZCZC').
+	Uuid               string      `json:"uuid"`
 	MessageID          string      `json:"messageId"`                    // 信息ID: The message ID (e.g., 'TMQ1324').
 	DateTime           string      `json:"dateTime"`                     // 日期时间: The date and time of the message (e.g., '150631').
 	PriorityIndicator  string      `json:"priorityIndicator"`            // 优先级标识: The priority level of the message (e.g., 'FF').

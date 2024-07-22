@@ -12,3 +12,7 @@ server = "5s"
 reconnect_wait = "5s"
 close = "10s"
 ack_wait = "5s"
+
+[hasura]
+endpoint = "http://localhost:8080/v1/graphql"
+secret  = "aviation-test"

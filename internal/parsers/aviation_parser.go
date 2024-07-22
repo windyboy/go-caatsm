@@ -150,18 +150,32 @@ func createBodyData(data map[string]string) (interface{}, error) {
 }
 
 // Parse parses the raw text message and returns a ParsedMessage.
+// Parse parses the raw text message and returns a ParsedMessage.
 func Parse(rawText string) (*domain.ParsedMessage, error) {
+	// Parse the header of the message
 	message, err := ParseHeader(rawText)
 	if err != nil {
 		return nil, err
 	}
+
+	// Initialize a new body parser
 	bodyParser := NewBodyParser()
+
+	// Parse the body and footer of the message
 	bodyData, err := bodyParser.Parse(message.BodyAndFooter)
 	if err != nil {
-		return nil, err
+		// Return the message with the parsed header and the error
+		// message.ParsedAt = time.Now()
+		return &message, err
 	}
+
+	// Set the parsed time to the current time
 	message.ParsedAt = time.Now()
+
+	// Assign the parsed body data to the message
 	message.BodyData = bodyData
+
+	// Return the fully parsed message
 	return &message, nil
 }
 
@@ -188,7 +202,7 @@ func ParseHeader(fullMessage string) (domain.ParsedMessage, error) {
 	// fullMessage = strings.TrimSpace(fullMessage)
 	lines := strings.Split(fullMessage, "\n")
 
-	startIndicator, messageID, dateTime, err := parseStartIndicator(lines[0])
+	_, messageID, dateTime, err := parseStartIndicator(lines[0])
 	if err != nil {
 		return domain.ParsedMessage{}, err
 	}
@@ -202,7 +216,7 @@ func ParseHeader(fullMessage string) (domain.ParsedMessage, error) {
 	secondaryAddresses, originator, originatorDateTime, bodyAndFooter := parseRemainingLines(lines[2:])
 
 	return domain.ParsedMessage{
-		StartIndicator:     startIndicator,
+		// StartIndicator:     startIndicator,
 		MessageID:          messageID,
 		DateTime:           dateTime,
 		PriorityIndicator:  priorityIndicator,

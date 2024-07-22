@@ -38,6 +38,10 @@ server_timeout = "30s"
 reconnect_wait = "10s"
 close_timeout = "10s"
 ack_wait_timeout = "5s"
+
+[hasura]
+endpoint = "http://localhost:8080/v1/graphql"
+secret  = "aviation-test"
 `
 		tmpFile, err := os.CreateTemp("", "config.*.toml")
 		Expect(err).NotTo(HaveOccurred())
@@ -68,6 +72,9 @@ ack_wait_timeout = "5s"
 			Expect(cfg.Nats.Client).To(Equal("test-client"))
 			Expect(cfg.Nats.URL).To(Equal("nats://localhost:4222"))
 			Expect(cfg.Subscription.Topic).To(Equal("example-topic"))
+			Expect(cfg.Subscription.QueueGroup).To(Equal("example-group"))
+			Expect(cfg.Hasura.Endpoint).To(Equal("http://localhost:8080/v1/graphql"))
+			Expect(cfg.Hasura.Secret).To(Equal("aviation-test"))
 		})
 	})
 

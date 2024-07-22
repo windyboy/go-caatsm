@@ -20,6 +20,7 @@ type Config struct {
 	Nats         NatsConfig
 	Subscription SubscriptionConfig
 	Timeouts     TimeoutsConfig
+	Hasura       HasuraConfig
 }
 
 type NatsConfig struct {
@@ -48,6 +49,11 @@ type PatternConfig struct {
 	Pattern    string
 	Comments   string
 	Expression *regexp.Regexp
+}
+
+type HasuraConfig struct {
+	Endpoint string
+	Secret   string
 }
 
 // LoggerConfig represents the configuration for the logger.
