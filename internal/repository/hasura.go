@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"caatsm/internal/domain"
 
@@ -26,58 +27,42 @@ func NewHasuraRepo(endpoint, secret string) *HasuraRepository {
 	}
 }
 
-var mutation struct {
-	InsertParsedMessages struct {
-		Returning []domain.ParsedMessage `json:"returning"`
-	} `
-	graphql:"insert_parsed_messages(objects: {
-	startIndicator: $startIndicator,
-	messageId: $messageId,
-	dateTime: $dateTime,
-	priorityIndicator: $priorityIndicator,
-	primaryAddress: $primaryAddress,
-	secondaryAddresses: $secondaryAddresses,
-	originator: $originator,
-	originatorDateTime: $originatorDateTime,
-	category: $category,
-	bodyAndFooter: $bodyAndFooter,
-	bodyData: $bodyData,
-	receivedAt: $receivedAt,
-	parsedAt: $parsedAt,
-	dispatchedAt: $dispatchedAt,
-	needDispatch: $needDispatch
-	})"`
-}
-
 // InsertParsedMessage inserts a new ParsedMessage into the Hasura GraphQL API
-func (hr *HasuraRepository) InsertParsedMessage(pm domain.ParsedMessage) error {
+func (hr *HasuraRepository) InsertParsedMessage(pm *domain.ParsedMessage) error {
+	if hr.hasuraClient == nil {
+		return fmt.Errorf("hasuraClient is nil")
+	}
 
+	var mutation struct {
+		InsertParsedMessages struct {
+			Returning []domain.ParsedMessage `json:"returning"`
+		} `graphql:"insert_messages_one(object: {message_id: $messageId, date_time: $dateTime, priority_indicator: $priorityIndicator, primary_address: $primaryAddress, secondary_addresses: $secondaryAddresses, originator: $originator, originator_date_time: $originatorDateTime, category: $category, body_and_footer: $bodyAndFooter, body_data: $bodyData, received_at: $receivedAt, parsed_at: $parsedAt, need_dispatch: $needDispatch})"`
+	}
+
+	// Define the variables with their types
 	variables := map[string]interface{}{
-		// "startIndicator":     graphql.String(pm.StartIndicator),
 		"messageId":          graphql.String(pm.MessageID),
 		"dateTime":           graphql.String(pm.DateTime),
 		"priorityIndicator":  graphql.String(pm.PriorityIndicator),
 		"primaryAddress":     graphql.String(pm.PrimaryAddress),
-		"secondaryAddresses": pm.SecondaryAddresses,
+		"secondaryAddresses": graphql.String("second"),
 		"originator":         graphql.String(pm.Originator),
 		"originatorDateTime": graphql.String(pm.OriginatorDateTime),
 		"category":           graphql.String(pm.Category),
 		"bodyAndFooter":      graphql.String(pm.BodyAndFooter),
-		"bodyData":           pm.BodyData,
-		"receivedAt":         pm.ReceivedAt,
-		"parsedAt":           pm.ParsedAt,
-		"dispatchedAt":       pm.DispatchedAt,
-		"needDispatch":       pm.NeedDispatch,
+		"bodyData":           graphql.String("{}"),
+		"receivedAt":         pm.ReceivedAt.Format(time.RFC3339),
+		"parsedAt":           pm.ParsedAt.Format(time.RFC3339),
+		// "dispatchedAt":       pm.DispatchedAt.Format(time.RFC3339),
+		"needDispatch": graphql.Boolean(false),
 	}
 
 	ctx := context.Background()
+	// Execute the mutation with the variables
 	err := hr.hasuraClient.Mutate(ctx, &mutation, variables)
 	if err != nil {
 		return err
 	}
 
-	for _, returnedMessage := range mutation.InsertParsedMessages.Returning {
-		fmt.Printf("Inserted ParsedMessage: %+v\n", returnedMessage)
-	}
 	return nil
 }

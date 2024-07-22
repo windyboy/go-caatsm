@@ -3,6 +3,7 @@ package nats
 import (
 	"caatsm/internal/config"
 	"caatsm/internal/parsers"
+	"caatsm/internal/repository"
 	"context"
 	"errors"
 	"fmt"
@@ -14,11 +15,12 @@ import (
 )
 
 type NatsHandler struct {
-	config *config.Config
+	config     *config.Config
+	hasuraRepo *repository.HasuraRepository
 }
 
 func NewNatsHandler(config *config.Config) *NatsHandler {
-	return &NatsHandler{config: config}
+	return &NatsHandler{config: config, hasuraRepo: repository.NewHasuraRepo(config.Hasura.Endpoint, config.Hasura.Secret)}
 }
 
 func (n *NatsHandler) Subscribe() {
@@ -72,7 +74,10 @@ func (n *NatsHandler) handleMessage(msg *message.Message) error {
 		return err
 	} else {
 		// log.Info("message ", map[string]interface{}{"message": parsed})
-		fmt.Println("message ", parsed)
+		fmt.Printf("message [%s]: %v\n", parsed.Uuid, parsed)
+		if err := n.hasuraRepo.InsertParsedMessage(parsed); err != nil {
+			fmt.Print("error inserting message", err)
+		}
 	}
 	return nil
 }
