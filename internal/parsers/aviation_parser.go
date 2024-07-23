@@ -16,15 +16,18 @@ const (
 )
 
 var (
-	categoryRegex   = regexp.MustCompile(`\((?P<category>[A-Z]+)-`)
-	emptyLineRemove = regexp.MustCompile(`(?m)^\s*$`)
-	bodyOnly        = regexp.MustCompile(`(.|\n)?(ZCZC(.|\n)*)NNNN(.|\n)?$`)
-	originator      = regexp.MustCompile(`(?P<originatorDateTime>[0-9]+)\s(?P<originator>[A-Z]+)`)
-	navPattern      = regexp.MustCompile(`(?m)^NAV\/(?P<nav>.*)$`)
-	remarkPattern   = regexp.MustCompile(`(?s)^RMK\/(?P<remark>.*)$`)
-	selPattern      = regexp.MustCompile(`(?m)SEL\/(?P<sel>\w+)`)
-	pbnPattern      = regexp.MustCompile(`(?m)PBN\/(?P<pbn>[A-Z0-9]+)`)
-	otherPatterns   = []regexp.Regexp{*navPattern, *remarkPattern, *selPattern, *pbnPattern}
+	categoryRegex      = regexp.MustCompile(`\((?P<category>[A-Z]+)-`)
+	emptyLineRemove    = regexp.MustCompile(`(?m)^\s*$`)
+	bodyOnly           = regexp.MustCompile(`(.|\n)?(ZCZC(.|\n)*)NNNN(.|\n)?$`)
+	originator         = regexp.MustCompile(`(?P<originatorDateTime>[0-9]+)\s(?P<originator>[A-Z]+)`)
+	navPattern         = regexp.MustCompile(`(?m)NAV\/(?P<nav>.*)$`)
+	remarkPattern      = regexp.MustCompile(`(?s)RMK\/(?P<remark>.*)`)
+	selPattern         = regexp.MustCompile(`(?m)SEL\/(?P<sel>\w+)`)
+	pbnPattern         = regexp.MustCompile(`(?m)PBN\/(?P<pbn>[A-Z0-9]+)`)
+	eetPattern         = regexp.MustCompile(`(?s)(-?EET\/(?P<eet>(?:[A-Z]{4}\d{4}\s*)+))`)
+	performancePattern = regexp.MustCompile(`(?s)-?PER\/(?P<per>\w)`)
+	reroutePattern     = regexp.MustCompile(`(?m)RIF\/(?P<rif>.*)[A-Z]{3}\/`)
+	otherPatterns      = []regexp.Regexp{*navPattern, *remarkPattern, *selPattern, *pbnPattern, *eetPattern, *performancePattern, *reroutePattern}
 )
 
 type BodyParser struct {
@@ -146,11 +149,11 @@ func createBodyData(data map[string]string) (string, interface{}, error) {
 			EstimatedArrivalTime:    data["estt"],
 			PBN:                     otherData["pbn"],
 			NavigationEquipment:     otherData["nav"],
-			EstimatedElapsedTime:    data["eet"],
+			EstimatedElapsedTime:    otherData["eet"],
 			SELCALCode:              otherData["sel"],
-			// PerformanceCategory:     data["performance"],
-			// RerouteInformation:      data["rif"],
-			Remarks: otherData["remark"],
+			PerformanceCategory:     otherData["per"],
+			RerouteInformation:      otherData["rif"],
+			Remarks:                 otherData["remark"],
 		}, nil
 	default:
 		return category, nil, fmt.Errorf("invalid message type: %s", category)
@@ -322,7 +325,7 @@ func parseOther(text string) map[string]string {
 			for i, name := range re.SubexpNames() {
 				// fmt.Printf("index: %d, name: %s\n", i, name)
 				if i != 0 && name != "" {
-					data[name] = match[i]
+					data[name] = strings.TrimSpace(match[i])
 				}
 			}
 		}
