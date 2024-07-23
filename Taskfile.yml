@@ -1,0 +1,113 @@
+version: '3'
+
+vars:
+  APP_NAME: tele-proc
+  GO_FILES:
+    sh: find . -name '*.go' -type f
+  CONFIG_DIR: configs
+  BUILD_DIR: build
+  MAIN_RECEIVER: ./cmd/main/main.go
+  HASURA_ENDPOINT: http://localhost:8080/v1/graphql
+  SCHEMA_FILE: ./internal/repository/schema.graphql
+  HASURA_SECRET: # Set your Hasura admin secret here
+
+tasks:
+  all:
+    desc: Default target
+    cmds:
+      - task: build
+
+  build:
+    desc: Build the receiver application
+    cmds:
+      - task: build-receiver
+
+  build-receiver:
+    desc: Build the receiver application
+    cmds:
+      - echo "Building receiver..."
+      - go build -o {{.BUILD_DIR}}/receiver {{.MAIN_RECEIVER}}
+
+  run:
+    desc: Run the receiver application with different configurations
+    cmds:
+      - task: run-dev
+
+  run-dev:
+    desc: Run the receiver in development mode
+    cmds:
+      - echo "Running receiver in development mode..."
+      - GO_ENV=development {{.BUILD_DIR}}/receiver &
+
+  run-prod:
+    desc: Run the receiver in production mode
+    cmds:
+      - echo "Running receiver in production mode..."
+      - GO_ENV=production {{.BUILD_DIR}}/receiver &
+
+  run-test:
+    desc: Run the receiver in test mode
+    cmds:
+      - echo "Running receiver in test mode..."
+      - GO_ENV=test {{.BUILD_DIR}}/receiver &
+
+  test:
+    desc: Test the application
+    cmds:
+      - echo "Running tests..."
+      - ginkgo -r -v
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - echo "Cleaning build artifacts..."
+      - rm -rf {{.BUILD_DIR}}
+
+  fmt:
+    desc: Format the code
+    cmds:
+      - echo "Formatting code..."
+      - go fmt ./...
+
+  deps:
+    desc: Install dependencies
+    cmds:
+      - echo "Installing dependencies..."
+      - go mod tidy
+
+  lint:
+    desc: Lint the code
+    cmds:
+      - echo "Linting code..."
+      - golangci-lint run
+
+  schema:
+    desc: Download the GraphQL schema from Hasura server
+    cmds:
+      - echo "Downloading GraphQL schema..."
+      - >
+        gq {{.HASURA_ENDPOINT}} -H 'X-Hasura-Admin-Secret:  {{.HASURA_SECRET}}' --introspect > {{.SCHEMA_FILE}}
+
+  
+  gen:
+    desc: Generate code using genqlient
+    cmds:
+      - echo "Generating code using genqlient..."
+      - cd internal/repository && go run github.com/Khan/genqlient && cd ../..
+
+  help:
+    desc: Show this help message
+    cmds:
+      - echo "Taskfile usage:"
+      - echo "  task build          - Build the application"
+      - echo "  task run            - Run the receiver in development mode"
+      - echo "  task run-dev        - Run the receiver in development mode"
+      - echo "  task run-prod       - Run the receiver in production mode"
+      - echo "  task run-test       - Run the receiver in test mode"
+      - echo "  task test           - Run tests"
+      - echo "  task clean          - Clean build artifacts"
+      - echo "  task fmt            - Format the code"
+      - echo "  task deps           - Install dependencies"
+      - echo "  task lint           - Lint the code"
+      - echo "  task download-schema - Download the GraphQL schema from Hasura server"
+      - echo "  task help           - Show this help message"

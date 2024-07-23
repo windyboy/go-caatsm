@@ -1,0 +1,42 @@
+[nats]
+url = "nats://localhost:4222"
+cluster_id = "test-cluster"
+client_id = "test-client"
+
+[subscription]
+topic = "example-topic"
+queue_group = "example-group"
+
+[timeouts]
+server_timeout = "30s"
+reconnect_wait = "10s"
+close_timeout = "10s"
+ack_wait_timeout = "5s"
+
+[[body]]
+name = "FPL"
+[[body.patterns]]
+pattern = "^\\((?P<type>[A-Z]{3})\\-(?P<number>[A-Z]+\\d+)\\-(?P<indicator>[A-Z]{2})(?:.*\\s*)?\\-(?P<aircraft>[A-Z]+\\d+/?[A-Z]?)\\s*\\-(?P<surve>.*)\\s*\\-(?P<departure>[A-Z]{4})(?P<departure_time>\\d{4})\\s*\\-(?P<speed>[A-Z]+\\d+)(?P<level>[A-Z0-9]+)\\s(?P<route>.*)\\s*\\-(?P<destination>[A-Z]{4})(?P<estt>\\d{4})\\s(?P<alter>[A-Z]{4})\\s*\\-(?P<pbn>PBN\\/[A-Z0-9]+)\\s(?P<nav>NAV\\/\\w+)\\sREG\\/(?P<reg>[A-Z0-9]+)\\sEET\\/(?P<eet>\\w{4}\\d{4})\\sSEL\\/(?P<sel>\\w+)\\sPER\\/(?P<performance>\\w)\\sRIF\\/(?P<rif>\\w+\\s[A-Z0-9]+\\s[A-Z]+)\\s*RMK\\/(?P<remark>.*)\\)$"
+comments = "FPL multi line expression"
+    
+
+
+# [[body]]
+# name = "ARR"
+# patterns = [
+#     { 
+#         pattern = '^\((?P<type>[A-Z]{3})\-(?P<number>[A-Z]+\d+)\-(?P<indicator>[A-Z]{2})(?:.*\s*)?\-(?P<aircraft>[A-Z]+\d+/?[A-Z]?)\s*\-(?P<surve>.*)\s*\-(?P<departure>[A-Z]{4})(?P<departure_time>\d{4})\s*\-(?P<speed>[A-Z]+\d+)(?P<level>[A-Z0-9]+)\s(?P<route>.*)\s*\-(?P<destination>[A-Z]{4})(?P<estt>\d{4})\s(?P<alter>[A-Z]{4})\s*\-(?P<pbn>PBN\/[A-Z0-9]+)\s(?P<nav>NAV\/\w+)\sREG\/(?P<reg>[A-Z0-9]+)\sEET\/(?P<eet>\w{4}\d{4})\sSEL\/(?P<sel>\w+)\sPER\/(?P<performance>\w)\sRIF\/(?P<rif>\w+\s[A-Z0-9]+\s[A-Z]+)\s*RMK\/(?P<remark>.*)\)$',
+#         comments = "one line arrival expression"
+#     }
+# ]
+
+# [[body]]
+# name = "DEP"
+# patterns = [
+#     {
+#         pattern = '^\((?P<type>[A-Z]{3})\-(?P<number>([A-Z]+\d+))\/?(?P<ssr>[A-Z]+\d+)\-(?P<departure>[A-Z]{4})(?P<departure_time>\d{4})\-(?P<destination>[A-Z]{4})(?P<destination_time>\d{4})?\-?(?P<alter>[A-Z]{4})?\-?(?P<other>.*)?\)$',
+#         comments = "one line departure expression"
+#     }
+# ]
+
+
