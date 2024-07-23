@@ -73,6 +73,7 @@ type FPL struct {
 	NavigationEquipment     string `json:"navigation_equipment"`          // 导航设备: Navigation equipment (e.g., 'NAV/ABAS').
 	EstimatedElapsedTime    string `json:"estimated_elapsed_time"`        // 估计飞行时间: Estimated elapsed time (e.g., 'EET/ZMUB0100').
 	SELCALCode              string `json:"selcal_code"`                   // SELCAL代码: SELCAL code (e.g., 'JLAD').
+	Register                string `json:"register,omitempty"`            // 注册号（可选）: Aircraft registration number (e.g., 'B2422').
 	PerformanceCategory     string `json:"performance_category"`          // 性能类别: Aircraft performance category (e.g., 'C').
 	RerouteInformation      string `json:"reroute_information,omitempty"` // 重航信息（可选）: Reroute information (e.g., 'RIF/FRT N640 ZBYN').
 	Remarks                 string `json:"remarks,omitempty"`             // 备注（可选）: Remarks (e.g., 'RMK/TCAS EQUIPPED').

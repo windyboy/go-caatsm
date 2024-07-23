@@ -20,6 +20,11 @@ var (
 	emptyLineRemove = regexp.MustCompile(`(?m)^\s*$`)
 	bodyOnly        = regexp.MustCompile(`(.|\n)?(ZCZC(.|\n)*)NNNN(.|\n)?$`)
 	originator      = regexp.MustCompile(`(?P<originatorDateTime>[0-9]+)\s(?P<originator>[A-Z]+)`)
+	navPattern      = regexp.MustCompile(`(?m)^NAV\/(?P<nav>.*)$`)
+	remarkPattern   = regexp.MustCompile(`(?s)^RMK\/(?P<remark>.*)$`)
+	selPattern      = regexp.MustCompile(`(?m)SEL\/(?P<sel>\w+)`)
+	pbnPattern      = regexp.MustCompile(`(?m)PBN\/(?P<pbn>[A-Z0-9]+)`)
+	otherPatterns   = []regexp.Regexp{*navPattern, *remarkPattern, *selPattern, *pbnPattern}
 )
 
 type BodyParser struct {
@@ -122,6 +127,7 @@ func createBodyData(data map[string]string) (string, interface{}, error) {
 			Destination:      data["arrival"],
 		}, nil
 	case "FPL":
+		otherData := parseOther(data["other"])
 		return category, &domain.FPL{
 			Category:                data["category"],
 			FlightNumber:            data["number"],
@@ -135,17 +141,16 @@ func createBodyData(data map[string]string) (string, interface{}, error) {
 			Route:                   data["route"],
 			DestinationAndTotalTime: data["destination"] + data["estt"],
 			AlternateAirport:        data["alter"],
-			OtherInfo: fmt.Sprintf("%s %s REG/%s EET/%s SEL/%s PER/%s RIF/%s",
-				data["pbn"], data["nav"], data["reg"], data["eet"], data["sel"], data["performance"], data["rif"]),
-			SupplementaryInfo:    "RMK/" + data["remark"],
-			EstimatedArrivalTime: data["estimated_arrival_time"],
-			PBN:                  data["pbn"],
-			NavigationEquipment:  data["nav"],
-			EstimatedElapsedTime: data["eet"],
-			SELCALCode:           data["sel"],
-			PerformanceCategory:  data["performance"],
-			RerouteInformation:   data["rif"],
-			Remarks:              data["remark"],
+			OtherInfo:               data["other"],
+			Register:                otherData["reg"],
+			EstimatedArrivalTime:    data["estt"],
+			PBN:                     otherData["pbn"],
+			NavigationEquipment:     otherData["nav"],
+			EstimatedElapsedTime:    data["eet"],
+			SELCALCode:              otherData["sel"],
+			// PerformanceCategory:     data["performance"],
+			// RerouteInformation:      data["rif"],
+			Remarks: otherData["remark"],
 		}, nil
 	default:
 		return category, nil, fmt.Errorf("invalid message type: %s", category)
@@ -305,4 +310,22 @@ func getOriginator(line string) (string, string) {
 	}
 	return "", ""
 
+}
+
+func parseOther(text string) map[string]string {
+	// fmt.Printf("Parsing other: %s\n", text)
+	data := make(map[string]string)
+	for _, re := range otherPatterns {
+		match := re.FindStringSubmatch(text)
+		if len(match) > 0 { // Corrected condition
+			// fmt.Println("Matched: ", match)
+			for i, name := range re.SubexpNames() {
+				// fmt.Printf("index: %d, name: %s\n", i, name)
+				if i != 0 && name != "" {
+					data[name] = match[i]
+				}
+			}
+		}
+	}
+	return data // Return the data map instead of nil
 }

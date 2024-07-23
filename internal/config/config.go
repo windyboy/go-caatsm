@@ -126,13 +126,7 @@ const (
 	//
 	// The regular expression uses named capture groups for each segment, allowing for easy extraction of specific information from a matched flight plan string.
 	// fplPatternString = `\((?P<category>[A-Z]{3})\-(?P<number>[A-Z]+\d+)\-(?P<indicator>[A-Z]{2})(.*\n)?(.*\n)?\-(?P<aircraft>[A-Z]+\d+\/?[A-Z]?)\s*\-(?P<surve>.*)(.*\n)?\-(?P<departure>[A-Z]{4})(?P<departure_time>\d{4})(.*\n)?\-(?P<speed>[A-Z]+\d+)(?P<level>[A-Z0-9]+)\s(?P<route>.*)(.*\n)?\-(?P<destination>[A-Z]{4})(?P<estt>\d{4})\s(?P<alter>[A-Z]{4})(.*\n)?\-(?P<pbn>PBN\/[A-Z0-9]+)\s(?P<nav>NAV\/\w+)\sREG\/(?P<reg>[A-Z0-9]+)\sEET\/(?P<eet>\w{4}\d{4})\sSEL\/(?P<sel>\w+)\sPER\/(?P<performance>\w)\sRIF\/(?P<rif>\w+\s[A-Z0-9]+\s[A-Z]+)\s*RMK\/(?P<remark>.*)\)$`
-	fplPatternString = `\((?P<category>[A-Z]{3})-(?P<number>[A-Z]+\d+)-(?P<indicator>[A-Z]{2})\n` +
-		`-(?P<aircraft>[A-Z]+\d+\/?[A-Z]?)\n` +
-		`-(?P<surve>.*)\n` +
-		`-(?P<departure>[A-Z]{4})(?P<departure_time>\d{4})\n` +
-		`-(?P<speed>[A-Z]+\d+)(?P<level>[A-Z0-9]+)\s+(?P<route>.*)\n` +
-		`-(?P<destination>[A-Z]{4})(?P<estt>\d{4})\s+(?P<alter>[A-Z]{4})\n` +
-		`-(?P<pbn>PBN\/[A-Z0-9]+)\s+(?P<nav>NAV\/\w+)\s+REG\/(?P<reg>[A-Z0-9]+)\s+EET\/(?P<eet>\w{4}\d{4})\s+SEL\/(?P<sel>\w+)\s+PER\/(?P<performance>\w)\s+RIF\/(?P<rif>\w+\s+[A-Z0-9]+\s+[A-Z]+)\s*RMK\/(?P<remark>.*)\)`
+	fplPatternString = `\((?P<category>[A-Z]{3})-(?P<number>[A-Z]+\d+)-(?P<indicator>[A-Z]{2})\n-(?P<aircraft>[A-Z]+\d+\/?[A-Z]?)\n?-(?P<surve>.*)\n?-(?P<departure>[A-Z]{4})(?P<departure_time>\d{4})\n?-(?P<speed>[A-Z]+\d+)(?P<level>[A-Z0-9]+)\s+(?P<route>(.|\n)+)\n-(?P<destination>[A-Z]{4})(?P<estt>\d{4})\s+(?P<alter>[A-Z]{4})\n?-([A-Z]{3}\/(?:[A-Z]{4}\d{4}\s?)+)?(?P<other>(?m)[A-Z]{3}\/(.|\n)*)\)$`
 )
 
 // Initialize the bodyPatterns map
