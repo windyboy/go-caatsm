@@ -7,14 +7,14 @@
     "SuiteHasProgrammaticFocus": false,
     "SpecialSuiteFailureReasons": null,
     "PreRunStats": {
-      "TotalSpecs": 3,
+      "TotalSpecs": 1,
       "SpecsThatWillRun": 1
     },
-    "StartTime": "2024-07-23T11:25:30.889407931+08:00",
-    "EndTime": "2024-07-23T11:25:30.892377154+08:00",
-    "RunTime": 2969222,
+    "StartTime": "2024-07-23T12:01:15.75278901+08:00",
+    "EndTime": "2024-07-23T12:01:15.764655302+08:00",
+    "RunTime": 11866337,
     "SuiteConfig": {
-      "RandomSeed": 1721705130,
+      "RandomSeed": 1721707275,
       "RandomizeAllSpecs": false,
       "FocusStrings": [
         "Repositories Hasura Repository should mutate a parsed message"
@@ -31,7 +31,7 @@
       "DryRun": false,
       "PollProgressAfter": 0,
       "PollProgressInterval": 0,
-      "Timeout": 3599523895104,
+      "Timeout": 3599595734975,
       "EmitSpecProgress": false,
       "OutputInterceptorMode": "",
       "SourceRoots": null,
@@ -44,86 +44,16 @@
       {
         "ContainerHierarchyTexts": [
           "Repositories",
-          "Just a simple test"
-        ],
-        "ContainerHierarchyLocations": [
-          {
-            "FileName": "/home/windy/project/airport/projects/new-telegram/caatsm/internal/repository/hasura_test.go",
-            "LineNumber": 19
-          },
-          {
-            "FileName": "/home/windy/project/airport/projects/new-telegram/caatsm/internal/repository/hasura_test.go",
-            "LineNumber": 20
-          }
-        ],
-        "ContainerHierarchyLabels": [
-          [],
-          []
-        ],
-        "LeafNodeType": "It",
-        "LeafNodeLocation": {
-          "FileName": "/home/windy/project/airport/projects/new-telegram/caatsm/internal/repository/hasura_test.go",
-          "LineNumber": 56
-        },
-        "LeafNodeLabels": [],
-        "LeafNodeText": "should not error",
-        "State": "skipped",
-        "StartTime": "2024-07-23T11:25:30.889468443+08:00",
-        "EndTime": "0001-01-01T00:00:00Z",
-        "RunTime": 0,
-        "ParallelProcess": 1,
-        "NumAttempts": 0,
-        "MaxFlakeAttempts": 0,
-        "MaxMustPassRepeatedly": 0
-      },
-      {
-        "ContainerHierarchyTexts": [
-          "Repositories",
-          "Just a simple test"
-        ],
-        "ContainerHierarchyLocations": [
-          {
-            "FileName": "/home/windy/project/airport/projects/new-telegram/caatsm/internal/repository/hasura_test.go",
-            "LineNumber": 19
-          },
-          {
-            "FileName": "/home/windy/project/airport/projects/new-telegram/caatsm/internal/repository/hasura_test.go",
-            "LineNumber": 20
-          }
-        ],
-        "ContainerHierarchyLabels": [
-          [],
-          []
-        ],
-        "LeafNodeType": "It",
-        "LeafNodeLocation": {
-          "FileName": "/home/windy/project/airport/projects/new-telegram/caatsm/internal/repository/hasura_test.go",
-          "LineNumber": 60
-        },
-        "LeafNodeLabels": [],
-        "LeafNodeText": "name should be new",
-        "State": "skipped",
-        "StartTime": "2024-07-23T11:25:30.889483979+08:00",
-        "EndTime": "0001-01-01T00:00:00Z",
-        "RunTime": 0,
-        "ParallelProcess": 1,
-        "NumAttempts": 0,
-        "MaxFlakeAttempts": 0,
-        "MaxMustPassRepeatedly": 0
-      },
-      {
-        "ContainerHierarchyTexts": [
-          "Repositories",
           "Hasura Repository"
         ],
         "ContainerHierarchyLocations": [
           {
             "FileName": "/home/windy/project/airport/projects/new-telegram/caatsm/internal/repository/hasura_test.go",
-            "LineNumber": 19
+            "LineNumber": 17
           },
           {
             "FileName": "/home/windy/project/airport/projects/new-telegram/caatsm/internal/repository/hasura_test.go",
-            "LineNumber": 66
+            "LineNumber": 64
           }
         ],
         "ContainerHierarchyLabels": [
@@ -133,14 +63,14 @@
         "LeafNodeType": "It",
         "LeafNodeLocation": {
           "FileName": "/home/windy/project/airport/projects/new-telegram/caatsm/internal/repository/hasura_test.go",
-          "LineNumber": 72
+          "LineNumber": 70
         },
         "LeafNodeLabels": [],
         "LeafNodeText": "should mutate a parsed message",
         "State": "passed",
-        "StartTime": "2024-07-23T11:25:30.889488379+08:00",
-        "EndTime": "2024-07-23T11:25:30.89235263+08:00",
-        "RunTime": 2864253,
+        "StartTime": "2024-07-23T12:01:15.752849553+08:00",
+        "EndTime": "2024-07-23T12:01:15.764585492+08:00",
+        "RunTime": 11735991,
         "ParallelProcess": 1,
         "NumAttempts": 1,
         "MaxFlakeAttempts": 0,
@@ -150,11 +80,11 @@
             "SpecEventType": "Node",
             "CodeLocation": {
               "FileName": "/home/windy/project/airport/projects/new-telegram/caatsm/internal/repository/hasura_test.go",
-              "LineNumber": 72
+              "LineNumber": 70
             },
             "TimelineLocation": {
               "Order": 1,
-              "Time": "2024-07-23T11:25:30.889491289+08:00"
+              "Time": "2024-07-23T12:01:15.752859429+08:00"
             },
             "Message": "should mutate a parsed message",
             "NodeType": "It"
@@ -163,14 +93,14 @@
             "SpecEventType": "Node (End)",
             "CodeLocation": {
               "FileName": "/home/windy/project/airport/projects/new-telegram/caatsm/internal/repository/hasura_test.go",
-              "LineNumber": 72
+              "LineNumber": 70
             },
             "TimelineLocation": {
               "Order": 3,
-              "Time": "2024-07-23T11:25:30.892349748+08:00"
+              "Time": "2024-07-23T12:01:15.764576564+08:00"
             },
             "Message": "should mutate a parsed message",
-            "Duration": 2858459,
+            "Duration": 11717183,
             "NodeType": "It"
           }
         ]

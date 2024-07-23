@@ -4,7 +4,6 @@ package repository
 
 import (
 	"context"
-	"encoding/json"
 	"time"
 
 	"github.com/Khan/genqlient/graphql"
@@ -13,29 +12,29 @@ import (
 
 // input type for inserting data into table "aviation.telegrams"
 type Aviation_telegrams_insert_input struct {
-	Body_and_footer      string          `json:"body_and_footer"`
-	Body_data            json.RawMessage `json:"body_data"`
-	Category             string          `json:"category"`
-	Date_time            string          `json:"date_time"`
-	Dispatched_at        time.Time       `json:"dispatched_at"`
-	Id                   int             `json:"id"`
-	Message_id           string          `json:"message_id"`
-	Need_dispatch        bool            `json:"need_dispatch"`
-	Originator           string          `json:"originator"`
-	Originator_date_time string          `json:"originator_date_time"`
-	Parsed_at            time.Time       `json:"parsed_at"`
-	Primary_address      string          `json:"primary_address"`
-	Priority_indicator   string          `json:"priority_indicator"`
-	Received_at          time.Time       `json:"received_at"`
-	Secondary_addresses  json.RawMessage `json:"secondary_addresses"`
-	Uuid                 uuid.UUID       `json:"uuid"`
+	Body_and_footer      string    `json:"body_and_footer"`
+	Body_data            string    `json:"body_data"`
+	Category             string    `json:"category"`
+	Date_time            string    `json:"date_time"`
+	Dispatched_at        time.Time `json:"dispatched_at"`
+	Id                   int       `json:"id"`
+	Message_id           string    `json:"message_id"`
+	Need_dispatch        bool      `json:"need_dispatch"`
+	Originator           string    `json:"originator"`
+	Originator_date_time string    `json:"originator_date_time"`
+	Parsed_at            time.Time `json:"parsed_at"`
+	Primary_address      string    `json:"primary_address"`
+	Priority_indicator   string    `json:"priority_indicator"`
+	Received_at          time.Time `json:"received_at"`
+	Secondary_addresses  string    `json:"secondary_addresses"`
+	Uuid                 uuid.UUID `json:"uuid"`
 }
 
 // GetBody_and_footer returns Aviation_telegrams_insert_input.Body_and_footer, and is useful for accessing the field via an interface.
 func (v *Aviation_telegrams_insert_input) GetBody_and_footer() string { return v.Body_and_footer }
 
 // GetBody_data returns Aviation_telegrams_insert_input.Body_data, and is useful for accessing the field via an interface.
-func (v *Aviation_telegrams_insert_input) GetBody_data() json.RawMessage { return v.Body_data }
+func (v *Aviation_telegrams_insert_input) GetBody_data() string { return v.Body_data }
 
 // GetCategory returns Aviation_telegrams_insert_input.Category, and is useful for accessing the field via an interface.
 func (v *Aviation_telegrams_insert_input) GetCategory() string { return v.Category }
@@ -76,7 +75,7 @@ func (v *Aviation_telegrams_insert_input) GetPriority_indicator() string { retur
 func (v *Aviation_telegrams_insert_input) GetReceived_at() time.Time { return v.Received_at }
 
 // GetSecondary_addresses returns Aviation_telegrams_insert_input.Secondary_addresses, and is useful for accessing the field via an interface.
-func (v *Aviation_telegrams_insert_input) GetSecondary_addresses() json.RawMessage {
+func (v *Aviation_telegrams_insert_input) GetSecondary_addresses() string {
 	return v.Secondary_addresses
 }
 

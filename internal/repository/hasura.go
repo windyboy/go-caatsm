@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 
 	"caatsm/internal/domain"
@@ -28,14 +29,15 @@ func NewHasuraRepo(endpoint, secret string) *HasuraRepository {
 
 // InsertParsedMessage inserts a new ParsedMessage into the Hasura GraphQL API
 func (hr *HasuraRepository) InsertParsedMessage(pm *domain.ParsedMessage) error {
+	bodyString, _ := json.Marshal(pm.BodyData)
 	variables := Aviation_telegrams_insert_input{
 		// Id:              10,
 		Body_and_footer: pm.BodyAndFooter,
-		// Body_data:       pm.BodyData.(json.RawMessage),
-		Category:      pm.Category,
-		Date_time:     pm.DateTime,
-		Dispatched_at: pm.DispatchedAt,
-		Uuid:          uuid.New(),
+		Body_data:       string(bodyString),
+		Category:        pm.Category,
+		Date_time:       pm.DateTime,
+		Dispatched_at:   pm.DispatchedAt,
+		Uuid:            uuid.New(),
 	}
 	_, err := newMessage(context.Background(), hr.client, variables)
 	if err != nil {

@@ -6,7 +6,7 @@ operations:
 generated: generated.go
 bindings:
   jsonb:
-    type:  encoding/json.RawMessage
+    type: string
   timestamp:
     type: time.Time
   uuid:
