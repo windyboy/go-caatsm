@@ -4,6 +4,7 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/Khan/genqlient/graphql"
@@ -12,29 +13,28 @@ import (
 
 // input type for inserting data into table "aviation.telegrams"
 type Aviation_telegrams_insert_input struct {
-	Body_and_footer      string    `json:"body_and_footer"`
-	Body_data            string    `json:"body_data"`
-	Category             string    `json:"category"`
-	Date_time            string    `json:"date_time"`
-	Dispatched_at        time.Time `json:"dispatched_at"`
-	Id                   int       `json:"id"`
-	Message_id           string    `json:"message_id"`
-	Need_dispatch        bool      `json:"need_dispatch"`
-	Originator           string    `json:"originator"`
-	Originator_date_time string    `json:"originator_date_time"`
-	Parsed_at            time.Time `json:"parsed_at"`
-	Primary_address      string    `json:"primary_address"`
-	Priority_indicator   string    `json:"priority_indicator"`
-	Received_at          time.Time `json:"received_at"`
-	Secondary_addresses  string    `json:"secondary_addresses"`
-	Uuid                 uuid.UUID `json:"uuid"`
+	Body_and_footer      string          `json:"body_and_footer"`
+	Body_data            json.RawMessage `json:"body_data"`
+	Category             string          `json:"category"`
+	Date_time            string          `json:"date_time"`
+	Dispatched_at        time.Time       `json:"dispatched_at"`
+	Message_id           string          `json:"message_id"`
+	Need_dispatch        bool            `json:"need_dispatch"`
+	Originator           string          `json:"originator"`
+	Originator_date_time string          `json:"originator_date_time"`
+	Parsed_at            time.Time       `json:"parsed_at"`
+	Primary_address      string          `json:"primary_address"`
+	Priority_indicator   string          `json:"priority_indicator"`
+	Received_at          time.Time       `json:"received_at"`
+	Secondary_addresses  json.RawMessage `json:"secondary_addresses"`
+	Uuid                 uuid.UUID       `json:"uuid"`
 }
 
 // GetBody_and_footer returns Aviation_telegrams_insert_input.Body_and_footer, and is useful for accessing the field via an interface.
 func (v *Aviation_telegrams_insert_input) GetBody_and_footer() string { return v.Body_and_footer }
 
 // GetBody_data returns Aviation_telegrams_insert_input.Body_data, and is useful for accessing the field via an interface.
-func (v *Aviation_telegrams_insert_input) GetBody_data() string { return v.Body_data }
+func (v *Aviation_telegrams_insert_input) GetBody_data() json.RawMessage { return v.Body_data }
 
 // GetCategory returns Aviation_telegrams_insert_input.Category, and is useful for accessing the field via an interface.
 func (v *Aviation_telegrams_insert_input) GetCategory() string { return v.Category }
@@ -44,9 +44,6 @@ func (v *Aviation_telegrams_insert_input) GetDate_time() string { return v.Date_
 
 // GetDispatched_at returns Aviation_telegrams_insert_input.Dispatched_at, and is useful for accessing the field via an interface.
 func (v *Aviation_telegrams_insert_input) GetDispatched_at() time.Time { return v.Dispatched_at }
-
-// GetId returns Aviation_telegrams_insert_input.Id, and is useful for accessing the field via an interface.
-func (v *Aviation_telegrams_insert_input) GetId() int { return v.Id }
 
 // GetMessage_id returns Aviation_telegrams_insert_input.Message_id, and is useful for accessing the field via an interface.
 func (v *Aviation_telegrams_insert_input) GetMessage_id() string { return v.Message_id }
@@ -75,7 +72,7 @@ func (v *Aviation_telegrams_insert_input) GetPriority_indicator() string { retur
 func (v *Aviation_telegrams_insert_input) GetReceived_at() time.Time { return v.Received_at }
 
 // GetSecondary_addresses returns Aviation_telegrams_insert_input.Secondary_addresses, and is useful for accessing the field via an interface.
-func (v *Aviation_telegrams_insert_input) GetSecondary_addresses() string {
+func (v *Aviation_telegrams_insert_input) GetSecondary_addresses() json.RawMessage {
 	return v.Secondary_addresses
 }
 
@@ -95,13 +92,9 @@ func (v *__newMessageInput) GetObject() Aviation_telegrams_insert_input { return
 //
 // columns and relationships of "aviation.telegrams"
 type newMessageInsert_aviation_telegrams_oneAviation_telegrams struct {
-	Id         int       `json:"id"`
 	Message_id string    `json:"message_id"`
 	Uuid       uuid.UUID `json:"uuid"`
 }
-
-// GetId returns newMessageInsert_aviation_telegrams_oneAviation_telegrams.Id, and is useful for accessing the field via an interface.
-func (v *newMessageInsert_aviation_telegrams_oneAviation_telegrams) GetId() int { return v.Id }
 
 // GetMessage_id returns newMessageInsert_aviation_telegrams_oneAviation_telegrams.Message_id, and is useful for accessing the field via an interface.
 func (v *newMessageInsert_aviation_telegrams_oneAviation_telegrams) GetMessage_id() string {
@@ -128,7 +121,6 @@ func (v *newMessageResponse) GetInsert_aviation_telegrams_one() newMessageInsert
 const newMessage_Operation = `
 mutation newMessage ($object: aviation_telegrams_insert_input!) {
 	insert_aviation_telegrams_one(object: $object) {
-		id
 		message_id
 		uuid
 	}

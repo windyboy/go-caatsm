@@ -108,8 +108,7 @@ type aviation_telegrams {
   category: String
   date_time: String
   dispatched_at: timestamp
-  id: Int!
-  message_id: String
+  message_id: String!
   need_dispatch: Boolean
   originator: String
   originator_date_time: String
@@ -136,28 +135,15 @@ type aviation_telegrams_aggregate {
 aggregate fields of "aviation.telegrams"
 """
 type aviation_telegrams_aggregate_fields {
-  avg: aviation_telegrams_avg_fields
   count(columns: [aviation_telegrams_select_column!], distinct: Boolean): Int!
   max: aviation_telegrams_max_fields
   min: aviation_telegrams_min_fields
-  stddev: aviation_telegrams_stddev_fields
-  stddev_pop: aviation_telegrams_stddev_pop_fields
-  stddev_samp: aviation_telegrams_stddev_samp_fields
-  sum: aviation_telegrams_sum_fields
-  var_pop: aviation_telegrams_var_pop_fields
-  var_samp: aviation_telegrams_var_samp_fields
-  variance: aviation_telegrams_variance_fields
 }
 
 """append existing jsonb value of filtered columns with new jsonb value"""
 input aviation_telegrams_append_input {
   body_data: jsonb
   secondary_addresses: jsonb
-}
-
-"""aggregate avg on columns"""
-type aviation_telegrams_avg_fields {
-  id: Float
 }
 
 """
@@ -172,7 +158,6 @@ input aviation_telegrams_bool_exp {
   category: String_comparison_exp
   date_time: String_comparison_exp
   dispatched_at: timestamp_comparison_exp
-  id: Int_comparison_exp
   message_id: String_comparison_exp
   need_dispatch: Boolean_comparison_exp
   originator: String_comparison_exp
@@ -190,7 +175,7 @@ unique or primary key constraints on table "aviation.telegrams"
 """
 enum aviation_telegrams_constraint {
   """
-  unique or primary key constraint on columns "id"
+  unique or primary key constraint on columns "message_id"
   """
   telegrams_pkey
 
@@ -225,13 +210,6 @@ input aviation_telegrams_delete_key_input {
 }
 
 """
-input type for incrementing numeric columns in table "aviation.telegrams"
-"""
-input aviation_telegrams_inc_input {
-  id: Int
-}
-
-"""
 input type for inserting data into table "aviation.telegrams"
 """
 input aviation_telegrams_insert_input {
@@ -240,7 +218,6 @@ input aviation_telegrams_insert_input {
   category: String
   date_time: String
   dispatched_at: timestamp
-  id: Int
   message_id: String
   need_dispatch: Boolean
   originator: String
@@ -259,7 +236,6 @@ type aviation_telegrams_max_fields {
   category: String
   date_time: String
   dispatched_at: timestamp
-  id: Int
   message_id: String
   originator: String
   originator_date_time: String
@@ -276,7 +252,6 @@ type aviation_telegrams_min_fields {
   category: String
   date_time: String
   dispatched_at: timestamp
-  id: Int
   message_id: String
   originator: String
   originator_date_time: String
@@ -314,7 +289,6 @@ input aviation_telegrams_order_by {
   category: order_by
   date_time: order_by
   dispatched_at: order_by
-  id: order_by
   message_id: order_by
   need_dispatch: order_by
   originator: order_by
@@ -329,7 +303,7 @@ input aviation_telegrams_order_by {
 
 """primary key columns input for table: aviation.telegrams"""
 input aviation_telegrams_pk_columns_input {
-  id: Int!
+  message_id: String!
 }
 
 """prepend existing jsonb value of filtered columns with new jsonb value"""
@@ -356,9 +330,6 @@ enum aviation_telegrams_select_column {
 
   """column name"""
   dispatched_at
-
-  """column name"""
-  id
 
   """column name"""
   message_id
@@ -400,7 +371,6 @@ input aviation_telegrams_set_input {
   category: String
   date_time: String
   dispatched_at: timestamp
-  id: Int
   message_id: String
   need_dispatch: Boolean
   originator: String
@@ -411,21 +381,6 @@ input aviation_telegrams_set_input {
   received_at: timestamp
   secondary_addresses: jsonb
   uuid: uuid
-}
-
-"""aggregate stddev on columns"""
-type aviation_telegrams_stddev_fields {
-  id: Float
-}
-
-"""aggregate stddev_pop on columns"""
-type aviation_telegrams_stddev_pop_fields {
-  id: Float
-}
-
-"""aggregate stddev_samp on columns"""
-type aviation_telegrams_stddev_samp_fields {
-  id: Float
 }
 
 """
@@ -446,7 +401,6 @@ input aviation_telegrams_stream_cursor_value_input {
   category: String
   date_time: String
   dispatched_at: timestamp
-  id: Int
   message_id: String
   need_dispatch: Boolean
   originator: String
@@ -457,11 +411,6 @@ input aviation_telegrams_stream_cursor_value_input {
   received_at: timestamp
   secondary_addresses: jsonb
   uuid: uuid
-}
-
-"""aggregate sum on columns"""
-type aviation_telegrams_sum_fields {
-  id: Int
 }
 
 """
@@ -482,9 +431,6 @@ enum aviation_telegrams_update_column {
 
   """column name"""
   dispatched_at
-
-  """column name"""
-  id
 
   """column name"""
   message_id
@@ -536,9 +482,6 @@ input aviation_telegrams_updates {
   """
   _delete_key: aviation_telegrams_delete_key_input
 
-  """increments the numeric columns with given value of the filtered values"""
-  _inc: aviation_telegrams_inc_input
-
   """prepend existing jsonb value of filtered columns with new jsonb value"""
   _prepend: aviation_telegrams_prepend_input
 
@@ -547,21 +490,6 @@ input aviation_telegrams_updates {
 
   """filter the rows which have to be updated"""
   where: aviation_telegrams_bool_exp!
-}
-
-"""aggregate var_pop on columns"""
-type aviation_telegrams_var_pop_fields {
-  id: Float
-}
-
-"""aggregate var_samp on columns"""
-type aviation_telegrams_var_samp_fields {
-  id: Float
-}
-
-"""aggregate variance on columns"""
-type aviation_telegrams_variance_fields {
-  id: Float
 }
 
 """user for test simple graphql"""
@@ -859,7 +787,7 @@ type mutation_root {
   """
   delete single row from the table: "aviation.telegrams"
   """
-  delete_aviation_telegrams_by_pk(id: Int!): aviation_telegrams
+  delete_aviation_telegrams_by_pk(message_id: String!): aviation_telegrams
 
   """
   delete data from the table: "aviation.user"
@@ -940,9 +868,6 @@ type mutation_root {
     """
     _delete_key: aviation_telegrams_delete_key_input
 
-    """increments the numeric columns with given value of the filtered values"""
-    _inc: aviation_telegrams_inc_input
-
     """prepend existing jsonb value of filtered columns with new jsonb value"""
     _prepend: aviation_telegrams_prepend_input
 
@@ -974,9 +899,6 @@ type mutation_root {
     delete key/value pair or string element. key/value pairs are matched based on their key value
     """
     _delete_key: aviation_telegrams_delete_key_input
-
-    """increments the numeric columns with given value of the filtered values"""
-    _inc: aviation_telegrams_inc_input
 
     """prepend existing jsonb value of filtered columns with new jsonb value"""
     _prepend: aviation_telegrams_prepend_input
@@ -1094,7 +1016,7 @@ type query_root {
   """
   fetch data from the table: "aviation.telegrams" using primary key columns
   """
-  aviation_telegrams_by_pk(id: Int!): aviation_telegrams
+  aviation_telegrams_by_pk(message_id: String!): aviation_telegrams
 
   """
   fetch data from the table: "aviation.user"
@@ -1184,7 +1106,7 @@ type subscription_root {
   """
   fetch data from the table: "aviation.telegrams" using primary key columns
   """
-  aviation_telegrams_by_pk(id: Int!): aviation_telegrams
+  aviation_telegrams_by_pk(message_id: String!): aviation_telegrams
 
   """
   fetch data from the table in a streaming manner: "aviation.telegrams"

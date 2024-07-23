@@ -1,6 +1,5 @@
 mutation newMessage($object: aviation_telegrams_insert_input!) {
   insert_aviation_telegrams_one(object: $object) {
-    id
     message_id
     uuid
   }

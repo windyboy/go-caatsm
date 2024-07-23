@@ -10,11 +10,11 @@
       "TotalSpecs": 1,
       "SpecsThatWillRun": 1
     },
-    "StartTime": "2024-07-23T12:01:15.75278901+08:00",
-    "EndTime": "2024-07-23T12:01:15.764655302+08:00",
-    "RunTime": 11866337,
+    "StartTime": "2024-07-23T12:33:42.47682339+08:00",
+    "EndTime": "2024-07-23T12:33:42.480755442+08:00",
+    "RunTime": 3932052,
     "SuiteConfig": {
-      "RandomSeed": 1721707275,
+      "RandomSeed": 1721709222,
       "RandomizeAllSpecs": false,
       "FocusStrings": [
         "Repositories Hasura Repository should mutate a parsed message"
@@ -31,7 +31,7 @@
       "DryRun": false,
       "PollProgressAfter": 0,
       "PollProgressInterval": 0,
-      "Timeout": 3599595734975,
+      "Timeout": 3599595857926,
       "EmitSpecProgress": false,
       "OutputInterceptorMode": "",
       "SourceRoots": null,
@@ -68,9 +68,9 @@
         "LeafNodeLabels": [],
         "LeafNodeText": "should mutate a parsed message",
         "State": "passed",
-        "StartTime": "2024-07-23T12:01:15.752849553+08:00",
-        "EndTime": "2024-07-23T12:01:15.764585492+08:00",
-        "RunTime": 11735991,
+        "StartTime": "2024-07-23T12:33:42.476903287+08:00",
+        "EndTime": "2024-07-23T12:33:42.480729619+08:00",
+        "RunTime": 3826334,
         "ParallelProcess": 1,
         "NumAttempts": 1,
         "MaxFlakeAttempts": 0,
@@ -84,7 +84,7 @@
             },
             "TimelineLocation": {
               "Order": 1,
-              "Time": "2024-07-23T12:01:15.752859429+08:00"
+              "Time": "2024-07-23T12:33:42.476916857+08:00"
             },
             "Message": "should mutate a parsed message",
             "NodeType": "It"
@@ -97,10 +97,10 @@
             },
             "TimelineLocation": {
               "Order": 3,
-              "Time": "2024-07-23T12:01:15.764576564+08:00"
+              "Time": "2024-07-23T12:33:42.480726236+08:00"
             },
             "Message": "should mutate a parsed message",
-            "Duration": 11717183,
+            "Duration": 3809380,
             "NodeType": "It"
           }
         ]

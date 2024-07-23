@@ -33,11 +33,12 @@ func (hr *HasuraRepository) InsertParsedMessage(pm *domain.ParsedMessage) error 
 	variables := Aviation_telegrams_insert_input{
 		// Id:              10,
 		Body_and_footer: pm.BodyAndFooter,
-		Body_data:       string(bodyString),
+		Body_data:       bodyString,
 		Category:        pm.Category,
 		Date_time:       pm.DateTime,
 		Dispatched_at:   pm.DispatchedAt,
 		Uuid:            uuid.New(),
+		Received_at:     pm.ReceivedAt,
 	}
 	_, err := newMessage(context.Background(), hr.client, variables)
 	if err != nil {
