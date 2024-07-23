@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 
 	"caatsm/internal/domain"
@@ -28,22 +29,28 @@ func NewHasuraRepo(endpoint, secret string) *HasuraRepository {
 }
 
 // InsertParsedMessage inserts a new ParsedMessage into the Hasura GraphQL API
-func (hr *HasuraRepository) InsertParsedMessage(pm *domain.ParsedMessage) error {
+func (hr *HasuraRepository) CreateNew(pm *domain.ParsedMessage) error {
 	bodyString, _ := json.Marshal(pm.BodyData)
+	secondAddress, _ := json.Marshal(pm.SecondaryAddresses)
 	variables := Aviation_telegrams_insert_input{
-		// Id:              10,
-		Body_and_footer: pm.BodyAndFooter,
-		Body_data:       bodyString,
-		Category:        pm.Category,
-		Date_time:       pm.DateTime,
-		Dispatched_at:   pm.DispatchedAt,
-		Uuid:            uuid.New(),
-		Received_at:     pm.ReceivedAt,
+		Message_id:           pm.MessageID,
+		Priority_indicator:   pm.PriorityIndicator,
+		Primary_address:      pm.PrimaryAddress,
+		Secondary_addresses:  secondAddress,
+		Body_and_footer:      pm.BodyAndFooter,
+		Body_data:            bodyString,
+		Category:             pm.Category,
+		Date_time:            pm.DateTime,
+		Dispatched_at:        pm.DispatchedAt,
+		Uuid:                 uuid.New(),
+		Received_at:          pm.ReceivedAt,
+		Originator:           pm.Originator,
+		Originator_date_time: pm.OriginatorDateTime,
 	}
-	_, err := newMessage(context.Background(), hr.client, variables)
+	resp, err := newMessage(context.Background(), hr.client, variables)
 	if err != nil {
 		return err
 	}
-	// fmt.Printf("Inserted new message with ID: %v\n", resp)
+	fmt.Printf("Inserted new message: %v\n", resp)
 	return nil
 }

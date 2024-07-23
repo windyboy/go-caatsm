@@ -2,6 +2,7 @@ package nats
 
 import (
 	"caatsm/internal/config"
+	"caatsm/internal/domain"
 	"caatsm/internal/parsers"
 	"caatsm/internal/repository"
 	"context"
@@ -67,19 +68,22 @@ func (n *NatsHandler) handleMessage(msg *message.Message) error {
 		return fmt.Errorf("empty message")
 	}
 	payload := string(msg.Payload)
-	if parsed, err := parsers.Parse(payload); err != nil {
-		// log.Error("error parsing message", err, map[string]interface{}{"payload": payload})
-		parsed.Uuid = msg.UUID
-		fmt.Print("error parsing message", err)
-		return err
+	var err error
+	var parsed *domain.ParsedMessage
+	if parsed, err = parsers.Parse(payload); err != nil {
+
+		fmt.Printf("not parsed: [%s] : {%s} - %v\n", msg.UUID, msg.Payload, err)
+		// return err
 	} else {
-		// log.Info("message ", map[string]interface{}{"message": parsed})
-		fmt.Printf("message [%s]: %v\n", parsed.Uuid, parsed)
-		if err := n.hasuraRepo.InsertParsedMessage(parsed); err != nil {
-			fmt.Print("error inserting message", err)
-		}
+
+		fmt.Printf("parsed [%s]: %v\n", msg.UUID, parsed)
+
 	}
-	return nil
+	parsed.Uuid = msg.UUID
+	if err = n.hasuraRepo.CreateNew(parsed); err != nil {
+		fmt.Print("error inserting message", err)
+	}
+	return err
 }
 
 type PlainTextMarshaler struct{}

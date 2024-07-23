@@ -19,6 +19,7 @@ var (
 	categoryRegex   = regexp.MustCompile(`\((?P<category>[A-Z]+)-`)
 	emptyLineRemove = regexp.MustCompile(`(?m)^\s*$`)
 	bodyOnly        = regexp.MustCompile(`(.|\n)?(ZCZC(.|\n)*)NNNN(.|\n)?$`)
+	originator      = regexp.MustCompile(`(?P<originatorDateTime>[0-9]+)\s(?P<originator>[A-Z]+)`)
 )
 
 type BodyParser struct {
@@ -41,14 +42,14 @@ func (bp *BodyParser) SetBodyPatterns(patterns map[string]config.BodyConfig) {
 }
 
 // Parse attempts to parse the body text using the configured patterns.
-func (bp *BodyParser) Parse(body string) (interface{}, error) {
+func (bp *BodyParser) Parse(body string) (string, interface{}, error) {
 	// log := utils.Logger
 	body = strings.TrimSpace(body)
 	// log.Info("Parsing body text", body)
 	category := findCategory(body)
 	if category == "" {
 		// log.Error("No category found in body text")
-		return nil, fmt.Errorf("no category found in body text")
+		return "", nil, fmt.Errorf("no category found in body text")
 	}
 	patters := bp.GetBodyPatterns()
 	// log.Infof("body config [%s] %v\n", category, patters[category])
@@ -63,13 +64,14 @@ func (bp *BodyParser) Parse(body string) (interface{}, error) {
 			if match != nil {
 				// log.Infof("Matched: %v\n", match)
 				data := extractData(match, re)
+
 				return createBodyData(data)
 			}
 			// log.Infof("No match for pattern %s\n", p.Comments)
 		}
 
 	}
-	return nil, fmt.Errorf(" no matching pattern found for body: %s", body)
+	return "", nil, fmt.Errorf(" no matching pattern found for body: %s", body)
 }
 
 func findCategory(body string) string {
@@ -98,10 +100,11 @@ func extractData(match []string, re *regexp.Regexp) map[string]string {
 }
 
 // createBodyData creates the appropriate domain object based on the type of message.
-func createBodyData(data map[string]string) (interface{}, error) {
+func createBodyData(data map[string]string) (string, interface{}, error) {
+	category := data["category"]
 	switch data["category"] {
 	case "ARR":
-		return &domain.ARR{
+		return category, &domain.ARR{
 			Category:         data["category"],
 			AircraftID:       data["number"],
 			SSRModeAndCode:   data["ssr"],
@@ -110,7 +113,7 @@ func createBodyData(data map[string]string) (interface{}, error) {
 			ArrivalTime:      data["time"],
 		}, nil
 	case "DEP":
-		return &domain.DEP{
+		return category, &domain.DEP{
 			Category:         data["category"],
 			AircraftID:       data["number"],
 			SSRModeAndCode:   data["ssr"],
@@ -119,7 +122,7 @@ func createBodyData(data map[string]string) (interface{}, error) {
 			Destination:      data["arrival"],
 		}, nil
 	case "FPL":
-		return &domain.FPL{
+		return category, &domain.FPL{
 			Category:                data["category"],
 			FlightNumber:            data["number"],
 			ReferenceData:           data["reference_data"],
@@ -145,7 +148,7 @@ func createBodyData(data map[string]string) (interface{}, error) {
 			Remarks:              data["remark"],
 		}, nil
 	default:
-		return nil, fmt.Errorf("invalid message type: %s", data["category"])
+		return category, nil, fmt.Errorf("invalid message type: %s", category)
 	}
 }
 
@@ -162,10 +165,13 @@ func Parse(rawText string) (*domain.ParsedMessage, error) {
 	bodyParser := NewBodyParser()
 
 	// Parse the body and footer of the message
-	bodyData, err := bodyParser.Parse(message.BodyAndFooter)
+	category, bodyData, err := bodyParser.Parse(message.BodyAndFooter)
+
+	message.Category = category
+
 	if err != nil {
 		// Return the message with the parsed header and the error
-		// message.ParsedAt = time.Now()
+		message.ParsedAt = time.Now()
 		return &message, err
 	}
 
@@ -279,10 +285,24 @@ func parseRemainingLines(lines []string) ([]string, string, string, string) {
 				}
 				bodyAndFooter.WriteString(line + "\n")
 			default:
-				secondaryAddresses = append(secondaryAddresses, line)
+				if o1, o2 := getOriginator(line); o1 != "" {
+					originatorDateTime = o1
+					originator = o2
+				} else {
+					secondaryAddresses = append(secondaryAddresses, line)
+				}
 			}
 		}
 	}
 
 	return secondaryAddresses, originator, originatorDateTime, bodyAndFooter.String()
+}
+
+func getOriginator(line string) (string, string) {
+	match := originator.FindStringSubmatch(line)
+	if len(match) >= 3 {
+		return match[1], match[2]
+	}
+	return "", ""
+
 }

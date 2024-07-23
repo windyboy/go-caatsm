@@ -115,9 +115,10 @@ NNNN`
 			body := "(ARR-CES5470-ZBTJ-ZSHC1614)"
 			parser := NewBodyParser()
 			It("should parse the body correctly", func() {
-				parsedBody, err := parser.Parse(body)
+				category, parsedBody, err := parser.Parse(body)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(parsedBody).ToNot(BeNil())
+				Expect(category).To(Equal("ARR"))
 				Expect(parsedBody).To(BeAssignableToTypeOf(&domain.ARR{}))
 				arrMessage := parsedBody.(*domain.ARR)
 				Expect(arrMessage.Category).To(Equal("ARR"))
@@ -131,32 +132,34 @@ NNNN`
 
 		Context("with ARR body", func() {
 			parser := NewBodyParser()
-			It("should parse the body (ARR-AB123-SSR1234-KJFK-KLAX1234) correctly", func() {
-				body := " (ARR-AB123-SSR1234-KJFK-KLAX1234)"
-				parsedBody, err := parser.Parse(body)
+			It("should parse the body (ARR-AB123/A1234-KJFK-KLAX1234) correctly", func() {
+				body := " (ARR-AB123/A1234-KJFK-KLAX1234)"
+				category, parsedBody, err := parser.Parse(body)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(parsedBody).ToNot(BeNil())
+				Expect(category).To(Equal("ARR"))
 				Expect(parsedBody).To(BeAssignableToTypeOf(&domain.ARR{}))
 				arrMessage := parsedBody.(*domain.ARR)
 				Expect(arrMessage.Category).To(Equal("ARR"))
 				Expect(arrMessage.AircraftID).To(Equal("AB123"))
-				Expect(arrMessage.SSRModeAndCode).To(Equal("SSR1234"))
+				Expect(arrMessage.SSRModeAndCode).To(Equal("A1234"))
 				Expect(arrMessage.DepartureAirport).To(Equal("KJFK"))
 				Expect(arrMessage.ArrivalAirport).To(Equal("KLAX"))
 			})
 
 			It("should parse the body (ARR-JAE7433/A0132-RKSI-ZBTJ1604) correctly", func() {
 				body := " (ARR-JAE7433/A0132-RKSI-ZBTJ1604)"
-				parsedBody, err := parser.Parse(body)
+				category, parsedBody, err := parser.Parse(body)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(parsedBody).ToNot(BeNil())
+				Expect(category).To(Equal("ARR"))
 				Expect(parsedBody).To(BeAssignableToTypeOf(&domain.ARR{}))
 				arrMessage := parsedBody.(*domain.ARR)
 				Expect(arrMessage.Category).To(Equal("ARR"))
-				Expect(arrMessage.AircraftID).To(Equal("AB123"))
-				Expect(arrMessage.SSRModeAndCode).To(Equal("SSR1234"))
-				Expect(arrMessage.DepartureAirport).To(Equal("KJFK"))
-				Expect(arrMessage.ArrivalAirport).To(Equal("KLAX"))
+				Expect(arrMessage.AircraftID).To(Equal("JAE7433"))
+				Expect(arrMessage.SSRModeAndCode).To(Equal("A0132"))
+				Expect(arrMessage.DepartureAirport).To(Equal("RKSI"))
+				Expect(arrMessage.ArrivalAirport).To(Equal("ZBTJ"))
 			})
 
 		})
@@ -165,9 +168,10 @@ NNNN`
 			parser := NewBodyParser()
 			It("should parse the body (DEP-CYZ9017/A5633-ZBTJ1638-ZSPD) correctly", func() {
 				body := "(DEP-CYZ9017/A5633-ZBTJ1638-ZSPD)"
-				parsedBody, err := parser.Parse(body)
+				category, parsedBody, err := parser.Parse(body)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(parsedBody).ToNot(BeNil())
+				Expect(category).To(Equal("DEP"))
 				Expect(parsedBody).To(BeAssignableToTypeOf(&domain.DEP{}))
 				depMessage := parsedBody.(*domain.DEP)
 				Expect(depMessage.Category).To(Equal("DEP"))
@@ -189,9 +193,10 @@ NNNN`
 -K0859S1040 PIAKS G330 PIMOL A539 BTO W82 DOGAR
 -ZBAA0153 ZBYN
 -PBN/A1B2B3B4B5D1L1 NAV/ABAS REG/B6513 EET/ZBPE0112 SEL/KMAL PER/C RIF/FRT N640 ZBYN RMK/TCAS EQUIPPED)`
-				parsedBody, err := parser.Parse(body)
+				category, parsedBody, err := parser.Parse(body)
 				Expect(err).ToNot(HaveOccurred())
 				Expect(parsedBody).ToNot(BeNil())
+				Expect(category).To(Equal("FPL"))
 				Expect(parsedBody).To(BeAssignableToTypeOf(&domain.FPL{}))
 				fplMessage := parsedBody.(*domain.FPL)
 				Expect(fplMessage.FlightNumber).To(Equal("CCA1532"))
@@ -246,7 +251,10 @@ NNNN
 				Expect(parsedMessage.MessageID).To(Equal("TMQ2526"))
 				Expect(parsedMessage.DateTime).To(Equal("141605"))
 				Expect(parsedMessage.PrimaryAddress).To(Equal("ZBTJZPZX"))
-				Expect(parsedMessage.SecondaryAddresses).To(Equal([]string{"141604 ZBACZQZX"}))
+				Expect(parsedMessage.SecondaryAddresses).To(BeNil())
+				Expect(parsedMessage.PriorityIndicator).To(Equal("FF"))
+				Expect(parsedMessage.OriginatorDateTime).To(Equal("141604"))
+				Expect(parsedMessage.Originator).To(Equal("ZBACZQZX"))
 
 				arrmsg := parsedMessage.BodyData.(*domain.ARR)
 				Expect(arrmsg.Category).To(Equal("ARR"))
@@ -255,6 +263,78 @@ NNNN
 				Expect(arrmsg.DepartureAirport).To(Equal("RKSI"))
 				Expect(arrmsg.ArrivalAirport).To(Equal("ZBTJ"))
 				Expect(arrmsg.ArrivalTime).To(Equal("1604"))
+			})
+		})
+
+		Context("real fpl", func() {
+			message := `ZCZC TMQ2544 141652
+
+
+FF ZBTJZXZX
+
+
+141652 ZBTJZPZX
+
+
+(FPL-JAE7433-IS
+
+
+-B744/H-SXIRPZJWY/S
+
+
+-ZBTJ1755
+
+
+-K0926S0920 CG A326 VYK W80 HUR B339 GM A575 MANSA/K0919S0980 A575
+
+
+ INTIK/K0917S0960 A575 UDA DCT BULAG A200 HATGA/K0900S1060 A308
+
+
+ LARNA DCT RATKO A307 KUMOD R497 TODES B228 ZJ R22 KTL R30 SPB
+
+
+ B141 RANVA/N0485F360 UP863 DEREX UP739 KOLJA UN746 GORPI UZ80
+
+
+ TILAV UL87 TADUV T173 GED GED2W
+ 
+
+-EDDF0948 EDDK
+
+
+-EET/ZMUB0100 UNKL0236 UNWW0332 UNNT0332 USRR0447 USHH0507
+
+
+ USSS0535 UUYY0602 ULKK0634 ULWW0653 ULLL0720 EETT0748 EVRR0815
+
+
+ ESAA0821 EPWW0848 EDUU0900
+
+
+ REG/B2422 SEL/JLAD OPR/JADE CARGO DAT/S RVR/200
+
+
+ NAV/RNAV1 RNAV5 RNP4
+
+
+ RMK/AGCS EQUIPPED
+
+
+ ACARS EQUIPPED/TCAS EQUIPPED/FOREIGN PILOT
+
+
+ E/1148 P/TBN R/UV S/M J/LF D/1 15 C YELLOW
+
+
+ A/WHITE GREEN)
+
+NNNN
+`
+			It("should parse the whole message correctly", func() {
+				parsedMessage, err := Parse(message)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(parsedMessage).ToNot(BeNil())
 			})
 		})
 	})

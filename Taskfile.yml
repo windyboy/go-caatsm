@@ -36,20 +36,23 @@ tasks:
   run-dev:
     desc: Run the receiver in development mode
     cmds:
+      - task: build-receiver
       - echo "Running receiver in development mode..."
-      - GO_ENV=development {{.BUILD_DIR}}/receiver &
+      - GO_ENV=dev {{.BUILD_DIR}}/receiver 
 
   run-prod:
     desc: Run the receiver in production mode
     cmds:
+      - task: build-receiver
       - echo "Running receiver in production mode..."
-      - GO_ENV=production {{.BUILD_DIR}}/receiver &
+      - GO_ENV=prod {{.BUILD_DIR}}/receiver 
 
   run-test:
     desc: Run the receiver in test mode
     cmds:
+      - task: build-receiver
       - echo "Running receiver in test mode..."
-      - GO_ENV=test {{.BUILD_DIR}}/receiver &
+      - GO_ENV=test {{.BUILD_DIR}}/receiver 
 
   test:
     desc: Test the application
@@ -109,5 +112,6 @@ tasks:
       - echo "  task fmt            - Format the code"
       - echo "  task deps           - Install dependencies"
       - echo "  task lint           - Lint the code"
-      - echo "  task download-schema - Download the GraphQL schema from Hasura server"
+      - echo "  task schema - Download the GraphQL schema from Hasura server"
+      - echo "  task gen            - Generate code using genqlient"
       - echo "  task help           - Show this help message"

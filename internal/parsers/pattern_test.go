@@ -24,12 +24,12 @@ var _ = Describe("Pattern Parser", func() {
 
 	Describe("ParseBody", func() {
 		It("should parse the message body and extract data based on patterns", func() {
-			message := "(ARR-AB123-SSR1234-KJFK-KLAX1234)"
+			message := "(ARR-AB123/A1234-KJFK-KLAX1234)"
 			parsedData := ParseBody(message)
 			Expect(parsedData).NotTo(BeNil())
 			Expect(parsedData["category"]).To(Equal("ARR"))
 			Expect(parsedData["number"]).To(Equal("AB123"))
-			Expect(parsedData["ssr"]).To(Equal("SSR1234"))
+			Expect(parsedData["ssr"]).To(Equal("A1234"))
 			Expect(parsedData["departure"]).To(Equal("KJFK"))
 			Expect(parsedData["arrival"]).To(Equal("KLAX"))
 		})
