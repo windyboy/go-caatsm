@@ -3,10 +3,10 @@ package repository
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"os"
 
 	"caatsm/internal/domain"
+	"caatsm/pkg/utils"
 
 	"github.com/Khan/genqlient/graphql"
 	"github.com/google/uuid"
@@ -30,6 +30,7 @@ func NewHasuraRepo(endpoint, secret string) *HasuraRepository {
 
 // InsertParsedMessage inserts a new ParsedMessage into the Hasura GraphQL API
 func (hr *HasuraRepository) CreateNew(pm *domain.ParsedMessage) error {
+	log := utils.GetSugaredLogger()
 	bodyString, _ := json.Marshal(pm.BodyData)
 	secondAddress, _ := json.Marshal(pm.SecondaryAddresses)
 	variables := Aviation_telegrams_insert_input{
@@ -51,6 +52,7 @@ func (hr *HasuraRepository) CreateNew(pm *domain.ParsedMessage) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Inserted new message: %v\n", resp)
+	// fmt.Printf("Inserted new message: %v\n", resp)
+	log.Infof("Saved : %v\n", resp)
 	return nil
 }

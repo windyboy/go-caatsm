@@ -95,11 +95,12 @@ type TimeReceiver struct {
 }
 
 func (h *SITAHeader) Validate() error {
+	log := utils.GetLogger()
 	// Validate SendTime format (e.g., DDHHMM)
 	if len(h.SendTime) != 6 {
 		err := "invalid send_time format"
 
-		utils.Logger.Error(err)
+		log.Errorf("error validating send_time: %v", err)
 		return fmt.Errorf(err)
 	}
 	return nil

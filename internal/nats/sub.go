@@ -5,6 +5,7 @@ import (
 	"caatsm/internal/domain"
 	"caatsm/internal/parsers"
 	"caatsm/internal/repository"
+	"caatsm/pkg/utils"
 	"context"
 	"errors"
 	"fmt"
@@ -62,9 +63,10 @@ func (n *NatsHandler) Subscribe() {
 	}
 }
 func (n *NatsHandler) handleMessage(msg *message.Message) error {
-	// log := utils.Logger
+	log := utils.GetSugaredLogger()
 	if msg.Payload == nil {
-		fmt.Println("empty message")
+		// fmt.Println("empty message")
+		log.Error("empty message")
 		return fmt.Errorf("empty message")
 	}
 	payload := string(msg.Payload)
@@ -72,11 +74,13 @@ func (n *NatsHandler) handleMessage(msg *message.Message) error {
 	var parsed *domain.ParsedMessage
 	if parsed, err = parsers.Parse(payload); err != nil {
 
-		fmt.Printf("not parsed: [%s] : {%s} - %v\n", msg.UUID, msg.Payload, err)
+		// fmt.Printf("not parsed: [%s] : {%s} - %v\n", msg.UUID, msg.Payload, err)
+		log.Infof("not parsed: [%s] : {%s} - %v\n", msg.UUID, msg.Payload, err)
 		// return err
 	} else {
 
-		fmt.Printf("parsed [%s]: %v\n", msg.UUID, parsed)
+		// fmt.Printf("parsed [%s]: %v\n", msg.UUID, parsed)
+		log.Infof("parsed [%s]: %v\n", msg.UUID, parsed)
 
 	}
 	parsed.Uuid = msg.UUID
