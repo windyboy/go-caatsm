@@ -46,15 +46,13 @@ func load() {
 		env := getEnv()
 		fmt.Printf("Enviroment : %s\n", env)
 		configFile := getConfigFile(env)
-		// fmt.Printf("Config File : %s\n", configFile)
-		// if err != nil {
-		// 	fmt.Printf("Error finding config file: %v\n", err)
-		// 	return
-		// }
-		// fmt.Printf("Loading config from file: %s\n", configFile)
+
 		config, err := loadConfig(configFile)
 		if err != nil {
 			fmt.Printf("Error loading config: %v\n", err)
+			//create a default logger
+			log, _ = zap.NewDevelopment()
+			sugar = log.Sugar()
 			return
 		}
 

@@ -3,9 +3,11 @@ package parsers
 import (
 	"caatsm/internal/config"
 	"caatsm/internal/domain"
+	"caatsm/pkg/utils"
 	"fmt"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -30,27 +32,28 @@ var (
 	otherPatterns      = []*regexp.Regexp{navPattern, remarkPattern, selPattern, pbnPattern, eetPattern, performancePattern, reroutePattern}
 )
 
+var mu sync.Mutex
+
 type BodyParser struct {
+	bodyMu       sync.Mutex
 	bodyPatterns map[string]config.BodyConfig
 }
 
-// NewBodyParser initializes a BodyParser with the default body patterns.
 func NewBodyParser() *BodyParser {
 	return &BodyParser{bodyPatterns: config.GetBodyPatterns()}
 }
 
-// GetBodyPatterns returns the body patterns used by the parser.
 func (bp *BodyParser) GetBodyPatterns() map[string]config.BodyConfig {
 	return bp.bodyPatterns
 }
 
-// SetBodyPatterns sets the body patterns for the parser.
 func (bp *BodyParser) SetBodyPatterns(patterns map[string]config.BodyConfig) {
 	bp.bodyPatterns = patterns
 }
 
-// Parse attempts to parse the body text using the configured patterns.
 func (bp *BodyParser) Parse(body string) (string, interface{}, error) {
+	bp.bodyMu.Lock()
+	defer bp.bodyMu.Unlock()
 	body = strings.TrimSpace(body)
 	category := findCategory(body)
 	if category == "" {
@@ -61,14 +64,13 @@ func (bp *BodyParser) Parse(body string) (string, interface{}, error) {
 		for _, p := range patternConfig.Patterns {
 			if match := p.Expression.FindStringSubmatch(body); match != nil {
 				data := extractData(match, p.Expression)
-				return createBodyData(data)
+				return bp.createBodyData(data)
 			}
 		}
 	}
 	return "", nil, fmt.Errorf("no matching pattern found for body: %s", body)
 }
 
-// findCategory extracts the category from the body text using regex.
 func findCategory(body string) string {
 	if match := categoryRegex.FindStringSubmatch(body); match != nil {
 		for i, name := range categoryRegex.SubexpNames() {
@@ -80,7 +82,6 @@ func findCategory(body string) string {
 	return ""
 }
 
-// extractData extracts named groups from the regex match and returns them as a map.
 func extractData(match []string, re *regexp.Regexp) map[string]string {
 	data := make(map[string]string)
 	for i, name := range re.SubexpNames() {
@@ -91,8 +92,7 @@ func extractData(match []string, re *regexp.Regexp) map[string]string {
 	return data
 }
 
-// createBodyData creates the appropriate domain object based on the type of message.
-func createBodyData(data map[string]string) (string, interface{}, error) {
+func (bp *BodyParser) createBodyData(data map[string]string) (string, interface{}, error) {
 	switch category := data["category"]; category {
 	case "ARR":
 		return category, &domain.ARR{
@@ -139,12 +139,13 @@ func createBodyData(data map[string]string) (string, interface{}, error) {
 			Remarks:                 otherData["remark"],
 		}, nil
 	default:
-		return category, nil, fmt.Errorf("cann't parse : %s", category)
+		return category, nil, fmt.Errorf("cannot parse: %s", category)
 	}
 }
 
-// Parse parses the raw text message and returns a ParsedMessage.
 func Parse(rawText string) (*domain.ParsedMessage, error) {
+	mu.Lock()
+	defer mu.Unlock()
 	message, err := ParseHeader(rawText)
 	if err != nil {
 		return nil, err
@@ -163,7 +164,6 @@ func Parse(rawText string) (*domain.ParsedMessage, error) {
 	return &message, nil
 }
 
-// clean removes empty lines from a given text and extracts the body only.
 func clean(text string) string {
 	cleanedText := emptyLineRemove.ReplaceAllString(text, "")
 	cleanText := strings.ReplaceAll(cleanedText, "\n\n", "\n")
@@ -177,10 +177,15 @@ func clean(text string) string {
 	return ""
 }
 
-// ParseHeader parses the header of the message and returns a ParsedMessage struct.
 func ParseHeader(fullMessage string) (domain.ParsedMessage, error) {
+	log := utils.GetSugaredLogger()
 	fullMessage = clean(fullMessage)
 	lines := strings.Split(fullMessage, "\n")
+
+	if len(lines) < 3 {
+		log.Warnf("invalid message format: %s", fullMessage)
+		return domain.ParsedMessage{}, fmt.Errorf("invalid message format: %s", fullMessage)
+	}
 
 	_, messageID, dateTime, err := parseStartIndicator(lines[0])
 	if err != nil {
@@ -203,25 +208,24 @@ func ParseHeader(fullMessage string) (domain.ParsedMessage, error) {
 	}, nil
 }
 
-// parseStartIndicator parses the start indicator line.
 func parseStartIndicator(line string) (string, string, string, error) {
 	parts := strings.Fields(line)
 	if len(parts) >= 3 && strings.HasPrefix(parts[0], StartIndicatorPrefix) {
 		return parts[0], parts[1], parts[2], nil
 	}
+	utils.GetSugaredLogger().Warnf("invalid start indicator line format: %s", line)
 	return "", "", "", fmt.Errorf("invalid start indicator line format: %s", line)
 }
 
-// parsePriorityAndPrimary parses the priority indicator and primary address line.
 func parsePriorityAndPrimary(line string) (string, string) {
 	parts := strings.Fields(line)
 	if len(parts) >= 2 {
 		return parts[0], parts[1]
 	}
+	utils.GetSugaredLogger().Warnf("invalid priority and primary address line format: %s", line)
 	return "", ""
 }
 
-// parseRemainingLines parses the remaining lines of the message.
 func parseRemainingLines(lines []string) ([]string, string, string, string) {
 	var (
 		secondaryAddresses []string
@@ -238,7 +242,6 @@ func parseRemainingLines(lines []string) ([]string, string, string, string) {
 		} else {
 			switch {
 			case line == EndHeaderMarker:
-				// End header marker, do nothing
 			case strings.HasPrefix(line, "."):
 				originatorInfo := strings.Fields(line[1:])
 				if len(originatorInfo) >= 2 {
@@ -266,16 +269,15 @@ func parseRemainingLines(lines []string) ([]string, string, string, string) {
 	return secondaryAddresses, originator, originatorDateTime, bodyAndFooter.String()
 }
 
-// getOriginator extracts originator details from a line of text.
 func getOriginator(line string) (string, string) {
 	match := originator.FindStringSubmatch(line)
 	if len(match) >= 3 {
 		return match[1], match[2]
 	}
+	utils.GetSugaredLogger().Warnf("invalid originator line format: %s", line)
 	return "", ""
 }
 
-// parseOther parses additional information from the message body.
 func parseOther(text string) map[string]string {
 	data := make(map[string]string)
 	for _, re := range otherPatterns {

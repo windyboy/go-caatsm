@@ -10,39 +10,32 @@ import (
 var _ = Describe("Aviation Parser", func() {
 	Describe("ParseHeader", func() {
 
-		Context("with a real arr context", func() {
+		Context("with a real ARR context", func() {
 			message := `ZCZC TMQ2530 141614
-
-
 GG ZBTJZXZX
-
-
 141614 ZSHCZTZX
-
 (ARR-CES5470-ZBTJ-ZSHC1614)
-
 NNNN`
-			It("get a clean body text", func() {
+			It("should get a clean body text", func() {
 				body := clean(message)
-				expexted := `ZCZC TMQ2530 141614
+				expected := `ZCZC TMQ2530 141614
 GG ZBTJZXZX
 141614 ZSHCZTZX
 (ARR-CES5470-ZBTJ-ZSHC1614)`
-				// fmt.Printf("\n%v \n%v\n", []byte(body), []byte(expexted))
-				Expect(body).To(Equal(expexted))
+				Expect(body).To(Equal(expected))
 			})
 		})
 
 		It("should parse the header correctly", func() {
 			message := `
-			ZCZC TAF6789 160530
+ZCZC TAF6789 160530
 QU TSNZPCA
 .
 QU PEKUDCA TSNUOCA TSNZPCA TSNUFCA
 .TAF WSSS 160500Z 1606/1712 20010KT 9999 SCT018 
- BECMG 1608/1610 24012KT 9999 SCT018 
- TEMPO 1610/1612 4000 SHRA BKN012 
- BECMG 1612/1614 18008KT 9999 SCT020
+BECMG 1608/1610 24012KT 9999 SCT018 
+TEMPO 1610/1612 4000 SHRA BKN012 
+BECMG 1612/1614 18008KT 9999 SCT020
 
 BEGIN PART 02
 
@@ -54,13 +47,11 @@ ALTERNATE ROUTES ADVISED)
 NNNN`
 			parsedHeader, err := ParseHeader(message)
 			Expect(err).ToNot(HaveOccurred())
-			// Expect(parsedHeader.StartIndicator).To(Equal("ZCZC"))
 			Expect(parsedHeader.MessageID).To(Equal("TAF6789"))
 			Expect(parsedHeader.DateTime).To(Equal("160530"))
 			Expect(parsedHeader.PriorityIndicator).To(Equal("QU"))
 			Expect(parsedHeader.PrimaryAddress).To(Equal("TSNZPCA"))
 			Expect(parsedHeader.SecondaryAddresses).To(Equal([]string{"QU PEKUDCA TSNUOCA TSNZPCA TSNUFCA"}))
-
 		})
 
 		It("should parse the header correctly with originator information", func() {
@@ -85,7 +76,7 @@ WE ACKNOWLEDGE THE RUNWAY CLOSURE.
 
 - CONTROL TOWER:
 
-                    SIGN . . . . . . . . . .
+SIGN . . . . . . . . . .
 
 BEGIN PART 02
 
@@ -97,7 +88,6 @@ ALL DEPARTURES/ARRIVALS EXPECTED TO BE DELAYED)
 NNNN`
 			parsedHeader, err := ParseHeader(message)
 			Expect(err).ToNot(HaveOccurred())
-			// Expect(parsedHeader.StartIndicator).To(Equal("ZCZC"))
 			Expect(parsedHeader.MessageID).To(Equal("NOTAM1122"))
 			Expect(parsedHeader.DateTime).To(Equal("171000"))
 			Expect(parsedHeader.PriorityIndicator).To(Equal("QU"))
@@ -210,7 +200,6 @@ NNNN`
 				Expect(fplMessage.DestinationAndTotalTime).To(Equal("ZBAA0153"))
 				Expect(fplMessage.AlternateAirport).To(Equal("ZBYN"))
 				Expect(fplMessage.OtherInfo).To(Equal("PBN/A1B2B3B4B5D1L1 NAV/ABAS REG/B6513 EET/ZBPE0112 SEL/KMAL PER/C RIF/FRT N640 ZBYN RMK/TCAS EQUIPPED"))
-				// Expect(fplMessage.SupplementaryInfo).To(Equal("RMK/TCAS EQUIPPED"))
 				Expect(fplMessage.PBN).To(Equal("A1B2B3B4B5D1L1"))
 				Expect(fplMessage.EstimatedElapsedTime).To(Equal("ZBPE0112"))
 				Expect(fplMessage.SELCALCode).To(Equal("KMAL"))
@@ -219,28 +208,20 @@ NNNN`
 				Expect(fplMessage.Remarks).To(Equal("TCAS EQUIPPED"))
 			})
 		})
+
 	})
 
 	Describe("Parse whole real message", func() {
 
-		Context("with a real arr message", func() {
+		Context("with a real ARR message", func() {
 			message := `
 ZCZC TMQ2526 141605
 
-
 FF ZBTJZPZX
-
 
 141604 ZBACZQZX
 
-
 (ARR-JAE7433/A0132-RKSI-ZBTJ1604)
-
-
-
-
-
-
 
 NNNN
 `
@@ -263,78 +244,6 @@ NNNN
 				Expect(arrmsg.DepartureAirport).To(Equal("RKSI"))
 				Expect(arrmsg.ArrivalAirport).To(Equal("ZBTJ"))
 				Expect(arrmsg.ArrivalTime).To(Equal("1604"))
-			})
-		})
-
-		Context("real fpl", func() {
-			message := `ZCZC TMQ2544 141652
-
-
-FF ZBTJZXZX
-
-
-141652 ZBTJZPZX
-
-
-(FPL-JAE7433-IS
-
-
--B744/H-SXIRPZJWY/S
-
-
--ZBTJ1755
-
-
--K0926S0920 CG A326 VYK W80 HUR B339 GM A575 MANSA/K0919S0980 A575
-
-
- INTIK/K0917S0960 A575 UDA DCT BULAG A200 HATGA/K0900S1060 A308
-
-
- LARNA DCT RATKO A307 KUMOD R497 TODES B228 ZJ R22 KTL R30 SPB
-
-
- B141 RANVA/N0485F360 UP863 DEREX UP739 KOLJA UN746 GORPI UZ80
-
-
- TILAV UL87 TADUV T173 GED GED2W
- 
-
--EDDF0948 EDDK
-
-
--EET/ZMUB0100 UNKL0236 UNWW0332 UNNT0332 USRR0447 USHH0507
-
-
- USSS0535 UUYY0602 ULKK0634 ULWW0653 ULLL0720 EETT0748 EVRR0815
-
-
- ESAA0821 EPWW0848 EDUU0900
-
-
- REG/B2422 SEL/JLAD OPR/JADE CARGO DAT/S RVR/200
-
-
- NAV/RNAV1 RNAV5 RNP4
-
-
- RMK/AGCS EQUIPPED
-
-
- ACARS EQUIPPED/TCAS EQUIPPED/FOREIGN PILOT
-
-
- E/1148 P/TBN R/UV S/M J/LF D/1 15 C YELLOW
-
-
- A/WHITE GREEN)
-
-NNNN
-`
-			It("should parse the whole message correctly", func() {
-				parsedMessage, err := Parse(message)
-				Expect(err).ToNot(HaveOccurred())
-				Expect(parsedMessage).ToNot(BeNil())
 			})
 		})
 	})

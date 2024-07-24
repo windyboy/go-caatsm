@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill-nats/v2/pkg/nats"
@@ -17,6 +18,7 @@ import (
 )
 
 type NatsHandler struct {
+	mu         sync.Mutex
 	config     *config.Config
 	hasuraRepo *repository.HasuraRepository
 }
@@ -63,6 +65,8 @@ func (n *NatsHandler) Subscribe() {
 	}
 }
 func (n *NatsHandler) handleMessage(msg *message.Message) error {
+	n.mu.Lock()
+	defer n.mu.Unlock()
 	log := utils.GetSugaredLogger()
 	if msg.Payload == nil {
 		// fmt.Println("empty message")
@@ -83,9 +87,11 @@ func (n *NatsHandler) handleMessage(msg *message.Message) error {
 		log.Infof("parsed [%s]: %v\n", msg.UUID, parsed)
 
 	}
-	parsed.Uuid = msg.UUID
-	if err = n.hasuraRepo.CreateNew(parsed); err != nil {
-		fmt.Print("error inserting message", err)
+	if parsed != nil {
+		parsed.Uuid = msg.UUID
+		if err = n.hasuraRepo.CreateNew(parsed); err != nil {
+			fmt.Print("error inserting message", err)
+		}
 	}
 	return err
 }
