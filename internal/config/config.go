@@ -79,34 +79,24 @@ const (
 	// - arrival: the four-letter arrival airport code
 	depPatternString = `^\((?P<category>[A-Z]{3})-(?P<number>[A-Z0-9]+)(\/(?P<ssr>[A-Z0-9]+))?-(?P<departure>[A-Z]{4})(?P<departure_time>\d{4})-(?P<arrival>[A-Z]{4})\)$`
 
-	// fplPatternString is a regular expression designed to parse and extract detailed information from formatted flight plan strings.
-	// The flight plan string is expected to follow a specific format, encapsulated by parentheses and containing various segments separated by hyphens.
-	// Each segment captures a different aspect of the flight plan, as detailed below:
-	//
-	// - category: Matches a three-letter flight category code.
-	// - number: Matches the flight number, consisting of letters followed by digits.
-	// - indicator: Matches a two-letter indicator.
-	// - aircraft: Matches the aircraft registration or type, which may include a slash and an optional letter.
-	// - surve: Matches surveillance equipment information, capturing any characters in this segment.
-	// - departure: Matches the four-letter code of the departure airport.
-	// - departure_time: Matches the four-digit departure time.
-	// - speed: Matches the speed, consisting of letters followed by digits.
-	// - level: Matches the flight level, which can include letters and digits.
-	// - route: Matches the flight route, capturing any characters in this segment.
-	// - destination: Matches the four-letter code of the destination airport.
-	// - estt: Matches the four-digit estimated time of arrival.
-	// - alter: Matches the four-letter code of an alternate airport.
-	// - pbn: Matches performance-based navigation equipment information.
-	// - nav: Matches navigation equipment information.
-	// - reg: Matches the aircraft registration.
-	// - eet: Matches the estimated elapsed time, including the four-letter code and four-digit time.
-	// - sel: Matches the SELCAL code.
-	// - performance: Matches a single letter indicating the aircraft's performance category.
-	// - rif: Matches reroute information, including any characters in this segment.
-	// - remark: Matches remarks, capturing any characters in this segment.
-	//
-	// The regular expression uses named capture groups for each segment, allowing for easy extraction of specific information from a matched flight plan string.
-	// fplPatternString = `\((?P<category>[A-Z]{3})\-(?P<number>[A-Z]+\d+)\-(?P<indicator>[A-Z]{2})(.*\n)?(.*\n)?\-(?P<aircraft>[A-Z]+\d+\/?[A-Z]?)\s*\-(?P<surve>.*)(.*\n)?\-(?P<departure>[A-Z]{4})(?P<departure_time>\d{4})(.*\n)?\-(?P<speed>[A-Z]+\d+)(?P<level>[A-Z0-9]+)\s(?P<route>.*)(.*\n)?\-(?P<destination>[A-Z]{4})(?P<estt>\d{4})\s(?P<alter>[A-Z]{4})(.*\n)?\-(?P<pbn>PBN\/[A-Z0-9]+)\s(?P<nav>NAV\/\w+)\sREG\/(?P<reg>[A-Z0-9]+)\sEET\/(?P<eet>\w{4}\d{4})\sSEL\/(?P<sel>\w+)\sPER\/(?P<performance>\w)\sRIF\/(?P<rif>\w+\s[A-Z0-9]+\s[A-Z]+)\s*RMK\/(?P<remark>.*)\)$`
+	// fplPatternString represents the regular expression pattern used to match flight plan patterns.
+	// The pattern matches strings in the format: "(CATEGORY-NUMBER-INDICATOR-AIRCRAFT-SURVE-DEPARTURE-DEPARTURE_TIME-SPEED-LEVEL-ROUTE-DESTINATION-ESTT-ALTER-OTHER)".
+	// The pattern captures the following named groups:
+	// - category: the three-letter category code
+	// - number: the alphanumeric flight number
+	// - indicator: the two-letter indicator
+	// - aircraft: the alphanumeric aircraft type, optionally followed by a slash and an uppercase letter
+	// - surve: any character sequence (surveillance information)
+	// - departure: the four-letter departure airport code
+	// - departure_time: the four-digit departure time
+	// - speed: one or more uppercase letters followed by one or more digits (e.g., N123)
+	// - level: one or more alphanumeric characters (e.g., FL350)
+	// - route: one or more characters (including newline) representing the flight route
+	// - destination: the four-letter destination airport code
+	// - estt: the four-digit estimated time of arrival
+	// - alter: one or more sequences of a whitespace character followed by exactly four uppercase letters
+	// - other: any other relevant information, starting with three uppercase letters followed by a forward slash and zero or more characters (including newline)
+
 	fplPatternString = `\((?P<category>[A-Z]{3})-(?P<number>[A-Z]+\d+)-(?P<indicator>[A-Z]{2})\n-(?P<aircraft>[A-Z]+\d+\/?[A-Z]?)\n?-(?P<surve>.*)\n?-(?P<departure>[A-Z]{4})(?P<departure_time>\d{4})\n?-(?P<speed>[A-Z]+\d+)(?P<level>[A-Z0-9]+)\s+(?P<route>(.|\n)+)\n-(?P<destination>[A-Z]{4})(?P<estt>\d{4})\s?(?P<alter>(\s[A-Z]{4})+)\n?-([A-Z]{3}\/(?:[A-Z]{4}\d{4}\s?)+)?(?P<other>(?m)[A-Z]{3}\/(.|\n)*)\)$`
 )
 
