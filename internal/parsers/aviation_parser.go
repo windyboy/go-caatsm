@@ -32,29 +32,35 @@ var (
 	otherPatterns      = []*regexp.Regexp{navPattern, remarkPattern, selPattern, pbnPattern, eetPattern, performancePattern, reroutePattern}
 )
 
-var mu sync.Mutex
-
 type BodyParser struct {
-	bodyMu       sync.Mutex
 	body         string
 	bodyPatterns map[string]config.BodyConfig
+	mu           sync.Mutex
 }
 
 func NewBodyParser(body string) *BodyParser {
-	return &BodyParser{bodyPatterns: config.GetBodyPatterns(), body: body}
+	return &BodyParser{
+		bodyPatterns: config.GetBodyPatterns(),
+		body:         body,
+	}
 }
 
 func (bp *BodyParser) GetBodyPatterns() map[string]config.BodyConfig {
+	bp.mu.Lock()
+	defer bp.mu.Unlock()
 	return bp.bodyPatterns
 }
 
 func (bp *BodyParser) SetBodyPatterns(patterns map[string]config.BodyConfig) {
+	bp.mu.Lock()
+	defer bp.mu.Unlock()
 	bp.bodyPatterns = patterns
 }
 
 func (bp *BodyParser) Parse() (string, interface{}, error) {
-	bp.bodyMu.Lock()
-	defer bp.bodyMu.Unlock()
+	bp.mu.Lock()
+	defer bp.mu.Unlock()
+
 	bp.body = strings.TrimSpace(bp.body)
 	category := findCategory(bp.body)
 	if category == "" {
@@ -140,13 +146,11 @@ func (bp *BodyParser) createBodyData(data map[string]string) (string, interface{
 			Remarks:                 otherData["remark"],
 		}, nil
 	default:
-		return category, nil, fmt.Errorf("cannot parse: %s", category)
+		return category, nil, fmt.Errorf("invalid message type: %s", category)
 	}
 }
 
 func Parse(rawText string) (*domain.ParsedMessage, error) {
-	mu.Lock()
-	defer mu.Unlock()
 	message, err := ParseHeader(rawText)
 	if err != nil {
 		return nil, err
