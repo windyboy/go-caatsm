@@ -36,11 +36,12 @@ var mu sync.Mutex
 
 type BodyParser struct {
 	bodyMu       sync.Mutex
+	body         string
 	bodyPatterns map[string]config.BodyConfig
 }
 
-func NewBodyParser() *BodyParser {
-	return &BodyParser{bodyPatterns: config.GetBodyPatterns()}
+func NewBodyParser(body string) *BodyParser {
+	return &BodyParser{bodyPatterns: config.GetBodyPatterns(), body: body}
 }
 
 func (bp *BodyParser) GetBodyPatterns() map[string]config.BodyConfig {
@@ -51,24 +52,24 @@ func (bp *BodyParser) SetBodyPatterns(patterns map[string]config.BodyConfig) {
 	bp.bodyPatterns = patterns
 }
 
-func (bp *BodyParser) Parse(body string) (string, interface{}, error) {
+func (bp *BodyParser) Parse() (string, interface{}, error) {
 	bp.bodyMu.Lock()
 	defer bp.bodyMu.Unlock()
-	body = strings.TrimSpace(body)
-	category := findCategory(body)
+	bp.body = strings.TrimSpace(bp.body)
+	category := findCategory(bp.body)
 	if category == "" {
 		return "", nil, fmt.Errorf("no category found in body text")
 	}
 
 	if patternConfig, exists := bp.bodyPatterns[category]; exists && patternConfig.Patterns != nil {
 		for _, p := range patternConfig.Patterns {
-			if match := p.Expression.FindStringSubmatch(body); match != nil {
+			if match := p.Expression.FindStringSubmatch(bp.body); match != nil {
 				data := extractData(match, p.Expression)
 				return bp.createBodyData(data)
 			}
 		}
 	}
-	return "", nil, fmt.Errorf("no matching pattern found for body: %s", body)
+	return "", nil, fmt.Errorf("no matching pattern found for body: %s", bp.body)
 }
 
 func findCategory(body string) string {
@@ -151,8 +152,8 @@ func Parse(rawText string) (*domain.ParsedMessage, error) {
 		return nil, err
 	}
 
-	bodyParser := NewBodyParser()
-	category, bodyData, err := bodyParser.Parse(message.BodyAndFooter)
+	bodyParser := NewBodyParser(message.BodyAndFooter)
+	category, bodyData, err := bodyParser.Parse()
 	message.Category = category
 	message.ParsedAt = time.Now()
 

@@ -103,9 +103,9 @@ NNNN`
 
 		Context("with ARR body (ARR-CES5470-ZBTJ-ZSHC1614)", func() {
 			body := "(ARR-CES5470-ZBTJ-ZSHC1614)"
-			parser := NewBodyParser()
+			parser := NewBodyParser(body)
 			It("should parse the body correctly", func() {
-				category, parsedBody, err := parser.Parse(body)
+				category, parsedBody, err := parser.Parse()
 				Expect(err).ToNot(HaveOccurred())
 				Expect(parsedBody).ToNot(BeNil())
 				Expect(category).To(Equal("ARR"))
@@ -121,10 +121,11 @@ NNNN`
 		})
 
 		Context("with ARR body", func() {
-			parser := NewBodyParser()
+			// parser := NewBodyParser(body)
 			It("should parse the body (ARR-AB123/A1234-KJFK-KLAX1234) correctly", func() {
 				body := " (ARR-AB123/A1234-KJFK-KLAX1234)"
-				category, parsedBody, err := parser.Parse(body)
+				parser := NewBodyParser(body)
+				category, parsedBody, err := parser.Parse()
 				Expect(err).ToNot(HaveOccurred())
 				Expect(parsedBody).ToNot(BeNil())
 				Expect(category).To(Equal("ARR"))
@@ -139,7 +140,8 @@ NNNN`
 
 			It("should parse the body (ARR-JAE7433/A0132-RKSI-ZBTJ1604) correctly", func() {
 				body := " (ARR-JAE7433/A0132-RKSI-ZBTJ1604)"
-				category, parsedBody, err := parser.Parse(body)
+				parser := NewBodyParser(body)
+				category, parsedBody, err := parser.Parse()
 				Expect(err).ToNot(HaveOccurred())
 				Expect(parsedBody).ToNot(BeNil())
 				Expect(category).To(Equal("ARR"))
@@ -155,10 +157,11 @@ NNNN`
 		})
 
 		Context("with DEP body", func() {
-			parser := NewBodyParser()
+			// parser := NewBodyParser()
 			It("should parse the body (DEP-CYZ9017/A5633-ZBTJ1638-ZSPD) correctly", func() {
 				body := "(DEP-CYZ9017/A5633-ZBTJ1638-ZSPD)"
-				category, parsedBody, err := parser.Parse(body)
+				parser := NewBodyParser(body)
+				category, parsedBody, err := parser.Parse()
 				Expect(err).ToNot(HaveOccurred())
 				Expect(parsedBody).ToNot(BeNil())
 				Expect(category).To(Equal("DEP"))
@@ -174,7 +177,7 @@ NNNN`
 		})
 
 		Context("with FPL body", func() {
-			parser := NewBodyParser()
+			// parser := NewBodyParser()
 			It("should parse the body correctly", func() {
 				body := `(FPL-CCA1532-IS
 -A332/H
@@ -183,7 +186,8 @@ NNNN`
 -K0859S1040 PIAKS G330 PIMOL A539 BTO W82 DOGAR
 -ZBAA0153 ZBYN
 -PBN/A1B2B3B4B5D1L1 NAV/ABAS REG/B6513 EET/ZBPE0112 SEL/KMAL PER/C RIF/FRT N640 ZBYN RMK/TCAS EQUIPPED)`
-				category, parsedBody, err := parser.Parse(body)
+				parser := NewBodyParser(body)
+				category, parsedBody, err := parser.Parse()
 				Expect(err).ToNot(HaveOccurred())
 				Expect(parsedBody).ToNot(BeNil())
 				Expect(category).To(Equal("FPL"))
