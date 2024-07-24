@@ -86,7 +86,7 @@ func extractData(match []string, re *regexp.Regexp) map[string]string {
 	data := make(map[string]string)
 	for i, name := range re.SubexpNames() {
 		if i != 0 && name != "" {
-			data[name] = match[i]
+			data[name] = strings.TrimSpace(match[i])
 		}
 	}
 	return data

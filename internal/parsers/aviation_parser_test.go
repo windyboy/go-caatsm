@@ -246,6 +246,66 @@ NNNN
 				Expect(arrmsg.ArrivalTime).To(Equal("1604"))
 			})
 		})
+
+		Context("with this real FPL message", func() {
+			message := `ZCZC TMQ2617 142150
+
+
+GG ZBTJZPZX
+
+
+150551 ZBTJUOBK
+
+
+(FPL-OKA2861-IS
+
+
+-MA60/M-SHID/C
+
+
+-ZBTJ0030
+
+
+-K0420S0450 CG J1 FZ
+
+
+-ZSYT0100  ZSQD ZYTL
+
+
+-REG/B3710 SEL/ RMK/TCAS )
+
+NNNN
+`
+			It("should parse the whole message correctly", func() {
+				parsedMessage, err := Parse(message)
+				Expect(err).ToNot(HaveOccurred())
+				Expect(parsedMessage).ToNot(BeNil())
+				Expect(parsedMessage.MessageID).To(Equal("TMQ2617"))
+				Expect(parsedMessage.DateTime).To(Equal("142150"))
+				Expect(parsedMessage.PrimaryAddress).To(Equal("ZBTJZPZX"))
+				Expect(parsedMessage.SecondaryAddresses).To(BeNil())
+				Expect(parsedMessage.PriorityIndicator).To(Equal("GG"))
+				Expect(parsedMessage.OriginatorDateTime).To(Equal("150551"))
+				Expect(parsedMessage.Originator).To(Equal("ZBTJUOBK"))
+
+				fplmsg := parsedMessage.BodyData.(*domain.FPL)
+				Expect(fplmsg.Category).To(Equal("FPL"))
+				Expect(fplmsg.FlightNumber).To(Equal("OKA2861"))
+				Expect(fplmsg.FlightRulesAndType).To(Equal("IS"))
+				Expect(fplmsg.AircraftID).To(Equal("MA60/M"))
+				Expect(fplmsg.SSRModeAndCode).To(Equal("SHID/C"))
+				Expect(fplmsg.DepartureAirport).To(Equal("ZBTJ"))
+				Expect(fplmsg.DepartureTime).To(Equal("0030"))
+				Expect(fplmsg.CruisingSpeedAndLevel).To(Equal("K0420S0450"))
+				Expect(fplmsg.Route).To(Equal("CG J1 FZ"))
+				Expect(fplmsg.DestinationAndTotalTime).To(Equal("ZSYT0100"))
+				Expect(fplmsg.AlternateAirport).To(Equal("ZSQD ZYTL"))
+				Expect(fplmsg.OtherInfo).To(Equal("REG/B3710 SEL/ RMK/TCAS"))
+				// Expect(fplmsg.PBN).To(Equal("B3710"))
+				Expect(fplmsg.SELCALCode).To(Equal(""))
+				Expect(fplmsg.Remarks).To(Equal("TCAS"))
+			})
+		})
 	})
 
 	Describe("Utility Functions", func() {
