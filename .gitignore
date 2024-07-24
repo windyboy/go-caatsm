@@ -45,3 +45,7 @@ Thumbs.db
 
 # Dependency directories (remove the comment below if you want to ignore them)
 #vendor/
+
+
+# test report
+*.report
