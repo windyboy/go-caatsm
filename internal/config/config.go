@@ -98,6 +98,8 @@ const (
 	// - other: any other relevant information, starting with three uppercase letters followed by a forward slash and zero or more characters (including newline)
 
 	fplPatternString = `\((?P<category>[A-Z]{3})-(?P<number>[A-Z]+\d+)-(?P<indicator>[A-Z]{2})\n-(?P<aircraft>[A-Z]+\d+\/?[A-Z]?)\n?-(?P<surve>.*)\n?-(?P<departure>[A-Z]{4})(?P<departure_time>\d{4})\n?-(?P<speed>[A-Z]+\d+)(?P<level>[A-Z0-9]+)\s+(?P<route>(.|\n)+)\n-(?P<destination>[A-Z]{4})(?P<estt>\d{4})\s?(?P<alter>(\s[A-Z]{4})+)\n?-([A-Z]{3}\/(?:[A-Z]{4}\d{4}\s?)+)?(?P<other>(?m)[A-Z]{3}\/(.|\n)*)\)$`
+
+	cnlPatternString = `^\((?P<category>[A-Z]{3})-(?P<number>\w+\d+)-?(?P<departure>[A-Z]{4})?-?(?<destination>[A-Z]{4})\)$`
 )
 
 // Initialize the bodyPatterns map
@@ -126,6 +128,15 @@ var bodyPatterns = map[string]BodyConfig{
 				Pattern:    fplPatternString,
 				Comments:   "Pattern for FPL message",
 				Expression: regexp.MustCompile(fplPatternString),
+			},
+		},
+	},
+	"CNL": {
+		Patterns: []PatternConfig{
+			{
+				Pattern:    cnlPatternString,
+				Comments:   "Pattern for CNL message",
+				Expression: regexp.MustCompile(cnlPatternString),
 			},
 		},
 	},

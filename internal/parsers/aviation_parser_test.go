@@ -213,6 +213,21 @@ NNNN`
 			})
 		})
 
+		Context("with CNL body", func() {
+			// parser := NewBodyParser()
+			It("should parse the body correctly", func() {
+				body := "(CNL-YZR7979-ZSPD-ZBTJ)"
+				parser := NewBodyParser(body)
+				category, parsedBody, err := parser.Parse()
+				Expect(err).ToNot(HaveOccurred())
+				Expect(parsedBody).ToNot(BeNil())
+				Expect(category).To(Equal("CNL"))
+				Expect(parsedBody).To(BeAssignableToTypeOf(&domain.CNL{}))
+				cnlMessage := parsedBody.(*domain.CNL)
+				Expect(cnlMessage.AircraftID).To(Equal("YZR7979"))
+			})
+		})
+
 	})
 
 	Describe("Parse whole real message", func() {
