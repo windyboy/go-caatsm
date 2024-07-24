@@ -164,7 +164,7 @@ func Parse(rawText string) (*domain.ParsedMessage, error) {
 	return &message, nil
 }
 
-func clean(text string) string {
+func cleanMessage(text string) string {
 	cleanedText := emptyLineRemove.ReplaceAllString(text, "")
 	cleanText := strings.ReplaceAll(cleanedText, "\n\n", "\n")
 	if match := bodyOnly.FindStringSubmatch(cleanText); len(match) > 1 {
@@ -179,7 +179,7 @@ func clean(text string) string {
 
 func ParseHeader(fullMessage string) (domain.ParsedMessage, error) {
 	log := utils.GetSugaredLogger()
-	fullMessage = clean(fullMessage)
+	fullMessage = cleanMessage(fullMessage)
 	lines := strings.Split(fullMessage, "\n")
 
 	if len(lines) < 3 {

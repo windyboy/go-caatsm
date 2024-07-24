@@ -17,7 +17,7 @@ GG ZBTJZXZX
 (ARR-CES5470-ZBTJ-ZSHC1614)
 NNNN`
 			It("should get a clean body text", func() {
-				body := clean(message)
+				body := cleanMessage(message)
 				expected := `ZCZC TMQ2530 141614
 GG ZBTJZXZX
 141614 ZSHCZTZX
@@ -245,6 +245,58 @@ NNNN
 				Expect(arrmsg.ArrivalAirport).To(Equal("ZBTJ"))
 				Expect(arrmsg.ArrivalTime).To(Equal("1604"))
 			})
+		})
+	})
+
+	Describe("Utility Functions", func() {
+
+		It("should clean text correctly", func() {
+			text := `ZCZC TMQ2530 141614
+
+1234
+  4567
+NNNN`
+			expect := "ZCZC TMQ2530 141614\n1234\n  4567"
+			cleaned := cleanMessage(text)
+			Expect(cleaned).To(Equal(expect))
+		})
+
+		It("should parse start indicator correctly", func() {
+			line := "ZCZC TMQ2530 141614"
+			startIndicator, messageID, dateTime, err := parseStartIndicator(line)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(startIndicator).To(Equal("ZCZC"))
+			Expect(messageID).To(Equal("TMQ2530"))
+			Expect(dateTime).To(Equal("141614"))
+		})
+
+		It("should return error for invalid start indicator line", func() {
+			line := "Invalid Line"
+			_, _, _, err := parseStartIndicator(line)
+			Expect(err).To(HaveOccurred())
+		})
+
+		It("should parse priority and primary address correctly", func() {
+			line := "QU TSNZPCA"
+			priority, primary := parsePriorityAndPrimary(line)
+			Expect(priority).To(Equal("QU"))
+			Expect(primary).To(Equal("TSNZPCA"))
+		})
+
+		It("should return empty strings for invalid priority and primary address line", func() {
+			line := "Invalid-Line"
+			priority, primary := parsePriorityAndPrimary(line)
+			Expect(priority).To(BeEmpty())
+			Expect(primary).To(BeEmpty())
+		})
+
+		It("should parse remaining lines correctly", func() {
+			lines := []string{"QU PEKUDCA TSNUOCA TSNZPCA TSNUFCA", ".SELOZKE 170999", "BEGIN PART 01"}
+			secondaryAddresses, originator, originatorDateTime, bodyAndFooter := parseRemainingLines(lines)
+			Expect(secondaryAddresses).To(Equal([]string{"QU PEKUDCA TSNUOCA TSNZPCA TSNUFCA"}))
+			Expect(originator).To(Equal("SELOZKE"))
+			Expect(originatorDateTime).To(Equal("170999"))
+			Expect(bodyAndFooter).To(Equal("BEGIN PART 01\n"))
 		})
 	})
 })
