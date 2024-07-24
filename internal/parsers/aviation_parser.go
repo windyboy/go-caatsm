@@ -27,7 +27,7 @@ var (
 	eetPattern         = regexp.MustCompile(`(?s)(-?EET\/(?P<eet>(?:[A-Z]{4}\d{4}\s*)+))`)
 	performancePattern = regexp.MustCompile(`(?s)-?PER\/(?P<per>\w)`)
 	reroutePattern     = regexp.MustCompile(`(?m)RIF\/(?P<rif>.*)[A-Z]{3}\/`)
-	otherPatterns      = []regexp.Regexp{*navPattern, *remarkPattern, *selPattern, *pbnPattern, *eetPattern, *performancePattern, *reroutePattern}
+	otherPatterns      = []*regexp.Regexp{navPattern, remarkPattern, selPattern, pbnPattern, eetPattern, performancePattern, reroutePattern}
 )
 
 type BodyParser struct {
@@ -51,43 +51,27 @@ func (bp *BodyParser) SetBodyPatterns(patterns map[string]config.BodyConfig) {
 
 // Parse attempts to parse the body text using the configured patterns.
 func (bp *BodyParser) Parse(body string) (string, interface{}, error) {
-	// log := utils.Logger
 	body = strings.TrimSpace(body)
-	// log.Info("Parsing body text", body)
 	category := findCategory(body)
 	if category == "" {
-		// log.Error("No category found in body text")
 		return "", nil, fmt.Errorf("no category found in body text")
 	}
-	patters := bp.GetBodyPatterns()
-	// log.Infof("body config [%s] %v\n", category, patters[category])
-	if patterConfig := patters[category]; patterConfig.Patterns != nil {
 
-		for _, p := range patterConfig.Patterns {
-			// log.Infof("Trying pattern  %s\n%s\n", p.Comments, p.Pattern)
-
-			re := p.Expression
-			match := re.FindStringSubmatch(body)
-			// log.Info("Match: ", match)
-			if match != nil {
-				// log.Infof("Matched: %v\n", match)
-				data := extractData(match, re)
-
+	if patternConfig, exists := bp.bodyPatterns[category]; exists && patternConfig.Patterns != nil {
+		for _, p := range patternConfig.Patterns {
+			if match := p.Expression.FindStringSubmatch(body); match != nil {
+				data := extractData(match, p.Expression)
 				return createBodyData(data)
 			}
-			// log.Infof("No match for pattern %s\n", p.Comments)
 		}
-
 	}
-	return "", nil, fmt.Errorf(" no matching pattern found for body: %s", body)
+	return "", nil, fmt.Errorf("no matching pattern found for body: %s", body)
 }
 
+// findCategory extracts the category from the body text using regex.
 func findCategory(body string) string {
-	match := categoryRegex.FindStringSubmatch(body)
-	// utils.Logger.Infof("Match: %v\n", match)
-	if match != nil {
-		groups := categoryRegex.SubexpNames()
-		for i, name := range groups {
+	if match := categoryRegex.FindStringSubmatch(body); match != nil {
+		for i, name := range categoryRegex.SubexpNames() {
 			if i != 0 && name == "category" {
 				return match[i]
 			}
@@ -96,7 +80,7 @@ func findCategory(body string) string {
 	return ""
 }
 
-// extractData extracts named groups from the regex match.
+// extractData extracts named groups from the regex match and returns them as a map.
 func extractData(match []string, re *regexp.Regexp) map[string]string {
 	data := make(map[string]string)
 	for i, name := range re.SubexpNames() {
@@ -109,8 +93,7 @@ func extractData(match []string, re *regexp.Regexp) map[string]string {
 
 // createBodyData creates the appropriate domain object based on the type of message.
 func createBodyData(data map[string]string) (string, interface{}, error) {
-	category := data["category"]
-	switch data["category"] {
+	switch category := data["category"]; category {
 	case "ARR":
 		return category, &domain.ARR{
 			Category:         data["category"],
@@ -156,64 +139,47 @@ func createBodyData(data map[string]string) (string, interface{}, error) {
 			Remarks:                 otherData["remark"],
 		}, nil
 	default:
-		return category, nil, fmt.Errorf("invalid message type: %s", category)
+		return category, nil, fmt.Errorf("cann't parse : %s", category)
 	}
 }
 
 // Parse parses the raw text message and returns a ParsedMessage.
-// Parse parses the raw text message and returns a ParsedMessage.
 func Parse(rawText string) (*domain.ParsedMessage, error) {
-	// Parse the header of the message
 	message, err := ParseHeader(rawText)
 	if err != nil {
 		return nil, err
 	}
 
-	// Initialize a new body parser
 	bodyParser := NewBodyParser()
-
-	// Parse the body and footer of the message
 	category, bodyData, err := bodyParser.Parse(message.BodyAndFooter)
-
 	message.Category = category
+	message.ParsedAt = time.Now()
 
 	if err != nil {
-		// Return the message with the parsed header and the error
-		message.ParsedAt = time.Now()
 		return &message, err
 	}
 
-	// Set the parsed time to the current time
-	message.ParsedAt = time.Now()
-
-	// Assign the parsed body data to the message
 	message.BodyData = bodyData
-
-	// Return the fully parsed message
 	return &message, nil
 }
 
-// removeEmptyLines removes empty lines from a given text.
+// clean removes empty lines from a given text and extracts the body only.
 func clean(text string) string {
 	cleanedText := emptyLineRemove.ReplaceAllString(text, "")
 	cleanText := strings.ReplaceAll(cleanedText, "\n\n", "\n")
-	// if bodyOnly != nil {
-	match := bodyOnly.FindStringSubmatch(cleanText)
-	if len(match) > 1 {
-		bodyOnly := match[2]
-		if bodyOnly[len(bodyOnly)-1] == '\n' {
-			return bodyOnly[:len(bodyOnly)-1]
+	if match := bodyOnly.FindStringSubmatch(cleanText); len(match) > 1 {
+		bodyContent := match[2]
+		if bodyContent[len(bodyContent)-1] == '\n' {
+			return bodyContent[:len(bodyContent)-1]
 		}
-		return bodyOnly
+		return bodyContent
 	}
-	// }
 	return ""
 }
 
-// parseHeader parses the header of the message and returns a ParsedMessage struct.
+// ParseHeader parses the header of the message and returns a ParsedMessage struct.
 func ParseHeader(fullMessage string) (domain.ParsedMessage, error) {
 	fullMessage = clean(fullMessage)
-	// fullMessage = strings.TrimSpace(fullMessage)
 	lines := strings.Split(fullMessage, "\n")
 
 	_, messageID, dateTime, err := parseStartIndicator(lines[0])
@@ -221,16 +187,10 @@ func ParseHeader(fullMessage string) (domain.ParsedMessage, error) {
 		return domain.ParsedMessage{}, err
 	}
 
-	// priorityIndicator, primaryAddress, err := parsePriorityAndPrimary(lines[1])
-	// if err != nil {
-	// 	return domain.ParsedMessage{}, err
-	// }
 	priorityIndicator, primaryAddress := parsePriorityAndPrimary(lines[1])
-
 	secondaryAddresses, originator, originatorDateTime, bodyAndFooter := parseRemainingLines(lines[2:])
 
 	return domain.ParsedMessage{
-		// StartIndicator:     startIndicator,
 		MessageID:          messageID,
 		DateTime:           dateTime,
 		PriorityIndicator:  priorityIndicator,
@@ -306,29 +266,26 @@ func parseRemainingLines(lines []string) ([]string, string, string, string) {
 	return secondaryAddresses, originator, originatorDateTime, bodyAndFooter.String()
 }
 
+// getOriginator extracts originator details from a line of text.
 func getOriginator(line string) (string, string) {
 	match := originator.FindStringSubmatch(line)
 	if len(match) >= 3 {
 		return match[1], match[2]
 	}
 	return "", ""
-
 }
 
+// parseOther parses additional information from the message body.
 func parseOther(text string) map[string]string {
-	// fmt.Printf("Parsing other: %s\n", text)
 	data := make(map[string]string)
 	for _, re := range otherPatterns {
-		match := re.FindStringSubmatch(text)
-		if len(match) > 0 { // Corrected condition
-			// fmt.Println("Matched: ", match)
+		if match := re.FindStringSubmatch(text); len(match) > 0 {
 			for i, name := range re.SubexpNames() {
-				// fmt.Printf("index: %d, name: %s\n", i, name)
 				if i != 0 && name != "" {
 					data[name] = strings.TrimSpace(match[i])
 				}
 			}
 		}
 	}
-	return data // Return the data map instead of nil
+	return data
 }
