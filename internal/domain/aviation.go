@@ -96,7 +96,8 @@ type ParsedMessage struct {
 	Originator         string      `json:"originator,omitempty"`         // 发件人: The sender of the message.
 	OriginatorDateTime string      `json:"originatorDateTime,omitempty"` // 发件日期时间: The date and time when the originator sent the message.
 	Category           string      `json:"category,omitempty"`           // 类别: The category of the message.
-	BodyAndFooter      string      `json:"bodyAndFooter,omitempty"`      // 正文和页脚: The body and footer of the message (e.g., 'CALLSIGN/ABC123\nFPL/AB1234-AB\n...').
+	Text               string      `json:"bodyAndFooter,omitempty"`      // 正文和页脚: The body and footer of the message (e.g., 'CALLSIGN/ABC123\nFPL/AB1234-AB\n...').
+	Body               string      `json:"body,omitempty"`               // 正文: The body of the message.
 	BodyData           interface{} `json:"bodyData,omitempty"`           // 正文数据: Parsed body data.
 	ReceivedAt         time.Time   `json:"receivedAt"`                   // 接收时间: The time when the message was received.
 	ParsedAt           time.Time   `json:"parsedAt,omitempty"`           // 解析时间: The time when the message was parsed.

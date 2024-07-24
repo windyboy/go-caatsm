@@ -29,21 +29,6 @@ input Boolean_comparison_exp {
 }
 
 """
-Boolean expression to compare columns of type "Int". All fields are combined with logical 'AND'.
-"""
-input Int_comparison_exp {
-  _eq: Int
-  _gt: Int
-  _gte: Int
-  _in: [Int!]
-  _is_null: Boolean
-  _lt: Int
-  _lte: Int
-  _neq: Int
-  _nin: [Int!]
-}
-
-"""
 Boolean expression to compare columns of type "String". All fields are combined with logical 'AND'.
 """
 input String_comparison_exp {
@@ -100,7 +85,7 @@ input String_comparison_exp {
 columns and relationships of "aviation.telegrams"
 """
 type aviation_telegrams {
-  body_and_footer: String
+  Text: String
   body_data(
     """JSON select path"""
     path: String
@@ -108,7 +93,7 @@ type aviation_telegrams {
   category: String
   date_time: String
   dispatched_at: timestamp
-  message_id: String!
+  message_id: String
   need_dispatch: Boolean
   originator: String
   originator_date_time: String
@@ -116,11 +101,8 @@ type aviation_telegrams {
   primary_address: String
   priority_indicator: String
   received_at: timestamp!
-  secondary_addresses(
-    """JSON select path"""
-    path: String
-  ): jsonb
-  uuid: uuid
+  secondary_addresses: String
+  uuid: uuid!
 }
 
 """
@@ -143,17 +125,16 @@ type aviation_telegrams_aggregate_fields {
 """append existing jsonb value of filtered columns with new jsonb value"""
 input aviation_telegrams_append_input {
   body_data: jsonb
-  secondary_addresses: jsonb
 }
 
 """
 Boolean expression to filter rows from the table "aviation.telegrams". All fields are combined with a logical 'AND'.
 """
 input aviation_telegrams_bool_exp {
+  Text: String_comparison_exp
   _and: [aviation_telegrams_bool_exp!]
   _not: aviation_telegrams_bool_exp
   _or: [aviation_telegrams_bool_exp!]
-  body_and_footer: String_comparison_exp
   body_data: jsonb_comparison_exp
   category: String_comparison_exp
   date_time: String_comparison_exp
@@ -166,7 +147,7 @@ input aviation_telegrams_bool_exp {
   primary_address: String_comparison_exp
   priority_indicator: String_comparison_exp
   received_at: timestamp_comparison_exp
-  secondary_addresses: jsonb_comparison_exp
+  secondary_addresses: String_comparison_exp
   uuid: uuid_comparison_exp
 }
 
@@ -175,14 +156,9 @@ unique or primary key constraints on table "aviation.telegrams"
 """
 enum aviation_telegrams_constraint {
   """
-  unique or primary key constraint on columns "message_id"
-  """
-  telegrams_pkey
-
-  """
   unique or primary key constraint on columns "uuid"
   """
-  telegrams_uuid_key
+  telegrams_pkey
 }
 
 """
@@ -190,7 +166,6 @@ delete the field or element with specified path (for JSON arrays, negative integ
 """
 input aviation_telegrams_delete_at_path_input {
   body_data: [String!]
-  secondary_addresses: [String!]
 }
 
 """
@@ -198,7 +173,6 @@ delete the array element with specified index (negative integers count from the 
 """
 input aviation_telegrams_delete_elem_input {
   body_data: Int
-  secondary_addresses: Int
 }
 
 """
@@ -206,14 +180,13 @@ delete key/value pair or string element. key/value pairs are matched based on th
 """
 input aviation_telegrams_delete_key_input {
   body_data: String
-  secondary_addresses: String
 }
 
 """
 input type for inserting data into table "aviation.telegrams"
 """
 input aviation_telegrams_insert_input {
-  body_and_footer: String
+  Text: String
   body_data: jsonb
   category: String
   date_time: String
@@ -226,13 +199,13 @@ input aviation_telegrams_insert_input {
   primary_address: String
   priority_indicator: String
   received_at: timestamp
-  secondary_addresses: jsonb
+  secondary_addresses: String
   uuid: uuid
 }
 
 """aggregate max on columns"""
 type aviation_telegrams_max_fields {
-  body_and_footer: String
+  Text: String
   category: String
   date_time: String
   dispatched_at: timestamp
@@ -243,12 +216,13 @@ type aviation_telegrams_max_fields {
   primary_address: String
   priority_indicator: String
   received_at: timestamp
+  secondary_addresses: String
   uuid: uuid
 }
 
 """aggregate min on columns"""
 type aviation_telegrams_min_fields {
-  body_and_footer: String
+  Text: String
   category: String
   date_time: String
   dispatched_at: timestamp
@@ -259,6 +233,7 @@ type aviation_telegrams_min_fields {
   primary_address: String
   priority_indicator: String
   received_at: timestamp
+  secondary_addresses: String
   uuid: uuid
 }
 
@@ -284,7 +259,7 @@ input aviation_telegrams_on_conflict {
 
 """Ordering options when selecting data from "aviation.telegrams"."""
 input aviation_telegrams_order_by {
-  body_and_footer: order_by
+  Text: order_by
   body_data: order_by
   category: order_by
   date_time: order_by
@@ -303,13 +278,12 @@ input aviation_telegrams_order_by {
 
 """primary key columns input for table: aviation.telegrams"""
 input aviation_telegrams_pk_columns_input {
-  message_id: String!
+  uuid: uuid!
 }
 
 """prepend existing jsonb value of filtered columns with new jsonb value"""
 input aviation_telegrams_prepend_input {
   body_data: jsonb
-  secondary_addresses: jsonb
 }
 
 """
@@ -317,7 +291,7 @@ select columns of table "aviation.telegrams"
 """
 enum aviation_telegrams_select_column {
   """column name"""
-  body_and_footer
+  Text
 
   """column name"""
   body_data
@@ -366,7 +340,7 @@ enum aviation_telegrams_select_column {
 input type for updating data in table "aviation.telegrams"
 """
 input aviation_telegrams_set_input {
-  body_and_footer: String
+  Text: String
   body_data: jsonb
   category: String
   date_time: String
@@ -379,7 +353,7 @@ input aviation_telegrams_set_input {
   primary_address: String
   priority_indicator: String
   received_at: timestamp
-  secondary_addresses: jsonb
+  secondary_addresses: String
   uuid: uuid
 }
 
@@ -396,7 +370,7 @@ input aviation_telegrams_stream_cursor_input {
 
 """Initial value of the column from where the streaming should start"""
 input aviation_telegrams_stream_cursor_value_input {
-  body_and_footer: String
+  Text: String
   body_data: jsonb
   category: String
   date_time: String
@@ -409,7 +383,7 @@ input aviation_telegrams_stream_cursor_value_input {
   primary_address: String
   priority_indicator: String
   received_at: timestamp
-  secondary_addresses: jsonb
+  secondary_addresses: String
   uuid: uuid
 }
 
@@ -418,7 +392,7 @@ update columns of table "aviation.telegrams"
 """
 enum aviation_telegrams_update_column {
   """column name"""
-  body_and_footer
+  Text
 
   """column name"""
   body_data
@@ -492,242 +466,6 @@ input aviation_telegrams_updates {
   where: aviation_telegrams_bool_exp!
 }
 
-"""user for test simple graphql"""
-type aviation_user {
-  email: String!
-  id: Int!
-  name: String!
-  update_at: timestamptz
-}
-
-"""
-aggregated selection of "aviation.user"
-"""
-type aviation_user_aggregate {
-  aggregate: aviation_user_aggregate_fields
-  nodes: [aviation_user!]!
-}
-
-"""
-aggregate fields of "aviation.user"
-"""
-type aviation_user_aggregate_fields {
-  avg: aviation_user_avg_fields
-  count(columns: [aviation_user_select_column!], distinct: Boolean): Int!
-  max: aviation_user_max_fields
-  min: aviation_user_min_fields
-  stddev: aviation_user_stddev_fields
-  stddev_pop: aviation_user_stddev_pop_fields
-  stddev_samp: aviation_user_stddev_samp_fields
-  sum: aviation_user_sum_fields
-  var_pop: aviation_user_var_pop_fields
-  var_samp: aviation_user_var_samp_fields
-  variance: aviation_user_variance_fields
-}
-
-"""aggregate avg on columns"""
-type aviation_user_avg_fields {
-  id: Float
-}
-
-"""
-Boolean expression to filter rows from the table "aviation.user". All fields are combined with a logical 'AND'.
-"""
-input aviation_user_bool_exp {
-  _and: [aviation_user_bool_exp!]
-  _not: aviation_user_bool_exp
-  _or: [aviation_user_bool_exp!]
-  email: String_comparison_exp
-  id: Int_comparison_exp
-  name: String_comparison_exp
-  update_at: timestamptz_comparison_exp
-}
-
-"""
-unique or primary key constraints on table "aviation.user"
-"""
-enum aviation_user_constraint {
-  """
-  unique or primary key constraint on columns "id"
-  """
-  user_pkey
-}
-
-"""
-input type for incrementing numeric columns in table "aviation.user"
-"""
-input aviation_user_inc_input {
-  id: Int
-}
-
-"""
-input type for inserting data into table "aviation.user"
-"""
-input aviation_user_insert_input {
-  email: String
-  id: Int
-  name: String
-  update_at: timestamptz
-}
-
-"""aggregate max on columns"""
-type aviation_user_max_fields {
-  email: String
-  id: Int
-  name: String
-  update_at: timestamptz
-}
-
-"""aggregate min on columns"""
-type aviation_user_min_fields {
-  email: String
-  id: Int
-  name: String
-  update_at: timestamptz
-}
-
-"""
-response of any mutation on the table "aviation.user"
-"""
-type aviation_user_mutation_response {
-  """number of rows affected by the mutation"""
-  affected_rows: Int!
-
-  """data from the rows affected by the mutation"""
-  returning: [aviation_user!]!
-}
-
-"""
-on_conflict condition type for table "aviation.user"
-"""
-input aviation_user_on_conflict {
-  constraint: aviation_user_constraint!
-  update_columns: [aviation_user_update_column!]! = []
-  where: aviation_user_bool_exp
-}
-
-"""Ordering options when selecting data from "aviation.user"."""
-input aviation_user_order_by {
-  email: order_by
-  id: order_by
-  name: order_by
-  update_at: order_by
-}
-
-"""primary key columns input for table: aviation.user"""
-input aviation_user_pk_columns_input {
-  id: Int!
-}
-
-"""
-select columns of table "aviation.user"
-"""
-enum aviation_user_select_column {
-  """column name"""
-  email
-
-  """column name"""
-  id
-
-  """column name"""
-  name
-
-  """column name"""
-  update_at
-}
-
-"""
-input type for updating data in table "aviation.user"
-"""
-input aviation_user_set_input {
-  email: String
-  id: Int
-  name: String
-  update_at: timestamptz
-}
-
-"""aggregate stddev on columns"""
-type aviation_user_stddev_fields {
-  id: Float
-}
-
-"""aggregate stddev_pop on columns"""
-type aviation_user_stddev_pop_fields {
-  id: Float
-}
-
-"""aggregate stddev_samp on columns"""
-type aviation_user_stddev_samp_fields {
-  id: Float
-}
-
-"""
-Streaming cursor of the table "aviation_user"
-"""
-input aviation_user_stream_cursor_input {
-  """Stream column input with initial value"""
-  initial_value: aviation_user_stream_cursor_value_input!
-
-  """cursor ordering"""
-  ordering: cursor_ordering
-}
-
-"""Initial value of the column from where the streaming should start"""
-input aviation_user_stream_cursor_value_input {
-  email: String
-  id: Int
-  name: String
-  update_at: timestamptz
-}
-
-"""aggregate sum on columns"""
-type aviation_user_sum_fields {
-  id: Int
-}
-
-"""
-update columns of table "aviation.user"
-"""
-enum aviation_user_update_column {
-  """column name"""
-  email
-
-  """column name"""
-  id
-
-  """column name"""
-  name
-
-  """column name"""
-  update_at
-}
-
-input aviation_user_updates {
-  """increments the numeric columns with given value of the filtered values"""
-  _inc: aviation_user_inc_input
-
-  """sets the columns of the filtered rows to the given values"""
-  _set: aviation_user_set_input
-
-  """filter the rows which have to be updated"""
-  where: aviation_user_bool_exp!
-}
-
-"""aggregate var_pop on columns"""
-type aviation_user_var_pop_fields {
-  id: Float
-}
-
-"""aggregate var_samp on columns"""
-type aviation_user_var_samp_fields {
-  id: Float
-}
-
-"""aggregate variance on columns"""
-type aviation_user_variance_fields {
-  id: Float
-}
-
 """ordering argument of a cursor"""
 enum cursor_ordering {
   """ascending ordering of the cursor"""
@@ -774,6 +512,391 @@ input jsonb_comparison_exp {
   _nin: [jsonb!]
 }
 
+"""
+columns and relationships of "messages"
+"""
+type messages {
+  body_and_footer: String
+  body_data(
+    """JSON select path"""
+    path: String
+  ): jsonb
+  category: String
+  date_time: String
+  dispatched_at: timestamptz
+  id: uuid!
+  message_id: String!
+  need_dispatch: Boolean
+  originator: String
+  originator_date_time: String
+  parsed_at: timestamptz
+  primary_address: String
+  priority_indicator: String
+  received_at: timestamptz
+  secondary_addresses: String
+}
+
+"""
+aggregated selection of "messages"
+"""
+type messages_aggregate {
+  aggregate: messages_aggregate_fields
+  nodes: [messages!]!
+}
+
+"""
+aggregate fields of "messages"
+"""
+type messages_aggregate_fields {
+  count(columns: [messages_select_column!], distinct: Boolean): Int!
+  max: messages_max_fields
+  min: messages_min_fields
+}
+
+"""append existing jsonb value of filtered columns with new jsonb value"""
+input messages_append_input {
+  body_data: jsonb
+}
+
+"""
+Boolean expression to filter rows from the table "messages". All fields are combined with a logical 'AND'.
+"""
+input messages_bool_exp {
+  _and: [messages_bool_exp!]
+  _not: messages_bool_exp
+  _or: [messages_bool_exp!]
+  body_and_footer: String_comparison_exp
+  body_data: jsonb_comparison_exp
+  category: String_comparison_exp
+  date_time: String_comparison_exp
+  dispatched_at: timestamptz_comparison_exp
+  id: uuid_comparison_exp
+  message_id: String_comparison_exp
+  need_dispatch: Boolean_comparison_exp
+  originator: String_comparison_exp
+  originator_date_time: String_comparison_exp
+  parsed_at: timestamptz_comparison_exp
+  primary_address: String_comparison_exp
+  priority_indicator: String_comparison_exp
+  received_at: timestamptz_comparison_exp
+  secondary_addresses: String_comparison_exp
+}
+
+"""
+unique or primary key constraints on table "messages"
+"""
+enum messages_constraint {
+  """
+  unique or primary key constraint on columns "id"
+  """
+  parsed_messages_pkey
+}
+
+"""
+delete the field or element with specified path (for JSON arrays, negative integers count from the end)
+"""
+input messages_delete_at_path_input {
+  body_data: [String!]
+}
+
+"""
+delete the array element with specified index (negative integers count from the end). throws an error if top level container is not an array
+"""
+input messages_delete_elem_input {
+  body_data: Int
+}
+
+"""
+delete key/value pair or string element. key/value pairs are matched based on their key value
+"""
+input messages_delete_key_input {
+  body_data: String
+}
+
+"""
+input type for inserting data into table "messages"
+"""
+input messages_insert_input {
+  body_and_footer: String
+  body_data: jsonb
+  category: String
+  date_time: String
+  dispatched_at: timestamptz
+  id: uuid
+  message_id: String
+  need_dispatch: Boolean
+  originator: String
+  originator_date_time: String
+  parsed_at: timestamptz
+  primary_address: String
+  priority_indicator: String
+  received_at: timestamptz
+  secondary_addresses: String
+}
+
+"""aggregate max on columns"""
+type messages_max_fields {
+  body_and_footer: String
+  category: String
+  date_time: String
+  dispatched_at: timestamptz
+  id: uuid
+  message_id: String
+  originator: String
+  originator_date_time: String
+  parsed_at: timestamptz
+  primary_address: String
+  priority_indicator: String
+  received_at: timestamptz
+  secondary_addresses: String
+}
+
+"""aggregate min on columns"""
+type messages_min_fields {
+  body_and_footer: String
+  category: String
+  date_time: String
+  dispatched_at: timestamptz
+  id: uuid
+  message_id: String
+  originator: String
+  originator_date_time: String
+  parsed_at: timestamptz
+  primary_address: String
+  priority_indicator: String
+  received_at: timestamptz
+  secondary_addresses: String
+}
+
+"""
+response of any mutation on the table "messages"
+"""
+type messages_mutation_response {
+  """number of rows affected by the mutation"""
+  affected_rows: Int!
+
+  """data from the rows affected by the mutation"""
+  returning: [messages!]!
+}
+
+"""
+on_conflict condition type for table "messages"
+"""
+input messages_on_conflict {
+  constraint: messages_constraint!
+  update_columns: [messages_update_column!]! = []
+  where: messages_bool_exp
+}
+
+"""Ordering options when selecting data from "messages"."""
+input messages_order_by {
+  body_and_footer: order_by
+  body_data: order_by
+  category: order_by
+  date_time: order_by
+  dispatched_at: order_by
+  id: order_by
+  message_id: order_by
+  need_dispatch: order_by
+  originator: order_by
+  originator_date_time: order_by
+  parsed_at: order_by
+  primary_address: order_by
+  priority_indicator: order_by
+  received_at: order_by
+  secondary_addresses: order_by
+}
+
+"""primary key columns input for table: messages"""
+input messages_pk_columns_input {
+  id: uuid!
+}
+
+"""prepend existing jsonb value of filtered columns with new jsonb value"""
+input messages_prepend_input {
+  body_data: jsonb
+}
+
+"""
+select columns of table "messages"
+"""
+enum messages_select_column {
+  """column name"""
+  body_and_footer
+
+  """column name"""
+  body_data
+
+  """column name"""
+  category
+
+  """column name"""
+  date_time
+
+  """column name"""
+  dispatched_at
+
+  """column name"""
+  id
+
+  """column name"""
+  message_id
+
+  """column name"""
+  need_dispatch
+
+  """column name"""
+  originator
+
+  """column name"""
+  originator_date_time
+
+  """column name"""
+  parsed_at
+
+  """column name"""
+  primary_address
+
+  """column name"""
+  priority_indicator
+
+  """column name"""
+  received_at
+
+  """column name"""
+  secondary_addresses
+}
+
+"""
+input type for updating data in table "messages"
+"""
+input messages_set_input {
+  body_and_footer: String
+  body_data: jsonb
+  category: String
+  date_time: String
+  dispatched_at: timestamptz
+  id: uuid
+  message_id: String
+  need_dispatch: Boolean
+  originator: String
+  originator_date_time: String
+  parsed_at: timestamptz
+  primary_address: String
+  priority_indicator: String
+  received_at: timestamptz
+  secondary_addresses: String
+}
+
+"""
+Streaming cursor of the table "messages"
+"""
+input messages_stream_cursor_input {
+  """Stream column input with initial value"""
+  initial_value: messages_stream_cursor_value_input!
+
+  """cursor ordering"""
+  ordering: cursor_ordering
+}
+
+"""Initial value of the column from where the streaming should start"""
+input messages_stream_cursor_value_input {
+  body_and_footer: String
+  body_data: jsonb
+  category: String
+  date_time: String
+  dispatched_at: timestamptz
+  id: uuid
+  message_id: String
+  need_dispatch: Boolean
+  originator: String
+  originator_date_time: String
+  parsed_at: timestamptz
+  primary_address: String
+  priority_indicator: String
+  received_at: timestamptz
+  secondary_addresses: String
+}
+
+"""
+update columns of table "messages"
+"""
+enum messages_update_column {
+  """column name"""
+  body_and_footer
+
+  """column name"""
+  body_data
+
+  """column name"""
+  category
+
+  """column name"""
+  date_time
+
+  """column name"""
+  dispatched_at
+
+  """column name"""
+  id
+
+  """column name"""
+  message_id
+
+  """column name"""
+  need_dispatch
+
+  """column name"""
+  originator
+
+  """column name"""
+  originator_date_time
+
+  """column name"""
+  parsed_at
+
+  """column name"""
+  primary_address
+
+  """column name"""
+  priority_indicator
+
+  """column name"""
+  received_at
+
+  """column name"""
+  secondary_addresses
+}
+
+input messages_updates {
+  """append existing jsonb value of filtered columns with new jsonb value"""
+  _append: messages_append_input
+
+  """
+  delete the field or element with specified path (for JSON arrays, negative integers count from the end)
+  """
+  _delete_at_path: messages_delete_at_path_input
+
+  """
+  delete the array element with specified index (negative integers count from the end). throws an error if top level container is not an array
+  """
+  _delete_elem: messages_delete_elem_input
+
+  """
+  delete key/value pair or string element. key/value pairs are matched based on their key value
+  """
+  _delete_key: messages_delete_key_input
+
+  """prepend existing jsonb value of filtered columns with new jsonb value"""
+  _prepend: messages_prepend_input
+
+  """sets the columns of the filtered rows to the given values"""
+  _set: messages_set_input
+
+  """filter the rows which have to be updated"""
+  where: messages_bool_exp!
+}
+
 """mutation root"""
 type mutation_root {
   """
@@ -787,20 +910,20 @@ type mutation_root {
   """
   delete single row from the table: "aviation.telegrams"
   """
-  delete_aviation_telegrams_by_pk(message_id: String!): aviation_telegrams
+  delete_aviation_telegrams_by_pk(uuid: uuid!): aviation_telegrams
 
   """
-  delete data from the table: "aviation.user"
+  delete data from the table: "messages"
   """
-  delete_aviation_user(
+  delete_messages(
     """filter the rows which have to be deleted"""
-    where: aviation_user_bool_exp!
-  ): aviation_user_mutation_response
+    where: messages_bool_exp!
+  ): messages_mutation_response
 
   """
-  delete single row from the table: "aviation.user"
+  delete single row from the table: "messages"
   """
-  delete_aviation_user_by_pk(id: Int!): aviation_user
+  delete_messages_by_pk(id: uuid!): messages
 
   """
   insert data into the table: "aviation.telegrams"
@@ -825,26 +948,26 @@ type mutation_root {
   ): aviation_telegrams
 
   """
-  insert data into the table: "aviation.user"
+  insert data into the table: "messages"
   """
-  insert_aviation_user(
+  insert_messages(
     """the rows to be inserted"""
-    objects: [aviation_user_insert_input!]!
+    objects: [messages_insert_input!]!
 
     """upsert condition"""
-    on_conflict: aviation_user_on_conflict
-  ): aviation_user_mutation_response
+    on_conflict: messages_on_conflict
+  ): messages_mutation_response
 
   """
-  insert a single row into the table: "aviation.user"
+  insert a single row into the table: "messages"
   """
-  insert_aviation_user_one(
+  insert_messages_one(
     """the row to be inserted"""
-    object: aviation_user_insert_input!
+    object: messages_insert_input!
 
     """upsert condition"""
-    on_conflict: aviation_user_on_conflict
-  ): aviation_user
+    on_conflict: messages_on_conflict
+  ): messages
 
   """
   update data of the table: "aviation.telegrams"
@@ -917,38 +1040,74 @@ type mutation_root {
   ): [aviation_telegrams_mutation_response]
 
   """
-  update data of the table: "aviation.user"
+  update data of the table: "messages"
   """
-  update_aviation_user(
-    """increments the numeric columns with given value of the filtered values"""
-    _inc: aviation_user_inc_input
+  update_messages(
+    """append existing jsonb value of filtered columns with new jsonb value"""
+    _append: messages_append_input
+
+    """
+    delete the field or element with specified path (for JSON arrays, negative integers count from the end)
+    """
+    _delete_at_path: messages_delete_at_path_input
+
+    """
+    delete the array element with specified index (negative integers count from the end). throws an error if top level container is not an array
+    """
+    _delete_elem: messages_delete_elem_input
+
+    """
+    delete key/value pair or string element. key/value pairs are matched based on their key value
+    """
+    _delete_key: messages_delete_key_input
+
+    """prepend existing jsonb value of filtered columns with new jsonb value"""
+    _prepend: messages_prepend_input
 
     """sets the columns of the filtered rows to the given values"""
-    _set: aviation_user_set_input
+    _set: messages_set_input
 
     """filter the rows which have to be updated"""
-    where: aviation_user_bool_exp!
-  ): aviation_user_mutation_response
+    where: messages_bool_exp!
+  ): messages_mutation_response
 
   """
-  update single row of the table: "aviation.user"
+  update single row of the table: "messages"
   """
-  update_aviation_user_by_pk(
-    """increments the numeric columns with given value of the filtered values"""
-    _inc: aviation_user_inc_input
+  update_messages_by_pk(
+    """append existing jsonb value of filtered columns with new jsonb value"""
+    _append: messages_append_input
+
+    """
+    delete the field or element with specified path (for JSON arrays, negative integers count from the end)
+    """
+    _delete_at_path: messages_delete_at_path_input
+
+    """
+    delete the array element with specified index (negative integers count from the end). throws an error if top level container is not an array
+    """
+    _delete_elem: messages_delete_elem_input
+
+    """
+    delete key/value pair or string element. key/value pairs are matched based on their key value
+    """
+    _delete_key: messages_delete_key_input
+
+    """prepend existing jsonb value of filtered columns with new jsonb value"""
+    _prepend: messages_prepend_input
 
     """sets the columns of the filtered rows to the given values"""
-    _set: aviation_user_set_input
-    pk_columns: aviation_user_pk_columns_input!
-  ): aviation_user
+    _set: messages_set_input
+    pk_columns: messages_pk_columns_input!
+  ): messages
 
   """
-  update multiples rows of table: "aviation.user"
+  update multiples rows of table: "messages"
   """
-  update_aviation_user_many(
+  update_messages_many(
     """updates to execute, in order"""
-    updates: [aviation_user_updates!]!
-  ): [aviation_user_mutation_response]
+    updates: [messages_updates!]!
+  ): [messages_mutation_response]
 }
 
 """column ordering options"""
@@ -1016,14 +1175,14 @@ type query_root {
   """
   fetch data from the table: "aviation.telegrams" using primary key columns
   """
-  aviation_telegrams_by_pk(message_id: String!): aviation_telegrams
+  aviation_telegrams_by_pk(uuid: uuid!): aviation_telegrams
 
   """
-  fetch data from the table: "aviation.user"
+  fetch data from the table: "messages"
   """
-  aviation_user(
+  messages(
     """distinct select on columns"""
-    distinct_on: [aviation_user_select_column!]
+    distinct_on: [messages_select_column!]
 
     """limit the number of rows returned"""
     limit: Int
@@ -1032,18 +1191,18 @@ type query_root {
     offset: Int
 
     """sort the rows by one or more columns"""
-    order_by: [aviation_user_order_by!]
+    order_by: [messages_order_by!]
 
     """filter the rows returned"""
-    where: aviation_user_bool_exp
-  ): [aviation_user!]!
+    where: messages_bool_exp
+  ): [messages!]!
 
   """
-  fetch aggregated fields from the table: "aviation.user"
+  fetch aggregated fields from the table: "messages"
   """
-  aviation_user_aggregate(
+  messages_aggregate(
     """distinct select on columns"""
-    distinct_on: [aviation_user_select_column!]
+    distinct_on: [messages_select_column!]
 
     """limit the number of rows returned"""
     limit: Int
@@ -1052,14 +1211,14 @@ type query_root {
     offset: Int
 
     """sort the rows by one or more columns"""
-    order_by: [aviation_user_order_by!]
+    order_by: [messages_order_by!]
 
     """filter the rows returned"""
-    where: aviation_user_bool_exp
-  ): aviation_user_aggregate!
+    where: messages_bool_exp
+  ): messages_aggregate!
 
-  """fetch data from the table: "aviation.user" using primary key columns"""
-  aviation_user_by_pk(id: Int!): aviation_user
+  """fetch data from the table: "messages" using primary key columns"""
+  messages_by_pk(id: uuid!): messages
 }
 
 type subscription_root {
@@ -1106,7 +1265,7 @@ type subscription_root {
   """
   fetch data from the table: "aviation.telegrams" using primary key columns
   """
-  aviation_telegrams_by_pk(message_id: String!): aviation_telegrams
+  aviation_telegrams_by_pk(uuid: uuid!): aviation_telegrams
 
   """
   fetch data from the table in a streaming manner: "aviation.telegrams"
@@ -1123,11 +1282,11 @@ type subscription_root {
   ): [aviation_telegrams!]!
 
   """
-  fetch data from the table: "aviation.user"
+  fetch data from the table: "messages"
   """
-  aviation_user(
+  messages(
     """distinct select on columns"""
-    distinct_on: [aviation_user_select_column!]
+    distinct_on: [messages_select_column!]
 
     """limit the number of rows returned"""
     limit: Int
@@ -1136,18 +1295,18 @@ type subscription_root {
     offset: Int
 
     """sort the rows by one or more columns"""
-    order_by: [aviation_user_order_by!]
+    order_by: [messages_order_by!]
 
     """filter the rows returned"""
-    where: aviation_user_bool_exp
-  ): [aviation_user!]!
+    where: messages_bool_exp
+  ): [messages!]!
 
   """
-  fetch aggregated fields from the table: "aviation.user"
+  fetch aggregated fields from the table: "messages"
   """
-  aviation_user_aggregate(
+  messages_aggregate(
     """distinct select on columns"""
-    distinct_on: [aviation_user_select_column!]
+    distinct_on: [messages_select_column!]
 
     """limit the number of rows returned"""
     limit: Int
@@ -1156,28 +1315,28 @@ type subscription_root {
     offset: Int
 
     """sort the rows by one or more columns"""
-    order_by: [aviation_user_order_by!]
+    order_by: [messages_order_by!]
 
     """filter the rows returned"""
-    where: aviation_user_bool_exp
-  ): aviation_user_aggregate!
+    where: messages_bool_exp
+  ): messages_aggregate!
 
-  """fetch data from the table: "aviation.user" using primary key columns"""
-  aviation_user_by_pk(id: Int!): aviation_user
+  """fetch data from the table: "messages" using primary key columns"""
+  messages_by_pk(id: uuid!): messages
 
   """
-  fetch data from the table in a streaming manner: "aviation.user"
+  fetch data from the table in a streaming manner: "messages"
   """
-  aviation_user_stream(
+  messages_stream(
     """maximum number of rows returned in a single batch"""
     batch_size: Int!
 
     """cursor to stream the results returned by the query"""
-    cursor: [aviation_user_stream_cursor_input]!
+    cursor: [messages_stream_cursor_input]!
 
     """filter the rows returned"""
-    where: aviation_user_bool_exp
-  ): [aviation_user!]!
+    where: messages_bool_exp
+  ): [messages!]!
 }
 
 scalar timestamp

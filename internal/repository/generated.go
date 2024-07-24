@@ -13,7 +13,7 @@ import (
 
 // input type for inserting data into table "aviation.telegrams"
 type Aviation_telegrams_insert_input struct {
-	Body_and_footer      string          `json:"body_and_footer"`
+	Text                 string          `json:"Text"`
 	Body_data            json.RawMessage `json:"body_data"`
 	Category             string          `json:"category"`
 	Date_time            string          `json:"date_time"`
@@ -26,12 +26,12 @@ type Aviation_telegrams_insert_input struct {
 	Primary_address      string          `json:"primary_address"`
 	Priority_indicator   string          `json:"priority_indicator"`
 	Received_at          time.Time       `json:"received_at"`
-	Secondary_addresses  json.RawMessage `json:"secondary_addresses"`
+	Secondary_addresses  string          `json:"secondary_addresses"`
 	Uuid                 uuid.UUID       `json:"uuid"`
 }
 
-// GetBody_and_footer returns Aviation_telegrams_insert_input.Body_and_footer, and is useful for accessing the field via an interface.
-func (v *Aviation_telegrams_insert_input) GetBody_and_footer() string { return v.Body_and_footer }
+// GetText returns Aviation_telegrams_insert_input.Text, and is useful for accessing the field via an interface.
+func (v *Aviation_telegrams_insert_input) GetText() string { return v.Text }
 
 // GetBody_data returns Aviation_telegrams_insert_input.Body_data, and is useful for accessing the field via an interface.
 func (v *Aviation_telegrams_insert_input) GetBody_data() json.RawMessage { return v.Body_data }
@@ -72,7 +72,7 @@ func (v *Aviation_telegrams_insert_input) GetPriority_indicator() string { retur
 func (v *Aviation_telegrams_insert_input) GetReceived_at() time.Time { return v.Received_at }
 
 // GetSecondary_addresses returns Aviation_telegrams_insert_input.Secondary_addresses, and is useful for accessing the field via an interface.
-func (v *Aviation_telegrams_insert_input) GetSecondary_addresses() json.RawMessage {
+func (v *Aviation_telegrams_insert_input) GetSecondary_addresses() string {
 	return v.Secondary_addresses
 }
 

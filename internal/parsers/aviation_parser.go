@@ -152,7 +152,7 @@ func Parse(rawText string) (*domain.ParsedMessage, error) {
 		return nil, err
 	}
 
-	bodyParser := NewBodyParser(message.BodyAndFooter)
+	bodyParser := NewBodyParser(message.Body)
 	category, bodyData, err := bodyParser.Parse()
 	message.Category = category
 	message.ParsedAt = time.Now()
@@ -180,21 +180,21 @@ func cleanMessage(text string) string {
 
 func ParseHeader(fullMessage string) (domain.ParsedMessage, error) {
 	log := utils.GetSugaredLogger()
-	fullMessage = cleanMessage(fullMessage)
-	lines := strings.Split(fullMessage, "\n")
+	cleaned := cleanMessage(fullMessage)
+	lines := strings.Split(cleaned, "\n")
 
 	if len(lines) < 3 {
 		log.Warnf("invalid message format: %s", fullMessage)
-		return domain.ParsedMessage{}, fmt.Errorf("invalid message format: %s", fullMessage)
+		return domain.ParsedMessage{Text: fullMessage}, fmt.Errorf("invalid message format: %s", fullMessage)
 	}
 
 	_, messageID, dateTime, err := parseStartIndicator(lines[0])
 	if err != nil {
-		return domain.ParsedMessage{}, err
+		return domain.ParsedMessage{Text: fullMessage}, err
 	}
 
 	priorityIndicator, primaryAddress := parsePriorityAndPrimary(lines[1])
-	secondaryAddresses, originator, originatorDateTime, bodyAndFooter := parseRemainingLines(lines[2:])
+	secondaryAddresses, originator, originatorDateTime, body := parseRemainingLines(lines[2:])
 
 	return domain.ParsedMessage{
 		MessageID:          messageID,
@@ -204,7 +204,8 @@ func ParseHeader(fullMessage string) (domain.ParsedMessage, error) {
 		SecondaryAddresses: secondaryAddresses,
 		Originator:         originator,
 		OriginatorDateTime: originatorDateTime,
-		BodyAndFooter:      bodyAndFooter,
+		Text:               fullMessage,
+		Body:               body,
 		ReceivedAt:         time.Now(),
 	}, nil
 }
