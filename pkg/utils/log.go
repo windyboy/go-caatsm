@@ -19,13 +19,11 @@ const (
 	EnvDev                    = "dev"
 )
 
-// LoggerConfig represents the configuration for the logger.
 type LoggerConfig struct {
 	ZapConfig        zap.Config       `json:"zapConfig"`
 	LumberjackConfig LumberjackConfig `json:"lumberjackConfig"`
 }
 
-// LumberjackConfig represents the configuration for lumberjack logging.
 type LumberjackConfig struct {
 	Filename   string `json:"filename"`
 	MaxSize    int    `json:"maxSize"`
@@ -37,20 +35,17 @@ type LumberjackConfig struct {
 var (
 	sugar *zap.SugaredLogger
 	log   *zap.Logger
-	// once  sync.Once
 )
 
-// load initializes the logger. It ensures that the logger is initialized only once.
 func load() {
 	if log == nil {
 		env := getEnv()
-		fmt.Printf("Enviroment : %s\n", env)
+		fmt.Printf("Environment: %s\n", env)
 		configFile := getConfigFile(env)
 
 		config, err := loadConfig(configFile)
 		if err != nil {
 			fmt.Printf("Error loading config: %v\n", err)
-			//create a default logger
 			log, _ = zap.NewDevelopment()
 			sugar = log.Sugar()
 			return
@@ -80,7 +75,6 @@ func load() {
 
 		log = zap.New(core, zap.AddCaller(), zap.AddStacktrace(zapcore.ErrorLevel))
 		sugar = log.Sugar()
-		// fmt.Println("Logger initialized")
 	}
 }
 
@@ -89,7 +83,6 @@ func GetSugaredLogger() *zap.SugaredLogger {
 	return log.Sugar()
 }
 
-// getEnv retrieves the logging environment from the TELE_MODE environment variable.
 func getEnv() string {
 	env := os.Getenv("TELE_MODE")
 	if env == "" {
@@ -98,7 +91,6 @@ func getEnv() string {
 	return env
 }
 
-// getConfigFile determines the configuration file path based on the environment.
 func getConfigFile(env string) string {
 	switch env {
 	case EnvTest:
@@ -110,7 +102,6 @@ func getConfigFile(env string) string {
 	}
 }
 
-// loadConfig loads the logger configuration from the given file.
 func loadConfig(configFile string) (LoggerConfig, error) {
 	file, err := os.Open(configFile)
 	if err != nil {
@@ -125,7 +116,6 @@ func loadConfig(configFile string) (LoggerConfig, error) {
 	return config, nil
 }
 
-// GetLogger returns the initialized SugaredLogger instance.
 func GetLogger() *zap.SugaredLogger {
 	if sugar == nil {
 		load()
@@ -133,7 +123,6 @@ func GetLogger() *zap.SugaredLogger {
 	return sugar
 }
 
-// parseLogLevel converts the log level string to zapcore.Level.
 func parseLogLevel(level string) zapcore.Level {
 	switch level {
 	case "debug":
