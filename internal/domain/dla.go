@@ -56,14 +56,14 @@ Description: Optional field for any additional relevant information.
 
 // DLA 电报体中的延误报文结构
 type DLA struct {
-	Category             string `json:"category"`               // 电报类别
-	AircraftID           string `json:"aircraft_id"`            // 航空器识别标志
-	SSRModeAndCode       string `json:"ssr_mode_and_code"`      // SSR 模式及编码
-	DepartureAirport     string `json:"departure_airport"`      // 起飞机场
-	NewDepartureTime     string `json:"new_departure_time"`     // 新的起飞时间
-	ArrivalAirport       string `json:"arrival_airport"`        // 到达机场
-	EstimatedElapsedTime string `json:"estimated_elapsed_time"` // 估计总耗时
-	OtherInfo            string `json:"other_info,omitempty"`   // 其他信息 (optional)
+	Category         string `json:"category"`                         // 电报类别
+	AircraftID       string `json:"aircraft_id"`                      // 航空器识别标志
+	SSRModeAndCode   string `json:"ssr_mode_and_code,omitempty"`      // SSR 模式及编码
+	DepartureAirport string `json:"departure_airport"`                // 起飞机场
+	NewDepartureTime string `json:"new_departure_time,omitempty"`     // 新的起飞时间
+	ArrivalAirport   string `json:"arrival_airport"`                  // 到达机场
+	ArrivalTime      string `json:"estimated_elapsed_time,omitempty"` // 估计总耗时
+	OtherInfo        string `json:"other_info,omitempty"`             // 其他信息 (optional)
 }
 
 // Validate validates the DLA struct fields
@@ -74,20 +74,11 @@ func (d *DLA) Validate() error {
 	if d.AircraftID == "" {
 		return fmt.Errorf("aircraft id is required")
 	}
-	if d.SSRModeAndCode == "" {
-		return fmt.Errorf("ssr mode and code is required")
-	}
 	if d.DepartureAirport == "" {
 		return fmt.Errorf("departure airport is required")
 	}
-	if d.NewDepartureTime == "" {
-		return fmt.Errorf("new departure time is required")
-	}
 	if d.ArrivalAirport == "" {
 		return fmt.Errorf("arrival airport is required")
-	}
-	if d.EstimatedElapsedTime == "" {
-		return fmt.Errorf("estimated elapsed time is required")
 	}
 	return nil
 }

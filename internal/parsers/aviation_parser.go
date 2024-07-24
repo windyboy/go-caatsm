@@ -126,6 +126,15 @@ func (bp *BodyParser) createBodyData(data map[string]string) (string, interface{
 			DepartureAirport:   data["departure"],
 			DestinationAirport: data["destination"],
 		}, nil
+	case "DLA":
+		return category, &domain.DLA{
+			Category:         data["category"],
+			AircraftID:       data["number"],
+			DepartureAirport: data["departure"],
+			NewDepartureTime: data["departure_time"],
+			ArrivalAirport:   data["arrival"],
+			ArrivalTime:      data["arrival_time"],
+		}, nil
 	case "FPL":
 		otherData := parseOther(data["other"])
 		return category, &domain.FPL{

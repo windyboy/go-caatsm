@@ -1,0 +1,905 @@
+[
+  {
+    "SuitePath": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers",
+    "SuiteDescription": "Parsers Suite",
+    "SuiteLabels": [],
+    "SuiteSucceeded": true,
+    "SuiteHasProgrammaticFocus": false,
+    "SpecialSuiteFailureReasons": null,
+    "PreRunStats": {
+      "TotalSpecs": 22,
+      "SpecsThatWillRun": 1
+    },
+    "StartTime": "2024-07-24T17:38:12.204183+08:00",
+    "EndTime": "2024-07-24T17:38:12.204756+08:00",
+    "RunTime": 573176,
+    "SuiteConfig": {
+      "RandomSeed": 1721813889,
+      "RandomizeAllSpecs": false,
+      "FocusStrings": [
+        "Aviation Parser ParseBody with DLA body"
+      ],
+      "SkipStrings": null,
+      "FocusFiles": null,
+      "SkipFiles": null,
+      "LabelFilter": "",
+      "FailOnPending": false,
+      "FailOnEmpty": false,
+      "FailFast": false,
+      "FlakeAttempts": 0,
+      "MustPassRepeatedly": 0,
+      "DryRun": false,
+      "PollProgressAfter": 0,
+      "PollProgressInterval": 0,
+      "Timeout": 3598113440305,
+      "EmitSpecProgress": false,
+      "OutputInterceptorMode": "",
+      "SourceRoots": null,
+      "GracePeriod": 30000000000,
+      "ParallelProcess": 1,
+      "ParallelTotal": 1,
+      "ParallelHost": ""
+    },
+    "SpecReports": [
+      {
+        "ContainerHierarchyTexts": [
+          "Aviation Parser",
+          "ParseHeader",
+          "with a real ARR context"
+        ],
+        "ContainerHierarchyLocations": [
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+            "LineNumber": 10
+          },
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+            "LineNumber": 11
+          },
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+            "LineNumber": 13
+          }
+        ],
+        "ContainerHierarchyLabels": [
+          [],
+          [],
+          []
+        ],
+        "LeafNodeType": "It",
+        "LeafNodeLocation": {
+          "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+          "LineNumber": 19
+        },
+        "LeafNodeLabels": [],
+        "LeafNodeText": "should get a clean body text",
+        "State": "skipped",
+        "StartTime": "2024-07-24T17:38:12.204386+08:00",
+        "EndTime": "0001-01-01T00:00:00Z",
+        "RunTime": 0,
+        "ParallelProcess": 1,
+        "NumAttempts": 0,
+        "MaxFlakeAttempts": 0,
+        "MaxMustPassRepeatedly": 0
+      },
+      {
+        "ContainerHierarchyTexts": [
+          "Aviation Parser",
+          "ParseHeader"
+        ],
+        "ContainerHierarchyLocations": [
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+            "LineNumber": 10
+          },
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+            "LineNumber": 11
+          }
+        ],
+        "ContainerHierarchyLabels": [
+          [],
+          []
+        ],
+        "LeafNodeType": "It",
+        "LeafNodeLocation": {
+          "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+          "LineNumber": 29
+        },
+        "LeafNodeLabels": [],
+        "LeafNodeText": "should parse the header correctly",
+        "State": "skipped",
+        "StartTime": "2024-07-24T17:38:12.204407+08:00",
+        "EndTime": "0001-01-01T00:00:00Z",
+        "RunTime": 0,
+        "ParallelProcess": 1,
+        "NumAttempts": 0,
+        "MaxFlakeAttempts": 0,
+        "MaxMustPassRepeatedly": 0
+      },
+      {
+        "ContainerHierarchyTexts": [
+          "Aviation Parser",
+          "ParseHeader"
+        ],
+        "ContainerHierarchyLocations": [
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+            "LineNumber": 10
+          },
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+            "LineNumber": 11
+          }
+        ],
+        "ContainerHierarchyLabels": [
+          [],
+          []
+        ],
+        "LeafNodeType": "It",
+        "LeafNodeLocation": {
+          "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+          "LineNumber": 57
+        },
+        "LeafNodeLabels": [],
+        "LeafNodeText": "should parse the header correctly with originator information",
+        "State": "skipped",
+        "StartTime": "2024-07-24T17:38:12.204416+08:00",
+        "EndTime": "0001-01-01T00:00:00Z",
+        "RunTime": 0,
+        "ParallelProcess": 1,
+        "NumAttempts": 0,
+        "MaxFlakeAttempts": 0,
+        "MaxMustPassRepeatedly": 0
+      },
+      {
+        "ContainerHierarchyTexts": [
+          "Aviation Parser",
+          "ParseBody",
+          "with ARR body (ARR-CES5470-ZBTJ-ZSHC1614)"
+        ],
+        "ContainerHierarchyLocations": [
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+            "LineNumber": 10
+          },
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+            "LineNumber": 102
+          },
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+            "LineNumber": 104
+          }
+        ],
+        "ContainerHierarchyLabels": [
+          [],
+          [],
+          []
+        ],
+        "LeafNodeType": "It",
+        "LeafNodeLocation": {
+          "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+          "LineNumber": 107
+        },
+        "LeafNodeLabels": [],
+        "LeafNodeText": "should parse the body correctly",
+        "State": "skipped",
+        "StartTime": "2024-07-24T17:38:12.204425+08:00",
+        "EndTime": "0001-01-01T00:00:00Z",
+        "RunTime": 0,
+        "ParallelProcess": 1,
+        "NumAttempts": 0,
+        "MaxFlakeAttempts": 0,
+        "MaxMustPassRepeatedly": 0
+      },
+      {
+        "ContainerHierarchyTexts": [
+          "Aviation Parser",
+          "ParseBody",
+          "with ARR body"
+        ],
+        "ContainerHierarchyLocations": [
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+            "LineNumber": 10
+          },
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+            "LineNumber": 102
+          },
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+            "LineNumber": 123
+          }
+        ],
+        "ContainerHierarchyLabels": [
+          [],
+          [],
+          []
+        ],
+        "LeafNodeType": "It",
+        "LeafNodeLocation": {
+          "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+          "LineNumber": 125
+        },
+        "LeafNodeLabels": [],
+        "LeafNodeText": "should parse the body (ARR-AB123/A1234-KJFK-KLAX1234) correctly",
+        "State": "skipped",
+        "StartTime": "2024-07-24T17:38:12.204434+08:00",
+        "EndTime": "0001-01-01T00:00:00Z",
+        "RunTime": 0,
+        "ParallelProcess": 1,
+        "NumAttempts": 0,
+        "MaxFlakeAttempts": 0,
+        "MaxMustPassRepeatedly": 0
+      },
+      {
+        "ContainerHierarchyTexts": [
+          "Aviation Parser",
+          "ParseBody",
+          "with ARR body"
+        ],
+        "ContainerHierarchyLocations": [
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+            "LineNumber": 10
+          },
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+            "LineNumber": 102
+          },
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+            "LineNumber": 123
+          }
+        ],
+        "ContainerHierarchyLabels": [
+          [],
+          [],
+          []
+        ],
+        "LeafNodeType": "It",
+        "LeafNodeLocation": {
+          "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+          "LineNumber": 141
+        },
+        "LeafNodeLabels": [],
+        "LeafNodeText": "should parse the body (ARR-JAE7433/A0132-RKSI-ZBTJ1604) correctly",
+        "State": "skipped",
+        "StartTime": "2024-07-24T17:38:12.204472+08:00",
+        "EndTime": "0001-01-01T00:00:00Z",
+        "RunTime": 0,
+        "ParallelProcess": 1,
+        "NumAttempts": 0,
+        "MaxFlakeAttempts": 0,
+        "MaxMustPassRepeatedly": 0
+      },
+      {
+        "ContainerHierarchyTexts": [
+          "Aviation Parser",
+          "ParseBody",
+          "with DEP body"
+        ],
+        "ContainerHierarchyLocations": [
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+            "LineNumber": 10
+          },
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+            "LineNumber": 102
+          },
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+            "LineNumber": 159
+          }
+        ],
+        "ContainerHierarchyLabels": [
+          [],
+          [],
+          []
+        ],
+        "LeafNodeType": "It",
+        "LeafNodeLocation": {
+          "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+          "LineNumber": 161
+        },
+        "LeafNodeLabels": [],
+        "LeafNodeText": "should parse the body (DEP-CYZ9017/A5633-ZBTJ1638-ZSPD) correctly",
+        "State": "skipped",
+        "StartTime": "2024-07-24T17:38:12.204484+08:00",
+        "EndTime": "0001-01-01T00:00:00Z",
+        "RunTime": 0,
+        "ParallelProcess": 1,
+        "NumAttempts": 0,
+        "MaxFlakeAttempts": 0,
+        "MaxMustPassRepeatedly": 0
+      },
+      {
+        "ContainerHierarchyTexts": [
+          "Aviation Parser",
+          "ParseBody",
+          "with FPL body"
+        ],
+        "ContainerHierarchyLocations": [
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+            "LineNumber": 10
+          },
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+            "LineNumber": 102
+          },
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+            "LineNumber": 179
+          }
+        ],
+        "ContainerHierarchyLabels": [
+          [],
+          [],
+          []
+        ],
+        "LeafNodeType": "It",
+        "LeafNodeLocation": {
+          "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+          "LineNumber": 181
+        },
+        "LeafNodeLabels": [],
+        "LeafNodeText": "should parse the body correctly",
+        "State": "skipped",
+        "StartTime": "2024-07-24T17:38:12.204495+08:00",
+        "EndTime": "0001-01-01T00:00:00Z",
+        "RunTime": 0,
+        "ParallelProcess": 1,
+        "NumAttempts": 0,
+        "MaxFlakeAttempts": 0,
+        "MaxMustPassRepeatedly": 0
+      },
+      {
+        "ContainerHierarchyTexts": [
+          "Aviation Parser",
+          "ParseBody",
+          "with CNL body"
+        ],
+        "ContainerHierarchyLocations": [
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+            "LineNumber": 10
+          },
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+            "LineNumber": 102
+          },
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+            "LineNumber": 216
+          }
+        ],
+        "ContainerHierarchyLabels": [
+          [],
+          [],
+          []
+        ],
+        "LeafNodeType": "It",
+        "LeafNodeLocation": {
+          "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+          "LineNumber": 218
+        },
+        "LeafNodeLabels": [],
+        "LeafNodeText": "should parse the body correctly",
+        "State": "skipped",
+        "StartTime": "2024-07-24T17:38:12.204503+08:00",
+        "EndTime": "0001-01-01T00:00:00Z",
+        "RunTime": 0,
+        "ParallelProcess": 1,
+        "NumAttempts": 0,
+        "MaxFlakeAttempts": 0,
+        "MaxMustPassRepeatedly": 0
+      },
+      {
+        "ContainerHierarchyTexts": [
+          "Aviation Parser",
+          "ParseBody",
+          "with DLA body"
+        ],
+        "ContainerHierarchyLocations": [
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+            "LineNumber": 10
+          },
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+            "LineNumber": 102
+          },
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+            "LineNumber": 231
+          }
+        ],
+        "ContainerHierarchyLabels": [
+          [],
+          [],
+          []
+        ],
+        "LeafNodeType": "It",
+        "LeafNodeLocation": {
+          "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+          "LineNumber": 232
+        },
+        "LeafNodeLabels": [],
+        "LeafNodeText": "should parse the body correctly",
+        "State": "passed",
+        "StartTime": "2024-07-24T17:38:12.204518+08:00",
+        "EndTime": "2024-07-24T17:38:12.204659+08:00",
+        "RunTime": 141208,
+        "ParallelProcess": 1,
+        "NumAttempts": 1,
+        "MaxFlakeAttempts": 0,
+        "MaxMustPassRepeatedly": 0,
+        "SpecEvents": [
+          {
+            "SpecEventType": "Node",
+            "CodeLocation": {
+              "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+              "LineNumber": 232
+            },
+            "TimelineLocation": {
+              "Order": 1,
+              "Time": "2024-07-24T17:38:12.204529+08:00"
+            },
+            "Message": "should parse the body correctly",
+            "NodeType": "It"
+          },
+          {
+            "SpecEventType": "Node (End)",
+            "CodeLocation": {
+              "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+              "LineNumber": 232
+            },
+            "TimelineLocation": {
+              "Order": 3,
+              "Time": "2024-07-24T17:38:12.204655+08:00"
+            },
+            "Message": "should parse the body correctly",
+            "Duration": 126585,
+            "NodeType": "It"
+          }
+        ]
+      },
+      {
+        "ContainerHierarchyTexts": [
+          "Aviation Parser",
+          "Parse whole real message",
+          "with a real ARR message"
+        ],
+        "ContainerHierarchyLocations": [
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+            "LineNumber": 10
+          },
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+            "LineNumber": 251
+          },
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+            "LineNumber": 253
+          }
+        ],
+        "ContainerHierarchyLabels": [
+          [],
+          [],
+          []
+        ],
+        "LeafNodeType": "It",
+        "LeafNodeLocation": {
+          "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+          "LineNumber": 265
+        },
+        "LeafNodeLabels": [],
+        "LeafNodeText": "should parse the whole message correctly",
+        "State": "skipped",
+        "StartTime": "2024-07-24T17:38:12.204672+08:00",
+        "EndTime": "0001-01-01T00:00:00Z",
+        "RunTime": 0,
+        "ParallelProcess": 1,
+        "NumAttempts": 0,
+        "MaxFlakeAttempts": 0,
+        "MaxMustPassRepeatedly": 0
+      },
+      {
+        "ContainerHierarchyTexts": [
+          "Aviation Parser",
+          "Parse whole real message",
+          "with this real FPL message"
+        ],
+        "ContainerHierarchyLocations": [
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+            "LineNumber": 10
+          },
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+            "LineNumber": 251
+          },
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+            "LineNumber": 287
+          }
+        ],
+        "ContainerHierarchyLabels": [
+          [],
+          [],
+          []
+        ],
+        "LeafNodeType": "It",
+        "LeafNodeLocation": {
+          "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+          "LineNumber": 316
+        },
+        "LeafNodeLabels": [],
+        "LeafNodeText": "should parse the whole message correctly",
+        "State": "skipped",
+        "StartTime": "2024-07-24T17:38:12.20468+08:00",
+        "EndTime": "0001-01-01T00:00:00Z",
+        "RunTime": 0,
+        "ParallelProcess": 1,
+        "NumAttempts": 0,
+        "MaxFlakeAttempts": 0,
+        "MaxMustPassRepeatedly": 0
+      },
+      {
+        "ContainerHierarchyTexts": [
+          "Aviation Parser",
+          "Utility Functions"
+        ],
+        "ContainerHierarchyLocations": [
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+            "LineNumber": 10
+          },
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+            "LineNumber": 348
+          }
+        ],
+        "ContainerHierarchyLabels": [
+          [],
+          []
+        ],
+        "LeafNodeType": "It",
+        "LeafNodeLocation": {
+          "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+          "LineNumber": 350
+        },
+        "LeafNodeLabels": [],
+        "LeafNodeText": "should clean text correctly",
+        "State": "skipped",
+        "StartTime": "2024-07-24T17:38:12.204686+08:00",
+        "EndTime": "0001-01-01T00:00:00Z",
+        "RunTime": 0,
+        "ParallelProcess": 1,
+        "NumAttempts": 0,
+        "MaxFlakeAttempts": 0,
+        "MaxMustPassRepeatedly": 0
+      },
+      {
+        "ContainerHierarchyTexts": [
+          "Aviation Parser",
+          "Utility Functions"
+        ],
+        "ContainerHierarchyLocations": [
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+            "LineNumber": 10
+          },
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+            "LineNumber": 348
+          }
+        ],
+        "ContainerHierarchyLabels": [
+          [],
+          []
+        ],
+        "LeafNodeType": "It",
+        "LeafNodeLocation": {
+          "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+          "LineNumber": 361
+        },
+        "LeafNodeLabels": [],
+        "LeafNodeText": "should parse start indicator correctly",
+        "State": "skipped",
+        "StartTime": "2024-07-24T17:38:12.204694+08:00",
+        "EndTime": "0001-01-01T00:00:00Z",
+        "RunTime": 0,
+        "ParallelProcess": 1,
+        "NumAttempts": 0,
+        "MaxFlakeAttempts": 0,
+        "MaxMustPassRepeatedly": 0
+      },
+      {
+        "ContainerHierarchyTexts": [
+          "Aviation Parser",
+          "Utility Functions"
+        ],
+        "ContainerHierarchyLocations": [
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+            "LineNumber": 10
+          },
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+            "LineNumber": 348
+          }
+        ],
+        "ContainerHierarchyLabels": [
+          [],
+          []
+        ],
+        "LeafNodeType": "It",
+        "LeafNodeLocation": {
+          "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+          "LineNumber": 370
+        },
+        "LeafNodeLabels": [],
+        "LeafNodeText": "should return error for invalid start indicator line",
+        "State": "skipped",
+        "StartTime": "2024-07-24T17:38:12.2047+08:00",
+        "EndTime": "0001-01-01T00:00:00Z",
+        "RunTime": 0,
+        "ParallelProcess": 1,
+        "NumAttempts": 0,
+        "MaxFlakeAttempts": 0,
+        "MaxMustPassRepeatedly": 0
+      },
+      {
+        "ContainerHierarchyTexts": [
+          "Aviation Parser",
+          "Utility Functions"
+        ],
+        "ContainerHierarchyLocations": [
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+            "LineNumber": 10
+          },
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+            "LineNumber": 348
+          }
+        ],
+        "ContainerHierarchyLabels": [
+          [],
+          []
+        ],
+        "LeafNodeType": "It",
+        "LeafNodeLocation": {
+          "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+          "LineNumber": 376
+        },
+        "LeafNodeLabels": [],
+        "LeafNodeText": "should parse priority and primary address correctly",
+        "State": "skipped",
+        "StartTime": "2024-07-24T17:38:12.204704+08:00",
+        "EndTime": "0001-01-01T00:00:00Z",
+        "RunTime": 0,
+        "ParallelProcess": 1,
+        "NumAttempts": 0,
+        "MaxFlakeAttempts": 0,
+        "MaxMustPassRepeatedly": 0
+      },
+      {
+        "ContainerHierarchyTexts": [
+          "Aviation Parser",
+          "Utility Functions"
+        ],
+        "ContainerHierarchyLocations": [
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+            "LineNumber": 10
+          },
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+            "LineNumber": 348
+          }
+        ],
+        "ContainerHierarchyLabels": [
+          [],
+          []
+        ],
+        "LeafNodeType": "It",
+        "LeafNodeLocation": {
+          "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+          "LineNumber": 383
+        },
+        "LeafNodeLabels": [],
+        "LeafNodeText": "should return empty strings for invalid priority and primary address line",
+        "State": "skipped",
+        "StartTime": "2024-07-24T17:38:12.204712+08:00",
+        "EndTime": "0001-01-01T00:00:00Z",
+        "RunTime": 0,
+        "ParallelProcess": 1,
+        "NumAttempts": 0,
+        "MaxFlakeAttempts": 0,
+        "MaxMustPassRepeatedly": 0
+      },
+      {
+        "ContainerHierarchyTexts": [
+          "Aviation Parser",
+          "Utility Functions"
+        ],
+        "ContainerHierarchyLocations": [
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+            "LineNumber": 10
+          },
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+            "LineNumber": 348
+          }
+        ],
+        "ContainerHierarchyLabels": [
+          [],
+          []
+        ],
+        "LeafNodeType": "It",
+        "LeafNodeLocation": {
+          "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/aviation_parser_test.go",
+          "LineNumber": 390
+        },
+        "LeafNodeLabels": [],
+        "LeafNodeText": "should parse remaining lines correctly",
+        "State": "skipped",
+        "StartTime": "2024-07-24T17:38:12.20473+08:00",
+        "EndTime": "0001-01-01T00:00:00Z",
+        "RunTime": 0,
+        "ParallelProcess": 1,
+        "NumAttempts": 0,
+        "MaxFlakeAttempts": 0,
+        "MaxMustPassRepeatedly": 0
+      },
+      {
+        "ContainerHierarchyTexts": [
+          "Pattern Parser",
+          "FindPatterns"
+        ],
+        "ContainerHierarchyLocations": [
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/pattern_test.go",
+            "LineNumber": 8
+          },
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/pattern_test.go",
+            "LineNumber": 10
+          }
+        ],
+        "ContainerHierarchyLabels": [
+          [],
+          []
+        ],
+        "LeafNodeType": "It",
+        "LeafNodeLocation": {
+          "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/pattern_test.go",
+          "LineNumber": 11
+        },
+        "LeafNodeLabels": [],
+        "LeafNodeText": "should return the correct BodyConfig based on the message body",
+        "State": "skipped",
+        "StartTime": "2024-07-24T17:38:12.204735+08:00",
+        "EndTime": "0001-01-01T00:00:00Z",
+        "RunTime": 0,
+        "ParallelProcess": 1,
+        "NumAttempts": 0,
+        "MaxFlakeAttempts": 0,
+        "MaxMustPassRepeatedly": 0
+      },
+      {
+        "ContainerHierarchyTexts": [
+          "Pattern Parser",
+          "FindPatterns"
+        ],
+        "ContainerHierarchyLocations": [
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/pattern_test.go",
+            "LineNumber": 8
+          },
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/pattern_test.go",
+            "LineNumber": 10
+          }
+        ],
+        "ContainerHierarchyLabels": [
+          [],
+          []
+        ],
+        "LeafNodeType": "It",
+        "LeafNodeLocation": {
+          "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/pattern_test.go",
+          "LineNumber": 18
+        },
+        "LeafNodeLabels": [],
+        "LeafNodeText": "should return nil if no pattern matches",
+        "State": "skipped",
+        "StartTime": "2024-07-24T17:38:12.204743+08:00",
+        "EndTime": "0001-01-01T00:00:00Z",
+        "RunTime": 0,
+        "ParallelProcess": 1,
+        "NumAttempts": 0,
+        "MaxFlakeAttempts": 0,
+        "MaxMustPassRepeatedly": 0
+      },
+      {
+        "ContainerHierarchyTexts": [
+          "Pattern Parser",
+          "ParseBody"
+        ],
+        "ContainerHierarchyLocations": [
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/pattern_test.go",
+            "LineNumber": 8
+          },
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/pattern_test.go",
+            "LineNumber": 25
+          }
+        ],
+        "ContainerHierarchyLabels": [
+          [],
+          []
+        ],
+        "LeafNodeType": "It",
+        "LeafNodeLocation": {
+          "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/pattern_test.go",
+          "LineNumber": 26
+        },
+        "LeafNodeLabels": [],
+        "LeafNodeText": "should parse the message body and extract data based on patterns",
+        "State": "skipped",
+        "StartTime": "2024-07-24T17:38:12.204749+08:00",
+        "EndTime": "0001-01-01T00:00:00Z",
+        "RunTime": 0,
+        "ParallelProcess": 1,
+        "NumAttempts": 0,
+        "MaxFlakeAttempts": 0,
+        "MaxMustPassRepeatedly": 0
+      },
+      {
+        "ContainerHierarchyTexts": [
+          "Pattern Parser",
+          "ParseBody"
+        ],
+        "ContainerHierarchyLocations": [
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/pattern_test.go",
+            "LineNumber": 8
+          },
+          {
+            "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/pattern_test.go",
+            "LineNumber": 25
+          }
+        ],
+        "ContainerHierarchyLabels": [
+          [],
+          []
+        ],
+        "LeafNodeType": "It",
+        "LeafNodeLocation": {
+          "FileName": "/Users/windy/Projects/airport/byia/poc/new-telegram/go-caatsm/internal/parsers/pattern_test.go",
+          "LineNumber": 37
+        },
+        "LeafNodeLabels": [],
+        "LeafNodeText": "should return nil if no patterns match",
+        "State": "skipped",
+        "StartTime": "2024-07-24T17:38:12.204753+08:00",
+        "EndTime": "0001-01-01T00:00:00Z",
+        "RunTime": 0,
+        "ParallelProcess": 1,
+        "NumAttempts": 0,
+        "MaxFlakeAttempts": 0,
+        "MaxMustPassRepeatedly": 0
+      }
+    ]
+  }
+]

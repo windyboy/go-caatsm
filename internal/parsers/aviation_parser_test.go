@@ -228,6 +228,24 @@ NNNN`
 			})
 		})
 
+		Context("with DLA body", func() {
+			It("should parse the body correctly", func() {
+				body := "(DLA-CSN3133-ZGGG0110-ZBTJ)"
+				parser := NewBodyParser(body)
+				category, parsedBody, err := parser.Parse()
+				Expect(err).ToNot(HaveOccurred())
+				Expect(parsedBody).ToNot(BeNil())
+				Expect(category).To(Equal("DLA"))
+				Expect(parsedBody).To(BeAssignableToTypeOf(&domain.DLA{}))
+				dlaMessage := parsedBody.(*domain.DLA)
+				Expect(dlaMessage.AircraftID).To(Equal("CSN3133"))
+				Expect(dlaMessage.DepartureAirport).To(Equal("ZGGG"))
+				Expect(dlaMessage.NewDepartureTime).To(Equal("0110"))
+				Expect(dlaMessage.ArrivalAirport).To(Equal("ZBTJ"))
+
+			})
+		})
+
 	})
 
 	Describe("Parse whole real message", func() {

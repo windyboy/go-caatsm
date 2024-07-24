@@ -13,14 +13,14 @@ var _ = Describe("DLA", func() {
 
 	BeforeEach(func() {
 		original = DLA{
-			Category:             "DLA",
-			AircraftID:           "ABCD1234",
-			SSRModeAndCode:       "A1234",
-			DepartureAirport:     "JFK",
-			NewDepartureTime:     time.Now().Add(1 * time.Hour).Format("150405"), // HHMMSS format
-			ArrivalAirport:       "LAX",
-			EstimatedElapsedTime: "0500", // Example format
-			OtherInfo:            "Test flight delay",
+			Category:         "DLA",
+			AircraftID:       "ABCD1234",
+			SSRModeAndCode:   "A1234",
+			DepartureAirport: "JFK",
+			NewDepartureTime: time.Now().Add(1 * time.Hour).Format("150405"), // HHMMSS format
+			ArrivalAirport:   "LAX",
+			ArrivalTime:      "0500", // Example format
+			OtherInfo:        "Test flight delay",
 		}
 	})
 
@@ -47,11 +47,11 @@ var _ = Describe("DLA", func() {
 			invalidDLA := DLA{
 				Category: "DLA",
 				// AircraftID is missing
-				SSRModeAndCode:       "A1234",
-				DepartureAirport:     "JFK",
-				NewDepartureTime:     "150405",
-				ArrivalAirport:       "LAX",
-				EstimatedElapsedTime: "0500",
+				SSRModeAndCode:   "A1234",
+				DepartureAirport: "JFK",
+				NewDepartureTime: "150405",
+				ArrivalAirport:   "LAX",
+				ArrivalTime:      "0500",
 			}
 
 			err := invalidDLA.Validate()
