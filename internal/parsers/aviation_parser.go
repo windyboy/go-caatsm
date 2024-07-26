@@ -203,10 +203,12 @@ func (bp *BodyParser) createBodyData(data map[string]string) (string, interface{
 	}
 }
 
-func Parse(rawText string) (*domain.ParsedMessage, error) {
+func Parse(rawText string) *domain.ParsedMessage {
 	message, err := ParseHeader(rawText)
 	if err != nil {
-		return nil, err
+		msg := domain.NewParsedMessage()
+		msg.Text = rawText
+		return msg
 	}
 
 	bodyParser := NewBodyParser(message.Body)
@@ -215,11 +217,12 @@ func Parse(rawText string) (*domain.ParsedMessage, error) {
 	message.ParsedAt = time.Now()
 
 	if err != nil {
-		return &message, err
+		message.Comments = err.Error()
+		return &message
 	}
-
+	message.Parsed = true
 	message.BodyData = bodyData
-	return &message, nil
+	return &message
 }
 
 func cleanMessage(text string) string {

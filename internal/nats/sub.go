@@ -69,31 +69,29 @@ func (n *NatsHandler) handleMessage(msg *message.Message) error {
 	defer n.mu.Unlock()
 	log := utils.GetSugaredLogger()
 	if msg.Payload == nil {
-		// fmt.Println("empty message")
 		log.Error("empty message")
 		return fmt.Errorf("empty message")
 	}
 	payload := string(msg.Payload)
-	var err error
 	var parsed *domain.ParsedMessage
-	if parsed, err = parsers.Parse(payload); err != nil {
-
-		// fmt.Printf("not parsed: [%s] : {%s} - %v\n", msg.UUID, msg.Payload, err)
-		log.Infof("not parsed: [%s] : {%s} - %v\n", msg.UUID, msg.Payload, err)
-		// return err
+	if parsed = parsers.Parse(payload); !parsed.Parsed {
+		log.Infof("not parsed: [%s] : {%s} \n", msg.UUID, msg.Payload)
 	} else {
-
-		// fmt.Printf("parsed [%s]: %v\n", msg.UUID, parsed)
 		log.Infof("parsed [%s]: %v\n", msg.UUID, parsed)
 
 	}
+	n.SaveMessage(parsed, msg.UUID)
+	return nil
+}
+
+func (n *NatsHandler) SaveMessage(parsed *domain.ParsedMessage, uuid string) {
+	logger := watermill.NewStdLogger(false, false)
 	if parsed != nil {
-		parsed.Uuid = msg.UUID
-		if err = n.hasuraRepo.CreateNew(parsed); err != nil {
-			fmt.Print("error inserting message", err)
+		parsed.Uuid = uuid
+		if err := n.hasuraRepo.CreateNew(parsed); err != nil {
+			logger.Error("error inserting message", err, map[string]interface{}{"message": parsed})
 		}
 	}
-	return err
 }
 
 type PlainTextMarshaler struct{}

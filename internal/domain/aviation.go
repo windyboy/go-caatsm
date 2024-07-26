@@ -103,11 +103,15 @@ type ParsedMessage struct {
 	ParsedAt           time.Time   `json:"parsedAt,omitempty"`           // 解析时间: The time when the message was parsed.
 	DispatchedAt       time.Time   `json:"dispatchedAt,omitempty"`       // 分发时间: The time when the message was dispatched.
 	NeedDispatch       bool        `json:"needDispatch"`                 // 需要分发: Indicates if the message needs to be dispatched.
+	Parsed             bool        `json:"parsed"`                       // 解析: Indicates if the message has been parsed.
+	Comments           string      `json:"comments,omitempty"`           // 备注: Additional comments.
+
 }
 
 // NewParsedMessage initializes a ParsedMessage with default values
 func NewParsedMessage() *ParsedMessage {
 	return &ParsedMessage{
 		SecondaryAddresses: []string{},
+		Parsed:             false,
 	}
 }
