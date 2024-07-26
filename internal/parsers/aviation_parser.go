@@ -15,6 +15,43 @@ const (
 	StartIndicatorPrefix = "ZCZC"
 	EndHeaderMarker      = "."
 	BeginPartMarker      = "BEGIN PART"
+
+	Category             = "category"
+	CategoryArrival      = "ARR"
+	FlightNumber         = "number"
+	SSR                  = "ssr"
+	Departure            = "departure"
+	ArrivalLocation      = "arrival"
+	Time                 = "time"
+	CategoryDeparture    = "DEP"
+	DepartureTime        = "departure_time"
+	Destination          = "destination"
+	OtherInfo            = "other"
+	CategoryCancellation = "CNL"
+	CategoryDelay        = "DLA"
+	NewDepartureTime     = "new_departure_time"
+	ArrivalTime          = "arrival_time"
+	CategoryFlightPlan   = "FPL"
+	ReferenceData        = "reference_data"
+	Aircraft             = "aircraft"
+	CategorySurveillance = "surve"
+	Indicator            = "indicator"
+	Other                = "other"
+	AircraftID           = "aircraft"
+	Surveillance         = "surve"
+	Speed                = "speed"
+	Level                = "level"
+	Route                = "route"
+	EstimatedTime        = "estt"
+	AlternateAirport     = "alter"
+	Register             = "reg"
+	PBN                  = "pbn"
+	NavigationEquipment  = "nav"
+	EstimatedElapsedTime = "eet"
+	SELCALCode           = "sel"
+	PerformanceCategory  = "per"
+	RerouteInformation   = "rif"
+	Remarks              = "remark"
 )
 
 var (
@@ -101,65 +138,65 @@ func extractData(match []string, re *regexp.Regexp) map[string]string {
 
 func (bp *BodyParser) createBodyData(data map[string]string) (string, interface{}, error) {
 	switch category := data["category"]; category {
-	case "ARR":
+	case CategoryArrival:
 		return category, &domain.ARR{
-			Category:         data["category"],
-			AircraftID:       data["number"],
-			SSRModeAndCode:   data["ssr"],
-			DepartureAirport: data["departure"],
-			ArrivalAirport:   data["arrival"],
-			ArrivalTime:      data["time"],
+			Category:         data[Category],
+			AircraftID:       data[FlightNumber],
+			SSRModeAndCode:   data[SSR],
+			DepartureAirport: data[Departure],
+			ArrivalAirport:   data[ArrivalLocation],
+			ArrivalTime:      data[ArrivalTime],
 		}, nil
-	case "DEP":
+	case CategoryDeparture:
 		return category, &domain.DEP{
-			Category:         data["category"],
-			AircraftID:       data["number"],
-			SSRModeAndCode:   data["ssr"],
-			DepartureAirport: data["departure"],
-			DepartureTime:    data["departure_time"],
-			Destination:      data["arrival"],
+			Category:         data[Category],
+			AircraftID:       data[FlightNumber],
+			SSRModeAndCode:   data[SSR],
+			DepartureAirport: data[Departure],
+			DepartureTime:    data[DepartureTime],
+			Destination:      data[ArrivalLocation],
 		}, nil
-	case "CNL":
+	case CategoryCancellation:
 		return category, &domain.CNL{
-			Category:           data["category"],
-			AircraftID:         data["number"],
-			DepartureAirport:   data["departure"],
-			DestinationAirport: data["destination"],
+			Category:           data[category],
+			AircraftID:         data[FlightNumber],
+			DepartureAirport:   data[Departure],
+			DestinationAirport: data[ArrivalLocation],
 		}, nil
-	case "DLA":
+	case CategoryDelay:
 		return category, &domain.DLA{
-			Category:         data["category"],
-			AircraftID:       data["number"],
-			DepartureAirport: data["departure"],
-			NewDepartureTime: data["departure_time"],
-			ArrivalAirport:   data["arrival"],
-			ArrivalTime:      data["arrival_time"],
+			Category:         data[Category],
+			AircraftID:       data[FlightNumber],
+			DepartureAirport: data[Departure],
+			NewDepartureTime: data[DepartureTime],
+			ArrivalAirport:   data[ArrivalLocation],
+			ArrivalTime:      data[ArrivalTime],
 		}, nil
-	case "FPL":
-		otherData := parseOther(data["other"])
+	case CategoryFlightPlan:
+		otherData := parseOther(data[OtherInfo])
 		return category, &domain.FPL{
-			Category:                data["category"],
-			FlightNumber:            data["number"],
-			ReferenceData:           data["reference_data"],
-			AircraftID:              data["aircraft"],
-			SSRModeAndCode:          data["surve"],
-			FlightRulesAndType:      data["indicator"],
-			CruisingSpeedAndLevel:   data["speed"] + data["level"],
-			DepartureAirport:        data["departure"],
-			DepartureTime:           data["departure_time"],
-			Route:                   data["route"],
-			DestinationAndTotalTime: data["destination"] + data["estt"],
-			AlternateAirport:        data["alter"],
-			OtherInfo:               data["other"],
-			Register:                otherData["reg"],
-			EstimatedArrivalTime:    data["estt"],
-			PBN:                     otherData["pbn"],
-			NavigationEquipment:     otherData["nav"],
-			EstimatedElapsedTime:    otherData["eet"],
-			SELCALCode:              otherData["sel"],
-			PerformanceCategory:     otherData["per"],
-			RerouteInformation:      otherData["rif"],
-			Remarks:                 otherData["remark"],
+			Category:                data[Category],
+			FlightNumber:            data[FlightNumber],
+			ReferenceData:           data[ReferenceData],
+			AircraftID:              data[AircraftID],
+			SSRModeAndCode:          data[Surveillance],
+			FlightRulesAndType:      data[Indicator],
+			CruisingSpeedAndLevel:   data[Speed] + data[Level],
+			DepartureAirport:        data[Departure],
+			DepartureTime:           data[DepartureTime],
+			Route:                   data[Route],
+			DestinationAndTotalTime: data[Destination] + data[EstimatedTime],
+			AlternateAirport:        data[AlternateAirport],
+			OtherInfo:               data[OtherInfo],
+			Register:                otherData[Register],
+			EstimatedArrivalTime:    data[EstimatedTime],
+			PBN:                     otherData[PBN],
+			NavigationEquipment:     otherData[NavigationEquipment],
+			EstimatedElapsedTime:    otherData[EstimatedElapsedTime],
+			SELCALCode:              otherData[SELCALCode],
+			PerformanceCategory:     otherData[PerformanceCategory],
+			RerouteInformation:      otherData[RerouteInformation],
+			Remarks:                 otherData[Remarks],
 		}, nil
 	default:
 		return category, nil, fmt.Errorf("invalid message type: %s", category)
