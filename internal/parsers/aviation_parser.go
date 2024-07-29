@@ -20,17 +20,16 @@ const (
 	CategoryArrival      = "ARR"
 	FlightNumber         = "number"
 	SSR                  = "ssr"
-	Departure            = "departure"
-	ArrivalLocation      = "arrival"
-	Time                 = "time"
+	DepartureCode        = "dep"
+	DepartureTime        = "dep_time"
+	ArrivalCode          = "arr"
+	ArrivalTime          = "arr_time"
 	CategoryDeparture    = "DEP"
-	DepartureTime        = "departure_time"
-	Destination          = "destination"
+	DestinationCode      = "dest"
 	OtherInfo            = "other"
 	CategoryCancellation = "CNL"
 	CategoryDelay        = "DLA"
 	NewDepartureTime     = "new_departure_time"
-	ArrivalTime          = "arrival_time"
 	CategoryFlightPlan   = "FPL"
 	ReferenceData        = "reference_data"
 	Aircraft             = "aircraft"
@@ -143,8 +142,8 @@ func (bp *BodyParser) createBodyData(data map[string]string) (string, interface{
 			Category:         data[Category],
 			AircraftID:       data[FlightNumber],
 			SSRModeAndCode:   data[SSR],
-			DepartureAirport: data[Departure],
-			ArrivalAirport:   data[ArrivalLocation],
+			DepartureAirport: data[DepartureCode],
+			ArrivalAirport:   data[ArrivalCode],
 			ArrivalTime:      data[ArrivalTime],
 		}, nil
 	case CategoryDeparture:
@@ -152,24 +151,24 @@ func (bp *BodyParser) createBodyData(data map[string]string) (string, interface{
 			Category:         data[Category],
 			AircraftID:       data[FlightNumber],
 			SSRModeAndCode:   data[SSR],
-			DepartureAirport: data[Departure],
+			DepartureAirport: data[DepartureCode],
 			DepartureTime:    data[DepartureTime],
-			Destination:      data[ArrivalLocation],
+			Destination:      data[ArrivalCode],
 		}, nil
 	case CategoryCancellation:
 		return category, &domain.CNL{
 			Category:           data[category],
 			AircraftID:         data[FlightNumber],
-			DepartureAirport:   data[Departure],
-			DestinationAirport: data[ArrivalLocation],
+			DepartureAirport:   data[DepartureCode],
+			DestinationAirport: data[ArrivalCode],
 		}, nil
 	case CategoryDelay:
 		return category, &domain.DLA{
 			Category:         data[Category],
 			AircraftID:       data[FlightNumber],
-			DepartureAirport: data[Departure],
+			DepartureAirport: data[DepartureCode],
 			NewDepartureTime: data[DepartureTime],
-			ArrivalAirport:   data[ArrivalLocation],
+			ArrivalAirport:   data[ArrivalCode],
 			ArrivalTime:      data[ArrivalTime],
 		}, nil
 	case CategoryFlightPlan:
@@ -182,10 +181,10 @@ func (bp *BodyParser) createBodyData(data map[string]string) (string, interface{
 			SSRModeAndCode:          data[Surveillance],
 			FlightRulesAndType:      data[Indicator],
 			CruisingSpeedAndLevel:   data[Speed] + data[Level],
-			DepartureAirport:        data[Departure],
+			DepartureAirport:        data[DepartureCode],
 			DepartureTime:           data[DepartureTime],
 			Route:                   data[Route],
-			DestinationAndTotalTime: data[Destination] + data[EstimatedTime],
+			DestinationAndTotalTime: data[DestinationCode] + data[EstimatedTime],
 			AlternateAirport:        data[AlternateAirport],
 			OtherInfo:               data[OtherInfo],
 			Register:                otherData[Register],

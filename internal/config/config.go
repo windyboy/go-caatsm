@@ -65,8 +65,8 @@ const (
 	// - arrival: the four-letter arrival airport code
 	arrPatternString = `^\((?P<category>[A-Z]{3})` +
 		`-(?P<number>[A-Z0-9]+)(\/?(?P<ssr>[A-Z0-9]+))?` +
-		`-(?P<departure>[A-Z]{4})` +
-		`-(?P<arrival>[A-Z]{4})(?P<time>\d{4})\)$`
+		`-(?P<dep>[A-Z]{4})` +
+		`-(?P<arr>[A-Z]{4})(?P<arr_time>\d{4})\)$`
 
 	// depPatternString represents the regular expression pattern used to match departure patterns.
 	// The pattern matches strings in the format: "(TYPE-NUMBER-SSR-DEPARTURE-DEPARTURE_TIME-ARRIVAL)".
@@ -77,7 +77,7 @@ const (
 	// - departure: the four-letter departure airport code
 	// - departure_time: the four-digit departure time
 	// - arrival: the four-letter arrival airport code
-	depPatternString = `^\((?P<category>[A-Z]{3})-(?P<number>[A-Z0-9]+)(\/(?P<ssr>[A-Z0-9]+))?-(?P<departure>[A-Z]{4})(?P<departure_time>\d{4})-(?P<arrival>[A-Z]{4})\)$`
+	depPatternString = `^\((?P<category>[A-Z]{3})-(?P<number>[A-Z0-9]+)(\/(?P<ssr>[A-Z0-9]+))?-(?P<dep>[A-Z]{4})(?P<dep_time>\d{4})-(?P<arr>[A-Z]{4})\)$`
 
 	// fplPatternString represents the regular expression pattern used to match flight plan patterns.
 	// The pattern matches strings in the format: "(CATEGORY-NUMBER-INDICATOR-AIRCRAFT-SURVE-DEPARTURE-DEPARTURE_TIME-SPEED-LEVEL-ROUTE-DESTINATION-ESTT-ALTER-OTHER)".
@@ -97,11 +97,11 @@ const (
 	// - alter: one or more sequences of a whitespace character followed by exactly four uppercase letters
 	// - other: any other relevant information, starting with three uppercase letters followed by a forward slash and zero or more characters (including newline)
 
-	fplPatternString = `\((?P<category>[A-Z]{3})-(?P<number>[A-Z]+\d+)-(?P<indicator>[A-Z]{2})\n-(?P<aircraft>[A-Z]+\d+\/?[A-Z]?)\n?-(?P<surve>.*)\n?-(?P<departure>[A-Z]{4})(?P<departure_time>\d{4})\n?-(?P<speed>[A-Z]+\d+)(?P<level>[A-Z0-9]+)\s+(?P<route>(.|\n)+)\n-(?P<destination>[A-Z]{4})(?P<estt>\d{4})\s?(?P<alter>(\s[A-Z]{4})+)\n?-([A-Z]{3}\/(?:[A-Z]{4}\d{4}\s?)+)?(?P<other>(?m)[A-Z]{3}\/(.|\n)*)\)$`
+	fplPatternString = `\((?P<category>[A-Z]{3})-(?P<number>[A-Z]+\d+)-(?P<indicator>[A-Z]{2})\n-(?P<aircraft>[A-Z]+\d+\/?[A-Z]?)\n?-(?P<surve>.*)\n?-(?P<dep>[A-Z]{4})(?P<dep_time>\d{4})\n?-(?P<speed>[A-Z]+\d+)(?P<level>[A-Z0-9]+)\s+(?P<route>(.|\n)+)\n-(?P<dest>[A-Z]{4})(?P<estt>\d{4})\s?(?P<alter>(\s[A-Z]{4})+)\n?-([A-Z]{3}\/(?:[A-Z]{4}\d{4}\s?)+)?(?P<other>(?m)[A-Z]{3}\/(.|\n)*)\)$`
 
-	cnlPatternString = `^\((?P<category>[A-Z]{3})-(?P<number>\w+\d+)-?(?P<departure>[A-Z]{4})?-?(?<arrival>[A-Z]{4})\)$`
+	cnlPatternString = `^\((?P<category>[A-Z]{3})-(?P<number>\w+\d+)-?(?P<dep>[A-Z]{4})?-?(?<arr>[A-Z]{4})\)$`
 
-	dlaPatternString = `^\((?P<category>[A-Z]{3})-(?P<number>\w+\d+)-?(?P<departure>[A-Z]{4})(?P<departure_time>\d{4})?-?(?<arrival>[A-Z]{4})(?<arrival_time>\d{4})?\)$`
+	dlaPatternString = `^\((?P<category>[A-Z]{3})-(?P<number>\w+\d+)-?(?P<dep>[A-Z]{4})(?P<dep_time>\d{4})?-?(?<arr>[A-Z]{4})(?<arr_time>\d{4})?\)$`
 )
 
 // Initialize the bodyPatterns map
