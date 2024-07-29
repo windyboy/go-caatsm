@@ -53,12 +53,10 @@ func FindWaypoints(message string) map[string]string {
 
 	return result
 }
-
 func ParseLine(line string) *domain.FlightSchedule {
 	cleanLine := strings.TrimSpace(line)
 	words := strings.Split(cleanLine, " ")
 	var flightSchedule = &domain.FlightSchedule{}
-	// var err error
 	var data map[string]string
 
 	// Define the parsing strategy
@@ -86,16 +84,20 @@ func ParseLine(line string) *domain.FlightSchedule {
 				switch name {
 				case Index:
 					flightSchedule.Index = data[Index]
+					parsed[Index] = true
 				case Task:
 					flightSchedule.Task = data[Task]
+					parsed[Task] = true
 				case Date:
 					flightSchedule.Date = data[Date]
+					parsed[Date] = true
 				case FlightNumber:
 					flightSchedule.FlightNumber = data[FlightNumber]
+					parsed[FlightNumber] = true
 				case Register:
 					flightSchedule.AircraftReg = data[Register]
+					parsed[Register] = true
 				}
-				parsed[name] = true
 				break
 			}
 		}
