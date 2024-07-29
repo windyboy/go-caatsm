@@ -28,7 +28,7 @@ ehthumbs.db
 Thumbs.db
 
 # Go specific
-# go.sum
+go.sum
 # go.mod
 
 # Test binary, built with `go test -c`
