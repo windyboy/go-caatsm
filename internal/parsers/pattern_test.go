@@ -30,8 +30,8 @@ var _ = Describe("Pattern Parser", func() {
 			Expect(parsedData["category"]).To(Equal("ARR"))
 			Expect(parsedData["number"]).To(Equal("AB123"))
 			Expect(parsedData["ssr"]).To(Equal("A1234"))
-			Expect(parsedData["departure"]).To(Equal("KJFK"))
-			Expect(parsedData["arrival"]).To(Equal("KLAX"))
+			Expect(parsedData[DepartureCode]).To(Equal("KJFK"))
+			Expect(parsedData[ArrivalCode]).To(Equal("KLAX"))
 		})
 
 		It("should return nil if no patterns match", func() {
