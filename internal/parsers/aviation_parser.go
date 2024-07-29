@@ -51,6 +51,7 @@ const (
 	PerformanceCategory  = "per"
 	RerouteInformation   = "rif"
 	Remarks              = "remark"
+	Index                = "idx"
 )
 
 var (
@@ -105,8 +106,11 @@ func (bp *BodyParser) Parse() (string, interface{}, error) {
 
 	if patternConfig, exists := bp.bodyPatterns[category]; exists && patternConfig.Patterns != nil {
 		for _, p := range patternConfig.Patterns {
-			if match := p.Expression.FindStringSubmatch(bp.body); match != nil {
-				data := extractData(match, p.Expression)
+			// if match := p.Expression.FindStringSubmatch(bp.body); match != nil {
+			// 	data := extractData(match, p.Expression)
+			// 	return bp.createBodyData(data)
+			// }
+			if data := parse(bp.body, p.Expression); data != nil {
 				return bp.createBodyData(data)
 			}
 		}
@@ -123,6 +127,14 @@ func findCategory(body string) string {
 		}
 	}
 	return ""
+}
+
+func parse(data string, exp *regexp.Regexp) map[string]string {
+	match := exp.FindStringSubmatch(data)
+	if len(match) > 0 {
+		return extractData(match, exp)
+	}
+	return nil
 }
 
 func extractData(match []string, re *regexp.Regexp) map[string]string {

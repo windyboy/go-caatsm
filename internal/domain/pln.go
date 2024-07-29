@@ -3,13 +3,15 @@ package domain
 import "fmt"
 
 type FlightSchedule struct {
+	Index string `json:"index,omitempty"`
+
 	// Date of the flight schedule.
 	// Example: "30OCT"
 	Date string `json:"date"`
 
 	// Category of the flight schedule. It could represent different categories based on the airline or flight type.
 	// Example: "H/G"
-	Category string `json:"category,omitempty"`
+	Task string `json:"task,omitempty"`
 
 	// Flight number of the flight schedule. This is a unique identifier for the flight.
 	// Example: "CA1014"
