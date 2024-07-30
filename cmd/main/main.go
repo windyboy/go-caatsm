@@ -2,6 +2,7 @@ package main
 
 import (
 	"caatsm/internal/config"
+	"caatsm/internal/handlers"
 	"caatsm/internal/nats"
 	"caatsm/pkg/utils"
 
@@ -24,6 +25,7 @@ func main() {
 	fmt.Println("Loaded configuration successfully")
 
 	log.Info("Starting nats subscriber")
-	subscribe := nats.NewNatsHandler(cfg)
-	subscribe.Subscribe()
+	handler := handlers.NewNatsHandler(cfg)
+
+	nats.Subscribe(cfg, &handlers.PlainTextMarshaler{}, handler)
 }

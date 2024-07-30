@@ -2,46 +2,29 @@ package nats
 
 import (
 	"caatsm/internal/config"
-	"caatsm/internal/domain"
-	"caatsm/internal/parsers"
-	"caatsm/internal/repository"
-	"caatsm/pkg/utils"
+	"caatsm/internal/handlers"
 	"context"
-	"errors"
-	"fmt"
-	"sync"
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill-nats/v2/pkg/nats"
-	"github.com/ThreeDotsLabs/watermill/message"
 	nc "github.com/nats-io/nats.go"
 )
 
-type NatsHandler struct {
-	mu         sync.Mutex
-	config     *config.Config
-	hasuraRepo *repository.HasuraRepository
-}
-
-func NewNatsHandler(config *config.Config) *NatsHandler {
-	return &NatsHandler{config: config, hasuraRepo: repository.NewHasuraRepo(config.Hasura.Endpoint, config.Hasura.Secret)}
-}
-
-func (n *NatsHandler) Subscribe() {
-	marshaler := &PlainTextMarshaler{}
+func Subscribe(config *config.Config, marshaler *handlers.PlainTextMarshaler, handler *handlers.NatsHandler) {
+	// marshaler := &PlainTextMarshaler{}
 	logger := watermill.NewStdLogger(false, false)
 	options := []nc.Option{
 		nc.RetryOnFailedConnect(true),
-		nc.Timeout(n.config.Timeouts.Server),
-		nc.ReconnectWait(n.config.Timeouts.ReconnectWait),
+		nc.Timeout(config.Timeouts.Server),
+		nc.ReconnectWait(config.Timeouts.ReconnectWait),
 	}
 	jsConfig := nats.JetStreamConfig{Disabled: true}
 
 	subscriber, err := nats.NewSubscriber(
 		nats.SubscriberConfig{
-			URL:            n.config.Nats.URL,
-			CloseTimeout:   n.config.Timeouts.Close,
-			AckWaitTimeout: n.config.Timeouts.AckWait,
+			URL:            config.Nats.URL,
+			CloseTimeout:   config.Timeouts.Close,
+			AckWaitTimeout: config.Timeouts.AckWait,
 			NatsOptions:    options,
 			Unmarshaler:    marshaler,
 			JetStream:      jsConfig,
@@ -51,59 +34,16 @@ func (n *NatsHandler) Subscribe() {
 	if err != nil {
 		panic(err)
 	}
-	logger.Info("Subscribing to NATS topic", map[string]interface{}{"topic": n.config.Subscription.Topic})
+	logger.Info("Subscribing to NATS topic", map[string]interface{}{"topic": config.Subscription.Topic})
 
 	defer subscriber.Close()
-	messages, err := subscriber.Subscribe(context.Background(), n.config.Subscription.Topic)
+	messages, err := subscriber.Subscribe(context.Background(), config.Subscription.Topic)
 	if err != nil {
-		logger.Error("Failed to subscribe to NATS topic", err, map[string]interface{}{"topic": n.config.Subscription.Topic})
+		logger.Error("Failed to subscribe to NATS topic", err, map[string]interface{}{"topic": config.Subscription.Topic})
 		return
 	}
 	for msg := range messages {
-		n.handleMessage(msg)
+		handler.HandleMessage(msg)
 		msg.Ack()
 	}
-}
-func (n *NatsHandler) handleMessage(msg *message.Message) error {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-	log := utils.GetSugaredLogger()
-	if msg.Payload == nil {
-		log.Error("empty message")
-		return fmt.Errorf("empty message")
-	}
-	payload := string(msg.Payload)
-	var parsed *domain.ParsedMessage
-	if parsed = parsers.Parse(payload); !parsed.Parsed {
-		log.Infof("not parsed: [%s] : {%s} \n", msg.UUID, msg.Payload)
-	} else {
-		log.Infof("parsed [%s]: %v\n", msg.UUID, parsed)
-
-	}
-	n.SaveMessage(parsed, msg.UUID)
-	return nil
-}
-
-func (n *NatsHandler) SaveMessage(parsed *domain.ParsedMessage, uuid string) {
-	logger := watermill.NewStdLogger(false, false)
-	if parsed != nil {
-		parsed.Uuid = uuid
-		if err := n.hasuraRepo.CreateNew(parsed); err != nil {
-			logger.Error("error inserting message", err, map[string]interface{}{"message": parsed})
-		}
-	}
-}
-
-type PlainTextMarshaler struct{}
-
-func (m *PlainTextMarshaler) Marshal(topic string, msg nc.Msg) ([]byte, error) {
-	return msg.Data, nil
-}
-
-func (m *PlainTextMarshaler) Unmarshal(newMsg *nc.Msg) (*message.Message, error) {
-	if newMsg == nil {
-		return nil, errors.New("empty message")
-	}
-	msg := message.NewMessage(watermill.NewUUID(), newMsg.Data)
-	return msg, nil
 }
