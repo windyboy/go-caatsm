@@ -112,6 +112,19 @@ var (
 				3: Register,
 			},
 		},
+		{
+			/**
+			* 1)  JD5195 B6727 ILS I(9) SYX/0800 1135/TSN
+			 */
+			Airlines:      []string{"JD"},
+			MinLen:        7,
+			WaypointStart: 5,
+			Fields: map[int]string{
+				0: Index,
+				1: FlightNumber,
+				2: Register,
+			},
+		},
 	}
 )
 
