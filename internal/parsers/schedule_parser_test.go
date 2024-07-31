@@ -105,16 +105,16 @@ var _ = Describe("Schedule Parser", func() {
 	Describe("FindWaypoints", func() {
 		It("should return the correct waypoints based on the message", func() {
 			message := "1845(11JUN)TSN/2100"
-			waypoints := FindWaypoints(message)
-			Expect(waypoints).NotTo(BeNil())
-			Expect(waypoints[ArrivalTime]).To(Equal("1845(11JUN)"))
-			Expect(waypoints[AirportCode]).To(Equal("TSN"))
-			Expect(waypoints[DepartureTime]).To(Equal("2100"))
+			waypoint := ExtractWaypoint(message)
+			Expect(waypoint).NotTo(BeNil())
+			Expect(waypoint.ArrivalTime).To(Equal("1845(11JUN)"))
+			Expect(waypoint.Airport).To(Equal("TSN"))
+			Expect(waypoint.DepartureTime).To(Equal("2100"))
 		})
 
 		It("should return nil if no waypoints are found", func() {
-			message := "1845TSN"
-			waypoints := FindWaypoints(message)
+			message := "18451TSN"
+			waypoints := ExtractWaypoint(message)
 			Expect(waypoints).To(BeNil())
 		})
 	})
@@ -130,6 +130,10 @@ var _ = Describe("Schedule Parser", func() {
 				// Expect(schedule.Task).To(Equal("1/1"))
 				Expect(schedule.FlightNumber).To(Equal("FM9134"))
 				Expect(schedule.AircraftReg).To(Equal("B2688"))
+				Expect(len(schedule.Waypoints)).To(Equal(2))
+				Expect(schedule.Waypoints[0].Airport).To(Equal("TSN"))
+				Expect(schedule.Waypoints[0].DepartureTime).To(Equal("0100"))
+				Expect(schedule.Waypoints[1].Airport).To(Equal("SHA"))
 				// Expect(schedule.PassengerConfig).To(Equal("1/1"))
 				// Expect(schedule.ILS).To(Equal("ILS (00)"))
 				// Expect(schedule.DepartureAirport).To(Equal("TSN"))
