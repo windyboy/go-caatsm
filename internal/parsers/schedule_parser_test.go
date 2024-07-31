@@ -260,4 +260,22 @@ var _ = Describe("Parse Line with PreDef", func() {
 		})
 	})
 
+	Context("GS", func() {
+		It("01 GS7635 B3193 XIY0020(16APR) CGD", func() {
+			lineText := "01 GS7635 B3193 XIY0020(16APR) CGD"
+			def := FindDef("GS")
+			Expect(def).NotTo(BeNil())
+			schedule := ParseWithDef(lineText, def)
+			Expect(schedule).NotTo(BeNil())
+			Expect(schedule.Index).To(Equal("01"))
+			Expect(len(schedule.FlightNumber)).To(Equal(1))
+			Expect(schedule.FlightNumber[0]).To(Equal("GS7635"))
+			Expect(schedule.AircraftReg).To(Equal("B3193"))
+			Expect(len(schedule.Waypoints)).To(Equal(2))
+			Expect(schedule.Waypoints[0].Airport).To(Equal("XIY"))
+			Expect(schedule.Waypoints[0].DepartureTime).To(Equal("0020(16APR)"))
+			Expect(schedule.Waypoints[1].Airport).To(Equal("CGD"))
+		})
+	})
+
 })

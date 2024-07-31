@@ -126,6 +126,19 @@ var (
 				2: Register,
 			},
 		},
+		{
+			/**
+			* 01 GS7635 B3193 XIY0020(16APR) CGD
+			 */
+			Airlines:      []string{"GS"},
+			MinLen:        4,
+			WaypointStart: 3,
+			Fields: map[int]string{
+				0: Index,
+				1: FlightNumber,
+				2: Register,
+			},
+		},
 	}
 )
 
