@@ -52,7 +52,15 @@ tasks:
     cmds:
       - task: build-receiver
       - echo "Running receiver in test mode..."
-      - GO_ENV=test {{.BUILD_DIR}}/receiver 
+      - GO_ENV=test {{.BUILD_DIR}}/receiver
+
+  upgrade:
+    desc: Upgrade go dependencies
+    cmds:
+      - echo "Upgrading go dependencies..."
+      - go get -u -d -v ./... 
+      - go mod tidy
+
 
   test:
     desc: Test the application
