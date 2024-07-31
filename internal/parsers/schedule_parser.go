@@ -15,6 +15,7 @@ type LineParser struct {
 }
 
 const (
+	CANCELLED   = "CNL"
 	AirportCode = "airport"
 	Date        = "date"
 	Task        = "task"
@@ -172,6 +173,10 @@ func ParseWithDef(line string, parserDef *LineParser) *domain.ScheduleLine {
 	words := strings.Split(cleanLine, " ")
 	var flightSchedule = &domain.ScheduleLine{
 		Reference: line,
+	}
+	if strings.Contains(line, CANCELLED) {
+		flightSchedule.Comments = "Cancelled"
+		return flightSchedule
 	}
 	// var result map[string]string
 	if parserDef == nil {

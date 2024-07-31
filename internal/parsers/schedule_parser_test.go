@@ -132,25 +132,33 @@ var _ = Describe("Schedule Parser", func() {
 
 })
 
-var _ = Describe("FindDef", func() {
+var _ = Describe("Parser Definition", func() {
 
-	Context("find def for MF", func() {
-		It("should return a valid def", func() {
+	Context("MF", func() {
+		It("valid def", func() {
 			def := FindDef("MF")
 			Expect(def).NotTo(BeNil())
 			Expect(def.Airlines).To(ContainElement("MF"))
 		})
 	})
-	Context("find def for FM", func() {
-		It("should return a valid def", func() {
+	Context("FM", func() {
+		It("valid def", func() {
 			def := FindDef("FM")
 			Expect(def).NotTo(BeNil())
 			Expect(def.Airlines).To(ContainElement("FM"))
 		})
 	})
 
-	Context("find def for CK", func() {
-		It("should return a valid def", func() {
+	Context("8X", func() {
+		It("valid def", func() {
+			def := FindDef("8X")
+			Expect(def).NotTo(BeNil())
+			Expect(def.Airlines).To(ContainElement("8X"))
+		})
+	})
+
+	Context("CK", func() {
+		It("nil", func() {
 			def := FindDef("CK")
 			Expect(def).To(BeNil())
 		})
