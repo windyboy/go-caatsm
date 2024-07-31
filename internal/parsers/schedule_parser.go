@@ -11,12 +11,12 @@ const (
 	AirportCode         = "airport"
 	Date                = "date"
 	Task                = "task"
-	IndexPattern        = `(?P<idx>\(?L?[0-9]+\)?\.?)`
-	DatePattern         = `\s?(?P<date>\d{2}\w{3})`
-	TaskPattern         = `\s?(?P<task>[A-Z]\/[A-Z])`
+	IndexPattern        = `^(?P<idx>\(?L?[0-9]+\)?\.?)$`
+	DatePattern         = `^(?P<date>\d{2}\w{3})$`
+	TaskPattern         = `^(?P<task>[A-Z]\/[A-Z])$`
 	WaypointPattern     = `^(SI:)?(?P<arr_time>\d{4}(\(\d{2}[A-Z]{3}\))?)?\/?(?P<airport>[A-Z]{3})\/?(?P<dep_time>\d{4}(\(\d{2}[A-Z]{3}\))?)?$`
-	FlightNumberPattern = `\s?(?P<number>[0-9A-Z][0-9A-Z]\d{3,5})`
-	RegisterPattern     = `\s?(?P<reg>B\d{4})`
+	FlightNumberPattern = `^(?P<number>[0-9A-Z][0-9A-Z]\d{3,5})$`
+	RegisterPattern     = `^(?P<reg>B\d{4})$`
 )
 
 var (
@@ -57,11 +57,11 @@ func ExtractWaypoint(message string) *domain.WayPoint {
 	return result
 }
 
-func ParseLine(line string) *domain.FlightSchedule {
+func ParseLine(line string) *domain.ScheduleLine {
 	log := utils.GetSugaredLogger()
 	cleanLine := strings.TrimSpace(line)
 	words := strings.Split(cleanLine, " ")
-	var flightSchedule = &domain.FlightSchedule{
+	var flightSchedule = &domain.ScheduleLine{
 		Reference: line,
 	}
 	var data map[string]string
@@ -104,7 +104,8 @@ func ParseLine(line string) *domain.FlightSchedule {
 					parsed[Date] = true
 					maxParsed = i
 				case FlightNumber:
-					flightSchedule.FlightNumber = data[FlightNumber]
+					//TODO: Handle multiple flight numbers
+					flightSchedule.FlightNumber = append(flightSchedule.FlightNumber, data[FlightNumber])
 					parsed[FlightNumber] = true
 					maxParsed = i
 				case Register:

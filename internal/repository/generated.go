@@ -14,39 +14,30 @@ import (
 // input type for inserting data into table "aviation.telegrams"
 type Aviation_telegrams_insert_input struct {
 	Text                 string          `json:"Text"`
-	Body_and_footer      string          `json:"body_and_footer"`
 	Body_data            json.RawMessage `json:"body_data"`
 	Category             string          `json:"category"`
-	Comments             string          `json:"comments"`
 	Date_time            string          `json:"date_time"`
 	Dispatched_at        time.Time       `json:"dispatched_at"`
 	Message_id           string          `json:"message_id"`
 	Need_dispatch        bool            `json:"need_dispatch"`
 	Originator           string          `json:"originator"`
 	Originator_date_time string          `json:"originator_date_time"`
-	Parsed               bool            `json:"parsed"`
 	Parsed_at            time.Time       `json:"parsed_at"`
 	Primary_address      string          `json:"primary_address"`
 	Priority_indicator   string          `json:"priority_indicator"`
 	Received_at          time.Time       `json:"received_at"`
-	Secondary_addresses  json.RawMessage `json:"secondary_addresses"`
+	Secondary_addresses  string          `json:"secondary_addresses"`
 	Uuid                 uuid.UUID       `json:"uuid"`
 }
 
 // GetText returns Aviation_telegrams_insert_input.Text, and is useful for accessing the field via an interface.
 func (v *Aviation_telegrams_insert_input) GetText() string { return v.Text }
 
-// GetBody_and_footer returns Aviation_telegrams_insert_input.Body_and_footer, and is useful for accessing the field via an interface.
-func (v *Aviation_telegrams_insert_input) GetBody_and_footer() string { return v.Body_and_footer }
-
 // GetBody_data returns Aviation_telegrams_insert_input.Body_data, and is useful for accessing the field via an interface.
 func (v *Aviation_telegrams_insert_input) GetBody_data() json.RawMessage { return v.Body_data }
 
 // GetCategory returns Aviation_telegrams_insert_input.Category, and is useful for accessing the field via an interface.
 func (v *Aviation_telegrams_insert_input) GetCategory() string { return v.Category }
-
-// GetComments returns Aviation_telegrams_insert_input.Comments, and is useful for accessing the field via an interface.
-func (v *Aviation_telegrams_insert_input) GetComments() string { return v.Comments }
 
 // GetDate_time returns Aviation_telegrams_insert_input.Date_time, and is useful for accessing the field via an interface.
 func (v *Aviation_telegrams_insert_input) GetDate_time() string { return v.Date_time }
@@ -68,9 +59,6 @@ func (v *Aviation_telegrams_insert_input) GetOriginator_date_time() string {
 	return v.Originator_date_time
 }
 
-// GetParsed returns Aviation_telegrams_insert_input.Parsed, and is useful for accessing the field via an interface.
-func (v *Aviation_telegrams_insert_input) GetParsed() bool { return v.Parsed }
-
 // GetParsed_at returns Aviation_telegrams_insert_input.Parsed_at, and is useful for accessing the field via an interface.
 func (v *Aviation_telegrams_insert_input) GetParsed_at() time.Time { return v.Parsed_at }
 
@@ -84,7 +72,7 @@ func (v *Aviation_telegrams_insert_input) GetPriority_indicator() string { retur
 func (v *Aviation_telegrams_insert_input) GetReceived_at() time.Time { return v.Received_at }
 
 // GetSecondary_addresses returns Aviation_telegrams_insert_input.Secondary_addresses, and is useful for accessing the field via an interface.
-func (v *Aviation_telegrams_insert_input) GetSecondary_addresses() json.RawMessage {
+func (v *Aviation_telegrams_insert_input) GetSecondary_addresses() string {
 	return v.Secondary_addresses
 }
 

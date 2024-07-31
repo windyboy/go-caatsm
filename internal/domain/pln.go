@@ -2,7 +2,7 @@ package domain
 
 import "fmt"
 
-type FlightSchedule struct {
+type ScheduleLine struct {
 	Index string `json:"index,omitempty"`
 
 	// Date of the flight schedule.
@@ -15,7 +15,7 @@ type FlightSchedule struct {
 
 	// Flight number of the flight schedule. This is a unique identifier for the flight.
 	// Example: "CA1014"
-	FlightNumber string `json:"flight_number"`
+	FlightNumber []string `json:"flight_number"`
 
 	// Aircraft registration number. This is a unique identifier for the aircraft used for the flight.
 	// Example: "B2458"
@@ -28,26 +28,6 @@ type FlightSchedule struct {
 	// Instrument Landing System (ILS) category or configuration used for the flight. This field may include ILS category details.
 	// Example: "ILS(0)"
 	ILS string `json:"ils,omitempty"`
-
-	// // ICAO code for the departure airport.
-	// // Example: "ZBTJ"
-	// DepartureAirport string `json:"departure_airport"`
-
-	// // Scheduled departure time of the flight. This field may be formatted as HHMM or include date information.
-	// // Example: "1845"
-	// DepartureTime string `json:"departure_time,omitempty"`
-
-	// // Additional schedule information. This field may include special instructions or additional scheduling details.
-	// // Example: "SI:TSN1845"
-	// ScheduleInfo string `json:"schedule_info,omitempty"`
-
-	// // Estimated or scheduled arrival time of the flight. This field may be formatted as HHMM or include date information.
-	// // Example: "2100"
-	// ArrivalTime string `json:"arrival_time,omitempty"`
-
-	// // ICAO code for the arrival airport.
-	// // Example: "ZSPD"
-	// ArrivalAirport string `json:"arrival_airport"`
 
 	Waypoints []WayPoint `json:"waypoints"`
 
@@ -65,11 +45,11 @@ type WayPoint struct {
 	DepartureTime string
 }
 
-func (f *FlightSchedule) Validate() error {
+func (f *ScheduleLine) Validate() error {
 	if f.Date == "" {
 		return fmt.Errorf("date is required")
 	}
-	if f.FlightNumber == "" {
+	if len(f.FlightNumber) == 0 {
 		return fmt.Errorf("flight number is required")
 	}
 	if f.AircraftReg == "" {

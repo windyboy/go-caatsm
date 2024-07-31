@@ -37,7 +37,7 @@ func (hr *HasuraRepository) CreateNew(pm *domain.ParsedMessage) error {
 		Message_id:           pm.MessageID,
 		Priority_indicator:   pm.PriorityIndicator,
 		Primary_address:      pm.PrimaryAddress,
-		Secondary_addresses:  []byte(secondAddress),
+		Secondary_addresses:  string(secondAddress),
 		Text:                 pm.Text,
 		Body_data:            bodyString,
 		Category:             pm.Category,
