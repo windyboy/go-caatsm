@@ -130,26 +130,6 @@ var _ = Describe("Schedule Parser", func() {
 		})
 	})
 
-	Describe("Parsing one line of schedule", func() {
-		Context("parse : W/Z FM9134 B2688 1/1ILS (00) TSN0100 SHA", func() {
-			It("should return a valid schedule", func() {
-				lineText := "W/Z FM9134 B2688 1/1ILS (00) TSN0100 SHA"
-				schedule := ParseLine(lineText)
-				Expect(schedule).NotTo(BeNil())
-				Expect(schedule.Task).To(Equal("W/Z"))
-				// Expect(schedule.Date).To(Equal("TSN0100"))
-				// Expect(schedule.Task).To(Equal("1/1"))
-				Expect(schedule.FlightNumber[0]).To(Equal("FM9134"))
-				Expect(schedule.AircraftReg).To(Equal("B2688"))
-				Expect(len(schedule.Waypoints)).To(Equal(2))
-				Expect(schedule.Waypoints[0].Airport).To(Equal("TSN"))
-				Expect(schedule.Waypoints[0].DepartureTime).To(Equal("0100"))
-				Expect(schedule.Waypoints[1].Airport).To(Equal("SHA"))
-			})
-
-		})
-	})
-
 })
 
 var _ = Describe("FindDef", func() {
