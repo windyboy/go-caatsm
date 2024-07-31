@@ -92,6 +92,26 @@ var (
 				3: Register,
 			},
 		},
+		{
+			/**
+			* 解析海航(HU)计划
+			* 计划参考
+			*L04 W/Z HU7204 B5637 (9) SZX/0500 TSN
+			*L05 W/Z HU7205 B5406 (9) TSN/2355(30OCT) PVG
+			*1)  JD5195 B6727 ILS I(9) SYX/0800 1135/TSN
+			*
+			*L07 W/Z GS6571 B3155 (7) XIY/0025 TSN/0245 CGQ
+			 */
+			Airlines:      []string{"HU"},
+			MinLen:        6,
+			WaypointStart: 5,
+			Fields: map[int]string{
+				0: Index,
+				1: Task,
+				2: FlightNumber,
+				3: Register,
+			},
+		},
 	}
 )
 

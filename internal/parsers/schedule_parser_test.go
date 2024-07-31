@@ -214,4 +214,23 @@ var _ = Describe("Parse Line with PreDef", func() {
 		})
 	})
 
+	Context("HU", func() {
+		It("L05 W/Z HU7205 B5406 (9) TSN/2355(30OCT) PVG", func() {
+			lineText := "L05 W/Z HU7205 B5406 (9) TSN/2355(30OCT) PVG"
+			def := FindDef("HU")
+			Expect(def).NotTo(BeNil())
+			schedule := ParseWithDef(lineText, def)
+			Expect(schedule).NotTo(BeNil())
+			Expect(schedule.Index).To(Equal("L05"))
+			Expect(schedule.Task).To(Equal("W/Z"))
+			Expect(len(schedule.FlightNumber)).To(Equal(1))
+			Expect(schedule.FlightNumber[0]).To(Equal("HU7205"))
+			Expect(schedule.AircraftReg).To(Equal("B5406"))
+			Expect(len(schedule.Waypoints)).To(Equal(2))
+			Expect(schedule.Waypoints[0].Airport).To(Equal("TSN"))
+			Expect(schedule.Waypoints[0].DepartureTime).To(Equal("2355(30OCT)"))
+			Expect(schedule.Waypoints[1].Airport).To(Equal("PVG"))
+		})
+	})
+
 })
