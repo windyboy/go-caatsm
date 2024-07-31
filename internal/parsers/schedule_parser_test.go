@@ -9,54 +9,54 @@ var _ = Describe("Schedule Parser", func() {
 
 	Describe("Index Parser", func() {
 		Context("parse : 83.", func() {
-			message := "83."
-			data := parse(message, IndexExpression)
 			It("should return a valid index", func() {
+				message := "83."
+				data := extract(message, IndexExpression)
 				Expect(data).NotTo(BeNil())
 				Expect(data[Index]).To(Equal("83."))
 			})
 		})
 
 		Context("parse : (21)", func() {
-			message := "(21)"
-			data := parse(message, IndexExpression)
 			It("should return a valid index", func() {
+				message := "(21)"
+				data := extract(message, IndexExpression)
 				Expect(data).NotTo(BeNil())
 				Expect(data[Index]).To(Equal("(21)"))
 			})
 		})
 
 		Context("parse : L59", func() {
-			message := "L59"
-			data := parse(message, IndexExpression)
 			It("should return a valid index", func() {
+				message := "L59"
+				data := extract(message, IndexExpression)
 				Expect(data).NotTo(BeNil())
 				Expect(data[Index]).To(Equal("L59"))
 			})
 		})
 
 		Context("parse : (205)", func() {
-			message := "(205)"
-			data := parse(message, IndexExpression)
 			It("should return a valid index", func() {
+				message := "(205)"
+				data := extract(message, IndexExpression)
 				Expect(data).NotTo(BeNil())
 				Expect(data[Index]).To(Equal("(205)"))
 			})
 		})
 
 		Context("parse : L01", func() {
-			message := "L01"
-			data := parse(message, IndexExpression)
 			It("should return a valid index", func() {
+				message := "L01"
+				data := extract(message, IndexExpression)
 				Expect(data).NotTo(BeNil())
 				Expect(data[Index]).To(Equal("L01"))
 			})
 		})
 
 		Context("parse : 01)", func() {
-			message := "01)"
-			data := parse(message, IndexExpression)
 			It("should return a valid index", func() {
+				message := "01)"
+				data := extract(message, IndexExpression)
 				Expect(data).NotTo(BeNil())
 				Expect(data[Index]).To(Equal("01)"))
 			})
@@ -66,38 +66,49 @@ var _ = Describe("Schedule Parser", func() {
 
 	Describe("Flight Number Parser", func() {
 		Context("parse : FM9134", func() {
-			message := "FM9134"
-			data := parse(message, FlightNumberExpression)
 			It("should return a valid flight number", func() {
+				message := "FM9134"
+				data := extract(message, FlightNumberExpression)
 				Expect(data).NotTo(BeNil())
 				Expect(data[FlightNumber]).To(Equal("FM9134"))
 			})
 		})
 
 		Context("parse : Y87969", func() {
-			message := "Y87969"
-			data := parse(message, FlightNumberExpression)
 			It("should return a valid flight number", func() {
+				message := "Y87969"
+				data := extract(message, FlightNumberExpression)
 				Expect(data).NotTo(BeNil())
 				Expect(data[FlightNumber]).To(Equal("Y87969"))
 			})
 		})
 
 		Context("parse : CK261", func() {
-			message := "CK261"
-			data := parse(message, FlightNumberExpression)
 			It("should return a valid flight number", func() {
+				message := "CK261"
+				data := extract(message, FlightNumberExpression)
 				Expect(data).NotTo(BeNil())
 				Expect(data[FlightNumber]).To(Equal("CK261"))
 			})
 		})
 
 		Context("parse : 9C8812", func() {
-			message := "9C8812"
-			data := parse(message, FlightNumberExpression)
 			It("should return a valid flight number", func() {
+				message := "9C8812"
+				data := extract(message, FlightNumberExpression)
 				Expect(data).NotTo(BeNil())
 				Expect(data[FlightNumber]).To(Equal("9C8812"))
+			})
+		})
+	})
+
+	Describe("Schedule Date Parser", func() {
+		Context("parse : 29OCT", func() {
+			It("should return a valid date", func() {
+				message := "29OCT"
+				data := extract(message, DateExpression)
+				Expect(data).NotTo(BeNil())
+				Expect(data[Date]).To(Equal("29OCT"))
 			})
 		})
 	})
@@ -121,26 +132,106 @@ var _ = Describe("Schedule Parser", func() {
 
 	Describe("Parsing one line of schedule", func() {
 		Context("parse : W/Z FM9134 B2688 1/1ILS (00) TSN0100 SHA", func() {
-			lineText := "W/Z FM9134 B2688 1/1ILS (00) TSN0100 SHA"
-			schedule := ParseLine(lineText)
 			It("should return a valid schedule", func() {
+				lineText := "W/Z FM9134 B2688 1/1ILS (00) TSN0100 SHA"
+				schedule := ParseLine(lineText)
 				Expect(schedule).NotTo(BeNil())
 				Expect(schedule.Task).To(Equal("W/Z"))
 				// Expect(schedule.Date).To(Equal("TSN0100"))
 				// Expect(schedule.Task).To(Equal("1/1"))
-				Expect(schedule.FlightNumber).To(Equal("FM9134"))
+				Expect(schedule.FlightNumber[0]).To(Equal("FM9134"))
 				Expect(schedule.AircraftReg).To(Equal("B2688"))
 				Expect(len(schedule.Waypoints)).To(Equal(2))
 				Expect(schedule.Waypoints[0].Airport).To(Equal("TSN"))
 				Expect(schedule.Waypoints[0].DepartureTime).To(Equal("0100"))
 				Expect(schedule.Waypoints[1].Airport).To(Equal("SHA"))
-				// Expect(schedule.PassengerConfig).To(Equal("1/1"))
-				// Expect(schedule.ILS).To(Equal("ILS (00)"))
-				// Expect(schedule.DepartureAirport).To(Equal("TSN"))
-				// Expect(schedule.DepartureTime).To(Equal("0100"))
-				// Expect(schedule.ScheduleInfo).To(Equal("SHA"))
 			})
 
 		})
 	})
+
+})
+
+var _ = Describe("FindDef", func() {
+
+	Context("find def for MF", func() {
+		It("should return a valid def", func() {
+			def := FindDef("MF")
+			Expect(def).NotTo(BeNil())
+			Expect(def.Airlines).To(ContainElement("MF"))
+		})
+	})
+	Context("find def for FM", func() {
+		It("should return a valid def", func() {
+			def := FindDef("FM")
+			Expect(def).NotTo(BeNil())
+			Expect(def.Airlines).To(ContainElement("FM"))
+		})
+	})
+
+	Context("find def for CK", func() {
+		It("should return a valid def", func() {
+			def := FindDef("CK")
+			Expect(def).To(BeNil())
+		})
+	})
+})
+
+var _ = Describe("Parse Line with PreDef", func() {
+	Context("FM", func() {
+		It("W/Z FM9134 B2688 1/1ILS (00) TSN0100 SHA", func() {
+			lineText := "W/Z FM9134 B2688 1/1ILS (00) TSN0100 SHA"
+			def := FindDef("FM")
+			schedule := ParseWithDef(lineText, def)
+			Expect(schedule).NotTo(BeNil())
+			Expect(schedule.Task).To(Equal("W/Z"))
+			Expect(len(schedule.FlightNumber)).To(Equal(1))
+			Expect(schedule.FlightNumber[0]).To(Equal("FM9134"))
+			Expect(schedule.AircraftReg).To(Equal("B2688"))
+			Expect(len(schedule.Waypoints)).To(Equal(2))
+			Expect(schedule.Waypoints[0].Airport).To(Equal("TSN"))
+			Expect(schedule.Waypoints[0].DepartureTime).To(Equal("0100"))
+			Expect(schedule.Waypoints[1].Airport).To(Equal("SHA"))
+		})
+
+	})
+
+	Context("MF", func() {
+		It("01) MF8193 B5595 ILS(8) HGH1100 1305TSN", func() {
+			lineText := "01) MF8193 B5595 ILS(8) HGH1100 1305TSN"
+			def := FindDef("MF")
+			Expect(def).NotTo(BeNil())
+			schedule := ParseWithDef(lineText, def)
+			Expect(schedule).NotTo(BeNil())
+			Expect(schedule.Index).To(Equal("01)"))
+			Expect(len(schedule.FlightNumber)).To(Equal(1))
+			Expect(schedule.FlightNumber[0]).To(Equal("MF8193"))
+			Expect(schedule.AircraftReg).To(Equal("B5595"))
+			Expect(len(schedule.Waypoints)).To(Equal(2))
+			Expect(schedule.Waypoints[0].Airport).To(Equal("HGH"))
+			Expect(schedule.Waypoints[0].DepartureTime).To(Equal("1100"))
+			Expect(schedule.Waypoints[1].Airport).To(Equal("TSN"))
+			Expect(schedule.Waypoints[1].ArrivalTime).To(Equal("1305"))
+		})
+	})
+
+	Context("8X", func() {
+		It("L1:  29OCT  BK2735 B2863  ILS  IS (3/6)  TSN2350(28OCT)   HAK", func() {
+			lineText := "L1:  29OCT  BK2735 B2863  ILS  IS (3/6)  TSN2350(28OCT)   HAK"
+			def := FindDef("8X")
+			Expect(def).NotTo(BeNil())
+			schedule := ParseWithDef(lineText, def)
+			Expect(schedule).NotTo(BeNil())
+			Expect(schedule.Index).To(Equal("L1:"))
+			Expect(schedule.Date).To(Equal("29OCT"))
+			Expect(len(schedule.FlightNumber)).To(Equal(1))
+			Expect(schedule.FlightNumber[0]).To(Equal("BK2735"))
+			Expect(schedule.AircraftReg).To(Equal("B2863"))
+			Expect(len(schedule.Waypoints)).To(Equal(2))
+			Expect(schedule.Waypoints[0].Airport).To(Equal("TSN"))
+			Expect(schedule.Waypoints[0].DepartureTime).To(Equal("2350(28OCT)"))
+			Expect(schedule.Waypoints[1].Airport).To(Equal("HAK"))
+		})
+	})
+
 })

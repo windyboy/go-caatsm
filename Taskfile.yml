@@ -120,6 +120,7 @@ tasks:
       - echo "  task fmt            - Format the code"
       - echo "  task deps           - Install dependencies"
       - echo "  task lint           - Lint the code"
-      - echo "  task schema - Download the GraphQL schema from Hasura server"
+      - echo "  task schema         - Download the GraphQL schema from Hasura server"
       - echo "  task gen            - Generate code using genqlient"
+      - echo "  task upgrade        - Upgrade go dependencies"
       - echo "  task help           - Show this help message"

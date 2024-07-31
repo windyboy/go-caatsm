@@ -110,7 +110,7 @@ func (bp *BodyParser) Parse() (string, interface{}, error) {
 			// 	data := extractData(match, p.Expression)
 			// 	return bp.createBodyData(data)
 			// }
-			if data := parse(bp.body, p.Expression); data != nil {
+			if data := extract(bp.body, p.Expression); data != nil {
 				return bp.createBodyData(data)
 			}
 		}
@@ -129,7 +129,7 @@ func findCategory(body string) string {
 	return ""
 }
 
-func parse(data string, exp *regexp.Regexp) map[string]string {
+func extract(data string, exp *regexp.Regexp) map[string]string {
 	match := exp.FindStringSubmatch(data)
 	if len(match) > 0 {
 		return extractData(match, exp)
