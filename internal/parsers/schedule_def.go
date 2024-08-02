@@ -281,6 +281,54 @@ var (
 				2: Register,
 			},
 		},
+		{
+			/**
+			* 吉祥航空 (HO)
+			* 124) 14NOV W/Z HO1245 B6966 ILS(8) SHA0005 0255CKG
+			* 125) 14NOV W/Z HO1246 B6966 ILS(8) CKG0340 0630SHA
+			 */
+			Airlines:      []string{"HO"},
+			MinLen:        7,
+			WaypointStart: 6,
+			Fields: map[int]string{
+				0: Index,
+				1: Date,
+				2: Task,
+				3: FlightNumber,
+				4: Register,
+			},
+		},
+		{
+			/**
+			* 河北航空 (NS)
+			* 05) 14NOV N/M NS3230 B3188 ILS(2) TSN2200 2240SJW
+			 */
+			Airlines:      []string{"NS"},
+			MinLen:        7,
+			WaypointStart: 6,
+			Fields: map[int]string{
+				0: Index,
+				1: Date,
+				2: Task,
+				3: FlightNumber,
+				4: Register,
+			},
+		},
+		{
+			/**
+			* 成都航空 (EU)
+			* 38)W/Z 27NOV EU2748 B6900 CAT1 (8) TSN0800 1055CTU
+			 */
+			Airlines:      []string{"EU"},
+			MinLen:        7,
+			WaypointStart: 6,
+			Fields: map[int]string{
+				0: Task,
+				1: Date,
+				2: FlightNumber,
+				3: Register,
+			},
+		},
 	}
 )
 
