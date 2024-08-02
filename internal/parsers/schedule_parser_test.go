@@ -67,7 +67,7 @@ var _ = Describe("Schedule Parser", func() {
 	Describe("Date Parser", func() {
 		Context("parse : 31OCT", func() {
 			message := "31OCT"
-			data := parse(message, DateExpression)
+			data := extract(message, DateExpression)
 			It("should return a valid date", func() {
 				Expect(data).NotTo(BeNil())
 				Expect(data[Date]).To(Equal("31OCT"))
