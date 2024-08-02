@@ -221,6 +221,21 @@ var (
 				4: Register,
 			},
 		},
+		{
+			/**
+			* 翔鹏航空 (8L)
+			*L59 W/Z 8L9976 B6959 TSN/0510 CTU/0855 KMG
+			 */
+			Airlines:      []string{"8L"},
+			MinLen:        6,
+			WaypointStart: 4,
+			Fields: map[int]string{
+				0: Index,
+				1: Task,
+				2: FlightNumber,
+				3: Register,
+			},
+		},
 	}
 )
 
