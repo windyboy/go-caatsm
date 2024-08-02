@@ -20,10 +20,11 @@ const (
 	Date        = "date"
 	Task        = "task"
 	// Index               = "idx"
-	AllDigitsPattern    = `^(?P<dep_time>\d+)$`
-	IndexPattern        = `^(?P<idx>\(?L?[0-9]+\)?:?\.?)$`
-	DatePattern         = `^(?P<date>\d{2}\w{3})$`
-	TaskPattern         = `^(?P<task>[A-Z]\/[A-Z])$`
+	AllDigitsPattern = `^(?P<dep_time>\d+)$`
+	IndexPattern     = `^(?P<idx>\(?L?[0-9]+\)?:?\.?)$`
+	DatePattern      = `^(?P<date>\d{2}\w{3})$`
+	// CK task: 01)H/Z
+	TaskPattern         = `(?P<task>[A-Z]\/[A-Z])$`
 	WaypointPattern     = `^(SI:)?(?P<arr_time>\d{4}(\(\d{2}[A-Z]{3}\))?)?\/?(?P<airport>[A-Z]{3})\/?(?P<dep_time>\d{4}(\(\d{2}[A-Z]{3}\))?)?$`
 	FlightNumberPattern = `^(?P<number>[0-9A-Z][0-9A-Z]\d{3,5})$`
 	RegisterPattern     = `^(?P<reg>B\d{4})$`
@@ -170,6 +171,20 @@ var (
 				1: Date,
 				2: FlightNumber,
 				3: Register,
+			},
+		},
+		{
+			/**
+			* 中国货运 (CK)
+			*01)H/Z CK261 B2076 PVG1535(30OCT) 1705TPE
+			 */
+			Airlines:      []string{"CK"},
+			MinLen:        4,
+			WaypointStart: 3,
+			Fields: map[int]string{
+				0: Task,
+				1: FlightNumber,
+				2: Register,
 			},
 		},
 	}

@@ -206,9 +206,9 @@ var _ = Describe("Parser Definition", func() {
 		})
 	})
 
-	Context("CK", func() {
+	Context("XX", func() {
 		It("nil", func() {
-			def := FindDef("CK")
+			def := FindDef("XX")
 			Expect(def).To(BeNil())
 		})
 	})
@@ -362,6 +362,25 @@ var _ = Describe("Parse Line with PreDef", func() {
 			Expect(schedule.Waypoints[0].DepartureTime).To(Equal("0010"))
 			Expect(schedule.Waypoints[1].Airport).To(Equal("TSN"))
 			Expect(schedule.Waypoints[1].ArrivalTime).To(Equal("0235"))
+		})
+	})
+
+	Context("CK", func() {
+		It("01)H/Z CK261 B2076 PVG1535(30OCT) 1705TPE", func() {
+			lineText := "01)H/Z CK261 B2076 PVG1535(30OCT) 1705TPE"
+			def := FindDef("CK")
+			Expect(def).NotTo(BeNil())
+			schedule := ParseWithDef(lineText, def)
+			Expect(schedule).NotTo(BeNil())
+			Expect(schedule.Task).To(Equal("H/Z"))
+			Expect(len(schedule.FlightNumber)).To(Equal(1))
+			Expect(schedule.FlightNumber[0]).To(Equal("CK261"))
+			Expect(schedule.AircraftReg).To(Equal("B2076"))
+			Expect(len(schedule.Waypoints)).To(Equal(2))
+			Expect(schedule.Waypoints[0].Airport).To(Equal("PVG"))
+			Expect(schedule.Waypoints[0].DepartureTime).To(Equal("1535(30OCT)"))
+			Expect(schedule.Waypoints[1].Airport).To(Equal("TPE"))
+			Expect(schedule.Waypoints[1].ArrivalTime).To(Equal("1705"))
 		})
 	})
 
