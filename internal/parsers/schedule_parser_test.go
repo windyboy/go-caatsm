@@ -506,4 +506,44 @@ var _ = Describe("Parse Line with PreDef", func() {
 		})
 	})
 
+	Context("CZ", func() {
+		It("83.     CZ3301/2   B2823 B752 CAN0135 TSN0535 CAN", func() {
+			lineText := "83.     CZ3301/2   B2823 B752 CAN0135 TSN0535 CAN"
+			def := FindDef("CZ")
+			Expect(def).NotTo(BeNil())
+			schedule := ParseWithDef(lineText, def)
+			Expect(schedule).NotTo(BeNil())
+			Expect(schedule.Index).To(Equal("83."))
+			Expect(len(schedule.FlightNumber)).To(Equal(2))
+			Expect(schedule.FlightNumber).To(ContainElement("CZ3301"))
+			Expect(schedule.FlightNumber).To(ContainElement("CZ3302"))
+			Expect(schedule.AircraftReg).To(Equal("B2823"))
+			Expect(len(schedule.Waypoints)).To(Equal(3))
+			Expect(schedule.Waypoints[0].Airport).To(Equal("CAN"))
+			Expect(schedule.Waypoints[0].DepartureTime).To(Equal("0135"))
+			Expect(schedule.Waypoints[1].Airport).To(Equal("TSN"))
+			Expect(schedule.Waypoints[1].DepartureTime).To(Equal("0535"))
+			Expect(schedule.Waypoints[2].Airport).To(Equal("CAN"))
+		})
+
+		It("83.     CZ3301/2   B2823 B752 CAN0135 TSN0535 CAN", func() {
+			lineText := "83.     CZ3301/2   B2823 B752 CAN0135 TSN0535 CAN"
+			def := FindDef("CZ")
+			Expect(def).NotTo(BeNil())
+			schedule := ParseWithDef(lineText, def)
+			Expect(schedule).NotTo(BeNil())
+			Expect(schedule.Index).To(Equal("83."))
+			Expect(len(schedule.FlightNumber)).To(Equal(2))
+			Expect(schedule.FlightNumber).To(ContainElement("CZ3301"))
+			Expect(schedule.FlightNumber).To(ContainElement("CZ3302"))
+			Expect(schedule.AircraftReg).To(Equal("B2823"))
+			Expect(len(schedule.Waypoints)).To(Equal(3))
+			Expect(schedule.Waypoints[0].Airport).To(Equal("CAN"))
+			Expect(schedule.Waypoints[0].DepartureTime).To(Equal("0135"))
+			Expect(schedule.Waypoints[1].Airport).To(Equal("TSN"))
+			Expect(schedule.Waypoints[1].DepartureTime).To(Equal("0535"))
+			Expect(schedule.Waypoints[2].Airport).To(Equal("CAN"))
+		})
+	})
+
 })

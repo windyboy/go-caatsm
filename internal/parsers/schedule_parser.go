@@ -80,7 +80,7 @@ func ParseWithDef(line string, parserDef *LineParser) *domain.ScheduleLine {
 			case Task:
 				flightSchedule.Task = data[Task]
 			case FlightNumber:
-				flightSchedule.FlightNumber = append(flightSchedule.FlightNumber, data[FlightNumber])
+				flightSchedule.FlightNumber = getFlightNumbers(data[FlightNumber])
 			case Register:
 				flightSchedule.AircraftReg = data[Register]
 			}
