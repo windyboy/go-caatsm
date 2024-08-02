@@ -211,11 +211,6 @@ func parseWaypoints(points []string) []domain.WayPoint {
 *  	CA1371/1372/1527
  */
 func getFlightNumbers(data string) []string {
-	// matchNumbers := extract(data, FlightNumberExpression)
-	// numbers := matchNumbers[FlightNumber]
-	// if numbers == "" {
-	// 	return nil
-	// }
 	if strings.Contains(data, "/") {
 		data := strings.Split(data, "/")
 		baseNumber := data[0]
