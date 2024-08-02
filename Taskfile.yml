@@ -61,6 +61,12 @@ tasks:
       - go get -u -d -v ./... 
       - go mod tidy
 
+  install-test:
+    desc: install ginkgo for testing
+    cmds:
+      - echo "Installing ginkgo..."
+      - go install github.com/onsi/ginkgo/v2/ginkgo
+      - go get github.com/onsi/gomega/...
 
   test:
     desc: Test the application
@@ -116,6 +122,7 @@ tasks:
       - echo "  task run-prod       - Run the receiver in production mode"
       - echo "  task run-test       - Run the receiver in test mode"
       - echo "  task test           - Run tests"
+      - echo "  task install-test   - Install ginkgo for testing"
       - echo "  task clean          - Clean build artifacts"
       - echo "  task fmt            - Format the code"
       - echo "  task deps           - Install dependencies"
