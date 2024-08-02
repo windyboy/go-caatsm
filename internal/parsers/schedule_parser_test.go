@@ -384,4 +384,44 @@ var _ = Describe("Parse Line with PreDef", func() {
 		})
 	})
 
+	Context("G5", func() {
+		It("L01 W/Z G52665 B7762 (6) CKG/0725 CIH/0940 TSN", func() {
+			lineText := "L01 W/Z G52665 B7762 (6) CKG/0725 CIH/0940 TSN"
+			def := FindDef("G5")
+			Expect(def).NotTo(BeNil())
+			schedule := ParseWithDef(lineText, def)
+			Expect(schedule).NotTo(BeNil())
+			Expect(schedule.Index).To(Equal("L01"))
+			Expect(schedule.Task).To(Equal("W/Z"))
+			Expect(len(schedule.FlightNumber)).To(Equal(1))
+			Expect(schedule.FlightNumber[0]).To(Equal("G52665"))
+			Expect(schedule.AircraftReg).To(Equal("B7762"))
+			Expect(len(schedule.Waypoints)).To(Equal(3))
+			Expect(schedule.Waypoints[0].Airport).To(Equal("CKG"))
+			Expect(schedule.Waypoints[0].DepartureTime).To(Equal("0725"))
+			Expect(schedule.Waypoints[1].Airport).To(Equal("CIH"))
+			Expect(schedule.Waypoints[1].DepartureTime).To(Equal("0940"))
+			Expect(schedule.Waypoints[2].Airport).To(Equal("TSN"))
+		})
+	})
+
+	Context("9C", func() {
+		It("31OCT W/Z 9C8884 B6573 ILS1/1 (06) TSN0650 SYX", func() {
+			lineText := "31OCT W/Z 9C8884 B6573 ILS1/1 (06) TSN0650 SYX"
+			def := FindDef("9C")
+			Expect(def).NotTo(BeNil())
+			schedule := ParseWithDef(lineText, def)
+			Expect(schedule).NotTo(BeNil())
+			Expect(schedule.Date).To(Equal("31OCT"))
+			Expect(schedule.Task).To(Equal("W/Z"))
+			Expect(len(schedule.FlightNumber)).To(Equal(1))
+			Expect(schedule.FlightNumber[0]).To(Equal("9C8884"))
+			Expect(schedule.AircraftReg).To(Equal("B6573"))
+			Expect(len(schedule.Waypoints)).To(Equal(2))
+			Expect(schedule.Waypoints[0].Airport).To(Equal("TSN"))
+			Expect(schedule.Waypoints[0].DepartureTime).To(Equal("0650"))
+			Expect(schedule.Waypoints[1].Airport).To(Equal("SYX"))
+		})
+	})
+
 })

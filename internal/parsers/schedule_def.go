@@ -190,6 +190,21 @@ var (
 				3: Register,
 			},
 		},
+		{
+			/**
+			* 春秋航空 (9C)
+			*31OCT W/Z 9C8884 B6573 ILS1/1 (06) TSN0650 SYX
+			 */
+			Airlines:      []string{"9C"},
+			MinLen:        8,
+			WaypointStart: 6,
+			Fields: map[int]string{
+				0: Date,
+				1: Task,
+				2: FlightNumber,
+				3: Register,
+			},
+		},
 	}
 )
 
