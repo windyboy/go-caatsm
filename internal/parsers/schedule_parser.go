@@ -20,6 +20,7 @@ const (
 	Date        = "date"
 	Task        = "task"
 	// Index               = "idx"
+	AllDigitsPattern    = `^(?P<dep_time>\d+)$`
 	IndexPattern        = `^(?P<idx>\(?L?[0-9]+\)?:?\.?)$`
 	DatePattern         = `^(?P<date>\d{2}\w{3})$`
 	TaskPattern         = `^(?P<task>[A-Z]\/[A-Z])$`
@@ -29,6 +30,8 @@ const (
 )
 
 var (
+	AllDigitsExpression = regexp.MustCompile(AllDigitsPattern)
+
 	IndexExpression        = regexp.MustCompile(IndexPattern)
 	TaskExpression         = regexp.MustCompile(TaskPattern)
 	DateExpression         = regexp.MustCompile(DatePattern)
@@ -132,6 +135,21 @@ var (
 			 */
 			Airlines:      []string{"GS"},
 			MinLen:        4,
+			WaypointStart: 3,
+			Fields: map[int]string{
+				0: Index,
+				1: FlightNumber,
+				2: Register,
+			},
+		},
+		{
+			/**
+			* 杨子快运(Y8)
+			*01 Y87969 B2119 XMN 1540 HGH
+			*13 Y87444 B2578 ICN 0235 TSN
+			 */
+			Airlines:      []string{"Y8"},
+			MinLen:        6,
 			WaypointStart: 3,
 			Fields: map[int]string{
 				0: Index,
@@ -322,9 +340,15 @@ func parseWaypoints(points []string) []domain.WayPoint {
 		return nil
 	}
 	var waypoints []domain.WayPoint
-	for _, point := range realWaypoints {
+	for i, point := range realWaypoints {
 		// log.Debugf("Parsing waypoint: %s", point)
-		if waypoint := ExtractWaypoint(point); waypoint != nil {
+		// check the next point for departure time
+		if digits := extract(point, AllDigitsExpression); i > 0 && digits != nil {
+			// if the previous point was a waypoint, update the departure time
+			if l := len(waypoints); l > 0 {
+				waypoints[l-1].DepartureTime = digits[DepartureTime]
+			}
+		} else if waypoint := ExtractWaypoint(point); waypoint != nil {
 			// log.Debugf("Waypoint: %v", waypoint)
 			waypoints = append(waypoints, *waypoint)
 		} else {

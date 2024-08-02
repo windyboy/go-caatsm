@@ -40,7 +40,7 @@ var (
 func load() {
 	if log == nil {
 		env := getEnv()
-		fmt.Printf("Environment: %s\n", env)
+		// fmt.Printf("Environment: %s\n", env)
 		configFile := getConfigFile(env)
 
 		config, err := loadConfig(configFile)

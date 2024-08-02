@@ -1,6 +1,8 @@
 package parsers
 
 import (
+	"strings"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -124,7 +126,7 @@ var _ = Describe("Schedule Parser", func() {
 		})
 	})
 
-	Describe("FindWaypoints", func() {
+	Describe("FindWaypoint", func() {
 		It("should return the correct waypoints based on the message", func() {
 			message := "1845(11JUN)TSN/2100"
 			waypoint := ExtractWaypoint(message)
@@ -138,6 +140,42 @@ var _ = Describe("Schedule Parser", func() {
 			message := "18451TSN"
 			waypoints := ExtractWaypoint(message)
 			Expect(waypoints).To(BeNil())
+		})
+
+		It("TSN/0645", func() {
+			message := "TSN/0645"
+			waypoint := ExtractWaypoint(message)
+			Expect(waypoint).NotTo(BeNil())
+			Expect(waypoint.Airport).To(Equal("TSN"))
+			Expect(waypoint.DepartureTime).To(Equal("0645"))
+		})
+	})
+
+	Describe("Waypoints", func() {
+		Context("XIY/0415 TSN/0645 CGQ", func() {
+			It("should return 3 waypoints", func() {
+				points := strings.Split("XIY/0415 TSN/0645 CGQ", " ")
+				waypoints := parseWaypoints(points)
+				Expect(waypoints).NotTo(BeNil())
+				Expect(waypoints).To(HaveLen(3))
+				Expect(waypoints[0].Airport).To(Equal("XIY"))
+				Expect(waypoints[0].DepartureTime).To(Equal("0415"))
+				Expect(waypoints[1].Airport).To(Equal("TSN"))
+				Expect(waypoints[1].DepartureTime).To(Equal("0645"))
+				Expect(waypoints[2].Airport).To(Equal("CGQ"))
+
+			})
+		})
+		Context("ICN 0235 TSN", func() {
+			It("should return 2 waypoints", func() {
+				points := strings.Split("ICN 0235 TSN", " ")
+				waypoints := parseWaypoints(points)
+				Expect(waypoints).NotTo(BeNil())
+				Expect(waypoints).To(HaveLen(2))
+				Expect(waypoints[0].Airport).To(Equal("ICN"))
+				Expect(waypoints[0].DepartureTime).To(Equal("0235"))
+				Expect(waypoints[1].Airport).To(Equal("TSN"))
+			})
 		})
 	})
 
@@ -286,6 +324,24 @@ var _ = Describe("Parse Line with PreDef", func() {
 			Expect(schedule.Waypoints[0].Airport).To(Equal("XIY"))
 			Expect(schedule.Waypoints[0].DepartureTime).To(Equal("0020(16APR)"))
 			Expect(schedule.Waypoints[1].Airport).To(Equal("CGD"))
+		})
+	})
+
+	Context("Y8", func() {
+		It("13 Y87444 B2578 ICN 0235 TSN", func() {
+			lineText := "13 Y87444 B2578 ICN 0235 TSN"
+			def := FindDef("Y8")
+			Expect(def).NotTo(BeNil())
+			schedule := ParseWithDef(lineText, def)
+			Expect(schedule).NotTo(BeNil())
+			Expect(schedule.Index).To(Equal("13"))
+			Expect(len(schedule.FlightNumber)).To(Equal(1))
+			Expect(schedule.FlightNumber[0]).To(Equal("Y87444"))
+			Expect(schedule.AircraftReg).To(Equal("B2578"))
+			Expect(len(schedule.Waypoints)).To(Equal(2))
+			Expect(schedule.Waypoints[0].Airport).To(Equal("ICN"))
+			Expect(schedule.Waypoints[0].DepartureTime).To(Equal("0235"))
+			Expect(schedule.Waypoints[1].Airport).To(Equal("TSN"))
 		})
 	})
 
