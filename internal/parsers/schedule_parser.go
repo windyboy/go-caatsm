@@ -143,8 +143,7 @@ func ParseLine(line string) *domain.ScheduleLine {
 					parsed[Date] = true
 					maxParsed = i
 				case FlightNumber:
-					//TODO: Handle multiple flight numbers
-					flightSchedule.FlightNumber = append(flightSchedule.FlightNumber, data[FlightNumber])
+					flightSchedule.FlightNumber = getFlightNumbers(data[FlightNumber])
 					parsed[FlightNumber] = true
 					maxParsed = i
 				case Register:
@@ -204,4 +203,31 @@ func parseWaypoints(points []string) []domain.WayPoint {
 	}
 	// log.Debugf("Found %d waypoints", len(waypoints))
 	return waypoints
+}
+
+/**
+* 	CZ6794/79
+*	CZ3301/2
+*  	CA1371/1372/1527
+ */
+func getFlightNumbers(data string) []string {
+	// matchNumbers := extract(data, FlightNumberExpression)
+	// numbers := matchNumbers[FlightNumber]
+	// if numbers == "" {
+	// 	return nil
+	// }
+	if strings.Contains(data, "/") {
+		data := strings.Split(data, "/")
+		baseNumber := data[0]
+		baseLength := len(baseNumber)
+		flightNumbers := append([]string{}, baseNumber)
+		for _, number := range data[1:] {
+			length := len(number)
+			flightNumber := baseNumber[:baseLength-length] + number
+			flightNumbers = append(flightNumbers, flightNumber)
+		}
+		return flightNumbers
+	} else {
+		return []string{data}
+	}
 }

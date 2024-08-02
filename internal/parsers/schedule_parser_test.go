@@ -113,6 +113,29 @@ var _ = Describe("Schedule Parser", func() {
 				Expect(data[FlightNumber]).To(Equal("9C8812"))
 			})
 		})
+
+		Context("CA1371/1372/1527", func() {
+			It("3 number : CA1371 CA1372 CA1527", func() {
+				message := "CA1371/1372/1527"
+				data := getFlightNumbers(message)
+				Expect(data).NotTo(BeNil())
+				Expect(data).To(HaveLen(3))
+				Expect(data).To(ContainElement("CA1371"))
+				Expect(data).To(ContainElement("CA1372"))
+				Expect(data).To(ContainElement("CA1527"))
+			})
+		})
+
+		Context("CZ3301/2", func() {
+			It("2 number : CZ3301 CZ3302", func() {
+				message := "CZ3301/2"
+				data := getFlightNumbers(message)
+				Expect(data).NotTo(BeNil())
+				Expect(data).To(HaveLen(2))
+				Expect(data).To(ContainElement("CZ3301"))
+				Expect(data).To(ContainElement("CZ3302"))
+			})
+		})
 	})
 
 	Describe("Schedule Date Parser", func() {
@@ -462,6 +485,24 @@ var _ = Describe("Parse Line with PreDef", func() {
 			Expect(schedule.Waypoints[1].Airport).To(Equal("CTU"))
 			Expect(schedule.Waypoints[1].DepartureTime).To(Equal("0855"))
 			Expect(schedule.Waypoints[2].Airport).To(Equal("KMG"))
+		})
+	})
+
+	Context("SC", func() {
+		It("(1) SC4717 B3080 CRJ7 ILS I (6) TAO/2350 TSN", func() {
+			lineText := "(1) SC4717 B3080 CRJ7 ILS I (6) TAO/2350 TSN"
+			def := FindDef("SC")
+			Expect(def).NotTo(BeNil())
+			schedule := ParseWithDef(lineText, def)
+			Expect(schedule).NotTo(BeNil())
+			Expect(schedule.Index).To(Equal("(1)"))
+			Expect(len(schedule.FlightNumber)).To(Equal(1))
+			Expect(schedule.FlightNumber[0]).To(Equal("SC4717"))
+			Expect(schedule.AircraftReg).To(Equal("B3080"))
+			Expect(len(schedule.Waypoints)).To(Equal(2))
+			Expect(schedule.Waypoints[0].Airport).To(Equal("TAO"))
+			Expect(schedule.Waypoints[0].DepartureTime).To(Equal("2350"))
+			Expect(schedule.Waypoints[1].Airport).To(Equal("TSN"))
 		})
 	})
 

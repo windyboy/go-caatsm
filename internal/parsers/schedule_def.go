@@ -14,7 +14,7 @@ const (
 	// CK task: 01)H/Z
 	TaskPattern         = `(?P<task>[A-Z]\/[A-Z])$`
 	WaypointPattern     = `^(SI:)?(?P<arr_time>\d{4}(\(\d{2}[A-Z]{3}\))?)?\/?(?P<airport>[A-Z]{3})\/?(?P<dep_time>\d{4}(\(\d{2}[A-Z]{3}\))?)?$`
-	FlightNumberPattern = `^(?P<number>[0-9A-Z][0-9A-Z]\d{3,5})$`
+	FlightNumberPattern = `^(?P<number>[0-9A-Z][0-9A-Z]\d{3,5}(\/\d+)*)$`
 	RegisterPattern     = `^(?P<reg>B\d{4})$`
 )
 
@@ -234,6 +234,51 @@ var (
 				1: Task,
 				2: FlightNumber,
 				3: Register,
+			},
+		},
+		{
+			/**
+			* 山东航空 (SC)
+			*(1) SC4717 B3080 CRJ7 ILS I (6) TAO/2350 TSN
+			 */
+			Airlines:      []string{"SC"},
+			MinLen:        9,
+			WaypointStart: 7,
+			Fields: map[int]string{
+				0: Index,
+				1: FlightNumber,
+				2: Register,
+			},
+		},
+		{
+			/**
+			* 西部航空 (PN)
+			*21) PN6237 B6763 ILS I(9) CKG/0000 0220/TSN
+			*23) PN6235 B6763 ILS I(9) CKG/0905 1025/WUH/1100 1225/WNZ
+			 */
+			Airlines:      []string{"PN"},
+			MinLen:        7,
+			WaypointStart: 5,
+			Fields: map[int]string{
+				0: Index,
+				1: FlightNumber,
+				2: Register,
+			},
+		},
+		{
+			/**
+			* 南方航空 (CZ)
+			*
+			*83.     CZ3301/2   B2823 B752 CAN0135 TSN0535 CAN
+			*02.     CZ6973/4   B5239 B737 YIN0235  URC0425 PVG0940 URC1545 YIN
+			 */
+			Airlines:      []string{"CZ"},
+			MinLen:        6,
+			WaypointStart: 4,
+			Fields: map[int]string{
+				0: Index,
+				1: FlightNumber,
+				2: Register,
 			},
 		},
 	}
