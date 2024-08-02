@@ -205,6 +205,22 @@ var (
 				3: Register,
 			},
 		},
+		{
+			/**
+			* 深圳航空 (ZH)
+			*204) W/Z 31OCT ZH9783 B5670 CAT1 (10) SZX0045 0355TSN
+			 */
+			Airlines:      []string{"ZH"},
+			MinLen:        9,
+			WaypointStart: 7,
+			Fields: map[int]string{
+				0: Index,
+				1: Task,
+				2: Date,
+				3: FlightNumber,
+				4: Register,
+			},
+		},
 	}
 )
 
