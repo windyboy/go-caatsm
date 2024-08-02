@@ -157,6 +157,21 @@ var (
 				2: Register,
 			},
 		},
+		{
+			/**
+			* 四川航空 (3U)
+			* 01)  31OCT 3U8863 B6598 CAT1 (10) CKG0010 0235TSN
+			 */
+			Airlines:      []string{"3U"},
+			MinLen:        8,
+			WaypointStart: 6,
+			Fields: map[int]string{
+				0: Index,
+				1: Date,
+				2: FlightNumber,
+				3: Register,
+			},
+		},
 	}
 )
 

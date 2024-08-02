@@ -345,103 +345,24 @@ var _ = Describe("Parse Line with PreDef", func() {
 		})
 	})
 
+	Context("3U", func() {
+		It("01)  31OCT 3U8863 B6598 CAT1 (10) CKG0010 0235TSN", func() {
+			lineText := "01)  31OCT 3U8863 B6598 CAT1 (10) CKG0010 0235TSN"
+			def := FindDef("3U")
+			Expect(def).NotTo(BeNil())
+			schedule := ParseWithDef(lineText, def)
+			Expect(schedule).NotTo(BeNil())
+			Expect(schedule.Index).To(Equal("01)"))
+			Expect(schedule.Date).To(Equal("31OCT"))
+			Expect(len(schedule.FlightNumber)).To(Equal(1))
+			Expect(schedule.FlightNumber[0]).To(Equal("3U8863"))
+			Expect(schedule.AircraftReg).To(Equal("B6598"))
+			Expect(len(schedule.Waypoints)).To(Equal(2))
+			Expect(schedule.Waypoints[0].Airport).To(Equal("CKG"))
+			Expect(schedule.Waypoints[0].DepartureTime).To(Equal("0010"))
+			Expect(schedule.Waypoints[1].Airport).To(Equal("TSN"))
+			Expect(schedule.Waypoints[1].ArrivalTime).To(Equal("0235"))
+		})
+	})
+
 })
-
-// var _ = Describe("Parse Line without PreDef", func() {
-// 	Context("W/Z", func() {
-// 		It("W/Z 9C8812 B2863 1/1ILS (00) TSN0100 SHA", func() {
-// 			lineText := "W/Z 9C8812 B2863 1/1ILS (00) TSN0100 SHA"
-// 			schedule := ParseWithoutDef(lineText)
-// 			Expect(schedule).NotTo(BeNil())
-// 			Expect(schedule.Task).To(Equal("W/Z"))
-// 			Expect(len(schedule.FlightNumber)).To(Equal(1))
-// 			Expect(schedule.FlightNumber[0]).To(Equal("9C8812"))
-// 			Expect(schedule.AircraftReg).To(Equal("B2863"))
-// 			Expect(len(schedule.Waypoints)).To(Equal(2))
-// 			Expect(schedule.Waypoints[0].Airport).To(Equal("TSN"))
-// 			Expect(schedule.Waypoints[0].DepartureTime).To(Equal("0100"))
-// 			Expect(schedule.Waypoints[1].Airport).To(Equal("SHA"))
-// 		})
-// 	})
-
-// 	Context("L01", func() {
-// 		It("L01 01) B5595 ILS(8) HGH1100 1305TSN", func() {
-// 			lineText := "L01 01) B5595 ILS(8) HGH1100 1305TSN"
-// 			schedule := ParseWithoutDef(lineText)
-// 			Expect(schedule).NotTo(BeNil())
-// 			Expect(schedule.Index).To(Equal("L01"))
-// 			Expect(len(schedule.FlightNumber)).To(Equal(1))
-// 			Expect(schedule.FlightNumber[0]).To(Equal("01)"))
-// 			Expect(schedule.AircraftReg).To(Equal("B5595"))
-// 			Expect(len(schedule.Waypoints)).To(Equal(2))
-// 			Expect(schedule.Waypoints[0].Airport).To(Equal("HGH"))
-// 			Expect(schedule.Waypoints[0].DepartureTime).To(Equal("1100"))
-// 			Expect(schedule.Waypoints[1].Airport).To(Equal("TSN"))
-// 			Expect(schedule.Waypoints[1].ArrivalTime).To(Equal("1305"))
-// 		})
-// 	})
-
-// 	Context("L1:", func() {
-// 		It("L1: 29OCT B2863  ILS  IS (3/6)  TSN2350(28OCT)   HAK", func() {
-// 			lineText := "L1: 29OCT B2863  ILS  IS (3/6)  TSN2350(28OCT)   HAK"
-// 			schedule := ParseWithoutDef(lineText)
-// 			Expect(schedule).NotTo(BeNil())
-// 			Expect(schedule.Index).To(Equal("L1:"))
-// 			Expect(schedule.Date).To(Equal("29OCT"))
-// 			Expect(len(schedule.FlightNumber)).To(Equal(1))
-// 			Expect(schedule.FlightNumber[0]).To(Equal("B2863"))
-// 			Expect(len(schedule.Waypoints)).To(Equal(2))
-// 			Expect(schedule.Waypoints[0].Airport).To(Equal("TSN"))
-// 			Expect(schedule.Waypoints[0].DepartureTime).To(Equal("2350(28OCT)"))
-// 			Expect(schedule.Waypoints[1].Airport).To(Equal("HAK"))
-// 		})
-// 	})
-
-// 	Context("L05", func() {
-// 		It("L05 W/Z B5406 (9) TSN/2355(30OCT) PVG", func() {
-// 			lineText := "L05 W/Z B5406 (9) TSN/2355(30OCT) PVG"
-// 			schedule := ParseWithoutDef(lineText)
-// 			Expect(schedule).NotTo(BeNil())
-// 			Expect(schedule.Index).To(Equal("L05"))
-// 			Expect(schedule.Task).To(Equal("W/Z"))
-// 			Expect(len(schedule.FlightNumber)).To(Equal(1))
-// 			Expect(schedule.FlightNumber[0]).To(Equal("B5406"))
-// 			Expect(len(schedule.Waypoints)).To(Equal(2))
-// 			Expect(schedule.Waypoints[0].Airport).To(Equal("TSN"))
-// 			Expect(schedule.Waypoints[0].DepartureTime).To(Equal("2355(30OCT)"))
-// 			Expect(schedule.Waypoints[1].Airport).To(Equal("PVG"))
-// 		})
-// 	})
-
-// 	Context("1)", func() {
-// 		It("1) B6727 ILS I(9) SYX/0800 1135/TSN", func() {
-// 			lineText := "1) B6727 ILS I(9) SYX/0800 1135/TSN"
-// 			schedule := ParseWithoutDef(lineText)
-// 			Expect(schedule).NotTo(BeNil())
-// 			Expect(schedule.Index).To(Equal("1)"))
-// 			Expect(len(schedule.FlightNumber)).To(Equal(1))
-// 			Expect(schedule.FlightNumber[0]).To(Equal("B6727"))
-// 			Expect(len(schedule.Waypoints)).To(Equal(2))
-// 			Expect(schedule.Waypoints[0].Airport).To(Equal("SYX"))
-// 			Expect(schedule.Waypoints[0].DepartureTime).To(Equal("0800"))
-// 			Expect(schedule.Waypoints[1].Airport).To(Equal("TSN"))
-// 			Expect(schedule.Waypoints[1].ArrivalTime).To(Equal("1135"))
-// 		})
-// 	})
-
-// 	Context("01", func() {
-// 		It("01 B3193 XIY0020(16APR) CGD", func() {
-// 			lineText := "01 B3193 XIY0020(16APR) CGD"
-// 			schedule := ParseWithoutDef(lineText)
-// 			Expect(schedule).NotTo(BeNil())
-// 			Expect(schedule.Index).To(Equal("01"))
-// 			Expect(len(schedule.FlightNumber)).To(Equal(1))
-// 			Expect(schedule.FlightNumber[0]).To(Equal("B3193"))
-// 			Expect(len(schedule.Waypoints)).To(Equal(2))
-// 			Expect(schedule.Waypoints[0].Airport).To(Equal("XIY"))
-// 			Expect(schedule.Waypoints[0].DepartureTime).To(Equal("0020(16APR)"))
-// 			Expect(schedule.Waypoints[1].Airport).To(Equal("CGD"))
-// 		})
-// 	})
-
-// })
