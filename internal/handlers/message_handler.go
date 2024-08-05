@@ -21,8 +21,11 @@ type MessageHandler struct {
 	hasuraRepo *repository.HasuraRepository
 }
 
-func NewNatsHandler(config *config.Config) *MessageHandler {
-	return &MessageHandler{config: config, hasuraRepo: repository.NewHasuraRepo(config.Hasura.Endpoint, config.Hasura.Secret)}
+func New(config *config.Config) *MessageHandler {
+	return &MessageHandler{
+		config:     config,
+		hasuraRepo: repository.New(config.Hasura.Endpoint, config.Hasura.Secret),
+	}
 }
 
 func (n *MessageHandler) HandleMessage(msg *message.Message) error {
@@ -39,7 +42,6 @@ func (n *MessageHandler) HandleMessage(msg *message.Message) error {
 		log.Infof("not parsed: [%s] : {%s} \n", msg.UUID, msg.Payload)
 	} else {
 		log.Infof("parsed [%s]: %v\n", msg.UUID, parsed)
-
 	}
 	n.SaveMessage(parsed, msg.UUID)
 	return nil

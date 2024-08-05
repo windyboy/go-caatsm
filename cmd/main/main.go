@@ -38,12 +38,14 @@ func setupApp() *cli.App {
 				Flags: []cli.Flag{
 					&cli.StringFlag{
 						Name:    "nats",
+						Aliases: []string{"n"},
 						Usage:   "Nats server address",
 						Value:   "nats://localhost:4222",
 						EnvVars: []string{"NATS_SERVER"},
 					},
 					&cli.StringFlag{
 						Name:    "topic",
+						Aliases: []string{"t"},
 						Usage:   "Nats topic to listen to",
 						Value:   "Telegram.Serial",
 						EnvVars: []string{"NATS_SUBJECT"},
@@ -81,7 +83,7 @@ func executeListen(c *cli.Context) error {
 	fmt.Println("Loaded configuration successfully")
 	log := utils.GetLogger()
 	log.Info("Starting nats subscriber")
-	handler := handlers.NewNatsHandler(cfg)
+	handler := handlers.New(cfg)
 	nats.Subscribe(cfg, &handlers.PlainTextMarshaler{}, handler)
 	return nil
 }

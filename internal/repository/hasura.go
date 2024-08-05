@@ -17,8 +17,8 @@ type HasuraRepository struct {
 	client graphql.Client
 }
 
-// NewHasuraRepo creates a new HasuraRepository
-func NewHasuraRepo(endpoint, secret string) *HasuraRepository {
+// New creates a new HasuraRepository
+func New(endpoint, secret string) *HasuraRepository {
 	src := oauth2.StaticTokenSource(
 		&oauth2.Token{AccessToken: os.Getenv("GRAPHQL_TOKEN")},
 	)
