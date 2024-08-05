@@ -26,7 +26,7 @@ func main() {
 func setupApp() *cli.App {
 	app := &cli.App{
 		Name:  "telegram message process",
-		Usage: "A Civial Aviation Authority Telegram message processor",
+		Usage: "A Civial Aviation Authority Telegram Message Processor",
 		Before: func(c *cli.Context) error {
 
 			return nil

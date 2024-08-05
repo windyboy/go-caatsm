@@ -11,7 +11,6 @@ import (
 )
 
 func Subscribe(config *config.Config, marshaler *handlers.PlainTextMarshaler, handler *handlers.MessageHandler) {
-	// marshaler := &PlainTextMarshaler{}
 	logger := watermill.NewStdLogger(false, false)
 	options := []nc.Option{
 		nc.RetryOnFailedConnect(true),
@@ -34,6 +33,8 @@ func Subscribe(config *config.Config, marshaler *handlers.PlainTextMarshaler, ha
 	if err != nil {
 		panic(err)
 	}
+
+	logger.Info("NATS server connected", map[string]interface{}{"url": config.Nats.URL})
 	logger.Info("Subscribing to NATS topic", map[string]interface{}{"topic": config.Subscription.Topic})
 
 	defer subscriber.Close()
@@ -42,6 +43,7 @@ func Subscribe(config *config.Config, marshaler *handlers.PlainTextMarshaler, ha
 		logger.Error("Failed to subscribe to NATS topic", err, map[string]interface{}{"topic": config.Subscription.Topic})
 		return
 	}
+
 	for msg := range messages {
 		handler.HandleMessage(msg)
 		msg.Ack()
