@@ -1,15 +1,14 @@
 version: '3'
-
 vars:
-  APP_NAME: tele-proc
-  GO_FILES:
+  app_name: tele-proc
+  go_files:
     sh: find . -name '*.go' -type f
-  CONFIG_DIR: configs
-  BUILD_DIR: build
-  MAIN_RECEIVER: ./cmd/main/main.go
-  HASURA_ENDPOINT: http://localhost:8080/v1/graphql
-  SCHEMA_FILE: ./internal/repository/schema.graphql
-  HASURA_SECRET: # Set your Hasura admin secret here
+  config_dir: configs
+  build_dir: build
+  main_receiver: ./cmd/main/main.go
+  hasura_endpoint: http://localhost:8080/v1/graphql
+  schema_file: ./internal/repository/schema.graphql
+  hasura_secret: # Set your Hasura admin secret here
 
 tasks:
   all:
@@ -26,7 +25,7 @@ tasks:
     desc: Build the receiver application
     cmds:
       - echo "Building receiver..."
-      - go build -o {{.BUILD_DIR}}/receiver {{.MAIN_RECEIVER}}
+      - go build -o {{.build_dir}}/receiver {{.main_receiver}}
 
   run:
     desc: Run the receiver application with different configurations
@@ -38,21 +37,21 @@ tasks:
     cmds:
       - task: build-receiver
       - echo "Running receiver in development mode..."
-      - GO_ENV=dev {{.BUILD_DIR}}/receiver 
+      - GO_ENV=dev {{.build_dir}}/receiver listen
 
   run-prod:
     desc: Run the receiver in production mode
     cmds:
       - task: build-receiver
       - echo "Running receiver in production mode..."
-      - GO_ENV=prod {{.BUILD_DIR}}/receiver 
+      - GO_ENV=prod {{.build_dir}}/receiver 
 
   run-test:
     desc: Run the receiver in test mode
     cmds:
       - task: build-receiver
       - echo "Running receiver in test mode..."
-      - GO_ENV=test {{.BUILD_DIR}}/receiver
+      - GO_ENV=test {{.build_dir}}/receiver
 
   upgrade:
     desc: Upgrade go dependencies
@@ -62,7 +61,7 @@ tasks:
       - go mod tidy
 
   install-test:
-    desc: install ginkgo for testing
+    desc: Install ginkgo for testing
     cmds:
       - echo "Installing ginkgo..."
       - go install github.com/onsi/ginkgo/v2/ginkgo
@@ -78,7 +77,7 @@ tasks:
     desc: Clean build artifacts
     cmds:
       - echo "Cleaning build artifacts..."
-      - rm -rf {{.BUILD_DIR}}
+      - rm -rf {{.build_dir}}
 
   fmt:
     desc: Format the code
@@ -103,9 +102,8 @@ tasks:
     cmds:
       - echo "Downloading GraphQL schema..."
       - >
-        gq {{.HASURA_ENDPOINT}} -H 'X-Hasura-Admin-Secret:  {{.HASURA_SECRET}}' --introspect > {{.SCHEMA_FILE}}
+        gq {{.hasura_endpoint}} -H 'X-Hasura-Admin-Secret:  {{.hasura_secret}}' --introspect > {{.schema_file}}
 
-  
   gen:
     desc: Generate code using genqlient
     cmds:
