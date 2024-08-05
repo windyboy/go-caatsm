@@ -10,7 +10,7 @@ import (
 	nc "github.com/nats-io/nats.go"
 )
 
-func Subscribe(config *config.Config, marshaler *handlers.PlainTextMarshaler, handler *handlers.NatsHandler) {
+func Subscribe(config *config.Config, marshaler *handlers.PlainTextMarshaler, handler *handlers.MessageHandler) {
 	// marshaler := &PlainTextMarshaler{}
 	logger := watermill.NewStdLogger(false, false)
 	options := []nc.Option{

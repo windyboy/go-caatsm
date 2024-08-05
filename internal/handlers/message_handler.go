@@ -15,17 +15,17 @@ import (
 	nc "github.com/nats-io/nats.go"
 )
 
-type NatsHandler struct {
+type MessageHandler struct {
 	mu         sync.Mutex
 	config     *config.Config
 	hasuraRepo *repository.HasuraRepository
 }
 
-func NewNatsHandler(config *config.Config) *NatsHandler {
-	return &NatsHandler{config: config, hasuraRepo: repository.NewHasuraRepo(config.Hasura.Endpoint, config.Hasura.Secret)}
+func NewNatsHandler(config *config.Config) *MessageHandler {
+	return &MessageHandler{config: config, hasuraRepo: repository.NewHasuraRepo(config.Hasura.Endpoint, config.Hasura.Secret)}
 }
 
-func (n *NatsHandler) HandleMessage(msg *message.Message) error {
+func (n *MessageHandler) HandleMessage(msg *message.Message) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	log := utils.GetSugaredLogger()
@@ -45,7 +45,7 @@ func (n *NatsHandler) HandleMessage(msg *message.Message) error {
 	return nil
 }
 
-func (n *NatsHandler) SaveMessage(parsed *domain.ParsedMessage, uuid string) {
+func (n *MessageHandler) SaveMessage(parsed *domain.ParsedMessage, uuid string) {
 	logger := watermill.NewStdLogger(false, false)
 	if parsed != nil {
 		parsed.Uuid = uuid
