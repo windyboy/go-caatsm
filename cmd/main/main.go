@@ -28,17 +28,7 @@ func setupApp() *cli.App {
 		Name:  "telegram message process",
 		Usage: "A Civial Aviation Authority Telegram message processor",
 		Before: func(c *cli.Context) error {
-			cfg, err := config.LoadConfig()
-			if err != nil {
-				fmt.Printf("Error loading configuration: %v\n", err)
-				return err
-			}
 
-			if err := config.ValidateConfig(cfg); err != nil {
-				fmt.Printf("Invalid configuration: %v\n", err)
-				return err
-			}
-			overrideConfig(c)
 			return nil
 		},
 		Commands: []*cli.Command{
@@ -69,19 +59,29 @@ func setupApp() *cli.App {
 func overrideConfig(c *cli.Context) {
 	if c.IsSet("nats") {
 		cfg.Nats.URL = c.String("nats")
+		fmt.Printf("Overriding nats url to %s\n", cfg.Nats.URL)
 	}
 	if c.IsSet("topic") {
 		cfg.Subscription.Topic = c.String("topic")
+		fmt.Printf("Overriding nats topic to %s\n", cfg.Subscription.Topic)
 	}
 }
 
 func executeListen(c *cli.Context) error {
-	// cfg, err := config.LoadConfig()
-	log := utils.GetLogger()
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		fmt.Printf("Error loading configuration: %v\n", err)
+		return err
+	}
+	if err := config.ValidateConfig(cfg); err != nil {
+		fmt.Printf("Invalid configuration: %v\n", err)
+		return err
+	}
+	overrideConfig(c)
 	fmt.Println("Loaded configuration successfully")
+	log := utils.GetLogger()
 	log.Info("Starting nats subscriber")
 	handler := handlers.NewNatsHandler(cfg)
-
 	nats.Subscribe(cfg, &handlers.PlainTextMarshaler{}, handler)
 	return nil
 }
