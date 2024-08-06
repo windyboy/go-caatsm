@@ -1,7 +1,6 @@
 package parsers
 
 import (
-	"caatsm/internal/config"
 	"caatsm/internal/domain"
 	"caatsm/pkg/utils"
 	"fmt"
@@ -71,24 +70,24 @@ var (
 
 type BodyParser struct {
 	body         string
-	bodyPatterns map[string]config.BodyConfig
+	bodyPatterns map[string]BodyConfig
 	mu           sync.Mutex
 }
 
 func NewBodyParser(body string) *BodyParser {
 	return &BodyParser{
-		bodyPatterns: config.GetBodyPatterns(),
+		bodyPatterns: bodyPatterns,
 		body:         body,
 	}
 }
 
-func (bp *BodyParser) GetBodyPatterns() map[string]config.BodyConfig {
+func (bp *BodyParser) GetBodyPatterns() map[string]BodyConfig {
 	bp.mu.Lock()
 	defer bp.mu.Unlock()
 	return bp.bodyPatterns
 }
 
-func (bp *BodyParser) SetBodyPatterns(patterns map[string]config.BodyConfig) {
+func (bp *BodyParser) SetBodyPatterns(patterns map[string]BodyConfig) {
 	bp.mu.Lock()
 	defer bp.mu.Unlock()
 	bp.bodyPatterns = patterns
