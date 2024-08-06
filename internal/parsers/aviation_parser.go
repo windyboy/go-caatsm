@@ -15,9 +15,9 @@ const (
 	EndHeaderMarker      = "."
 	BeginPartMarker      = "BEGIN PART"
 
-	Category             = "category"
-	CategoryArrival      = "ARR"
-	FlightNumber         = "number"
+	Category        = "category"
+	CategoryArrival = "ARR"
+	// FlightNumber         = "number"
 	SSR                  = "ssr"
 	DepartureCode        = "dep"
 	DepartureTime        = "dep_time"
@@ -42,7 +42,7 @@ const (
 	Route                = "route"
 	EstimatedTime        = "estt"
 	AlternateAirport     = "alter"
-	Register             = "reg"
+	// Register             = "reg"
 	PBN                  = "pbn"
 	NavigationEquipment  = "nav"
 	EstimatedElapsedTime = "eet"
@@ -50,22 +50,11 @@ const (
 	PerformanceCategory  = "per"
 	RerouteInformation   = "rif"
 	Remarks              = "remark"
-	Index                = "idx"
+	// Index                = "idx"
 )
 
 var (
-	categoryRegex      = regexp.MustCompile(`\((?P<category>[A-Z]+)-`)
-	emptyLineRemove    = regexp.MustCompile(`(?m)^\s*$`)
-	bodyOnly           = regexp.MustCompile(`(.|\n)?(ZCZC(.|\n)*)NNNN(.|\n)?$`)
-	originator         = regexp.MustCompile(`(?P<originatorDateTime>[0-9]+)\s(?P<originator>[A-Z]+)`)
-	navPattern         = regexp.MustCompile(`(?m)NAV\/(?P<nav>.*)$`)
-	remarkPattern      = regexp.MustCompile(`(?s)RMK\/(?P<remark>.*)`)
-	selPattern         = regexp.MustCompile(`(?m)SEL\/(?P<sel>\w+)`)
-	pbnPattern         = regexp.MustCompile(`(?m)PBN\/(?P<pbn>[A-Z0-9]+)`)
-	eetPattern         = regexp.MustCompile(`(?s)(-?EET\/(?P<eet>(?:[A-Z]{4}\d{4}\s*)+))`)
-	performancePattern = regexp.MustCompile(`(?s)-?PER\/(?P<per>\w)`)
-	reroutePattern     = regexp.MustCompile(`(?m)RIF\/(?P<rif>.*)[A-Z]{3}\/`)
-	otherPatterns      = []*regexp.Regexp{navPattern, remarkPattern, selPattern, pbnPattern, eetPattern, performancePattern, reroutePattern}
+	otherPatterns = []*regexp.Regexp{navPattern, remarkPattern, selPattern, pbnPattern, eetPattern, performancePattern, reroutePattern}
 )
 
 type BodyParser struct {

@@ -178,7 +178,8 @@ var _ = Describe("Schedule Parser", func() {
 		Context("XIY/0415 TSN/0645 CGQ", func() {
 			It("should return 3 waypoints", func() {
 				points := strings.Split("XIY/0415 TSN/0645 CGQ", " ")
-				waypoints := parseWaypoints(points)
+				waypoints, err := parseWaypoints(points)
+				Expect(Expect(err).NotTo(HaveOccurred()))
 				Expect(waypoints).NotTo(BeNil())
 				Expect(waypoints).To(HaveLen(3))
 				Expect(waypoints[0].Airport).To(Equal("XIY"))
@@ -192,7 +193,8 @@ var _ = Describe("Schedule Parser", func() {
 		Context("ICN 0235 TSN", func() {
 			It("should return 2 waypoints", func() {
 				points := strings.Split("ICN 0235 TSN", " ")
-				waypoints := parseWaypoints(points)
+				waypoints, err := parseWaypoints(points)
+				Expect(Expect(err).NotTo(HaveOccurred()))
 				Expect(waypoints).NotTo(BeNil())
 				Expect(waypoints).To(HaveLen(2))
 				Expect(waypoints[0].Airport).To(Equal("ICN"))
