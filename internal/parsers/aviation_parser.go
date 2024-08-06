@@ -54,7 +54,13 @@ const (
 )
 
 var (
-	otherPatterns = []*regexp.Regexp{navPattern, remarkPattern, selPattern, pbnPattern, eetPattern, performancePattern, reroutePattern}
+	otherPatterns = []*regexp.Regexp{navPattern,
+		remarkPattern,
+		selPattern,
+		pbnPattern,
+		eetPattern,
+		performancePattern,
+		reroutePattern}
 )
 
 type BodyParser struct {
