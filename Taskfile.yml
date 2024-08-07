@@ -44,7 +44,7 @@ tasks:
     cmds:
       - task: build-receiver
       - echo "Running receiver in production mode..."
-      - GO_ENV=prod {{.build_dir}}/receiver 
+      - GO_ENV=prod {{.build_dir}}/receiver
 
   run-test:
     desc: Run the receiver in test mode
@@ -57,7 +57,7 @@ tasks:
     desc: Upgrade go dependencies
     cmds:
       - echo "Upgrading go dependencies..."
-      - go get -u -d -v ./... 
+      - go get -u -d -v ./...
       - go mod tidy
 
   install-test:
@@ -97,6 +97,12 @@ tasks:
       - echo "Linting code..."
       - golangci-lint run
 
+  install-gq:
+    desc: Install hasura graphql engine introspection tool
+    cmds:
+      - echo "Installing gq..."
+      - pnpm add -g graphqurl
+
   schema:
     desc: Download the GraphQL schema from Hasura server
     cmds:
@@ -125,6 +131,7 @@ tasks:
       - echo "  task fmt            - Format the code"
       - echo "  task deps           - Install dependencies"
       - echo "  task lint           - Lint the code"
+      - echo "  task install-gq     - Install hasura graphql engine introspection tool"
       - echo "  task schema         - Download the GraphQL schema from Hasura server"
       - echo "  task gen            - Generate code using genqlient"
       - echo "  task upgrade        - Upgrade go dependencies"
