@@ -97,52 +97,6 @@ func ParseWithDef(line string, parserDef *LineParser) *domain.ScheduleLine {
 	return flightSchedule
 }
 
-// 		for _, name := range parseStrategy {
-// 			if parsed[name] {
-// 				continue
-// 			}
-// 			if data := extract(word, parserMap[name]); data != nil {
-// 				updateFlightSchedule(flightSchedule, name, data)
-// 				parsed[name] = true
-// 				maxParsed = i
-// 				break
-// 			}
-// 		}
-// 	}
-// 	return parsed, maxParsed
-// }
-
-// 	var realWaypoints []string
-// 	for i, point := range points {
-// 		if extract(point, WaypointExpression) != nil {
-// 			realWaypoints = points[i:]
-// 			break
-// 		}
-// 	}
-// 	if len(realWaypoints) == 0 {
-// 		log.Warn("No waypoints found")
-// 		return nil
-// 	}
-// 	var waypoints []domain.WayPoint
-// 	for i, point := range realWaypoints {
-// 		// log.Debugf("Parsing waypoint: %s", point)
-// 		// check the next point for departure time
-// 		if digits := extract(point, AllDigitsExpression); i > 0 && digits != nil {
-// 			// if the previous point was a waypoint, update the departure time
-// 			if l := len(waypoints); l > 0 {
-// 				waypoints[l-1].DepartureTime = digits[DepartureTime]
-// 			}
-// 		} else if waypoint := ExtractWaypoint(point); waypoint != nil {
-// 			// log.Debugf("Waypoint: %v", waypoint)
-// 			waypoints = append(waypoints, *waypoint)
-// 		} else {
-// 			log.Warnf("Failed to parse waypoint: %s", point)
-// 		}
-// 	}
-// 	// log.Debugf("Found %d waypoints", len(waypoints))
-// 	return waypoints
-// }
-
 // ParseLine processes a single line of schedule data and returns a ScheduleLine object.
 func ParseLine(line string) (*domain.ScheduleLine, error) {
 	log := utils.GetSugaredLogger()
