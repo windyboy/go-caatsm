@@ -73,6 +73,13 @@ tasks:
       - echo "Running tests..."
       - ginkgo -r -v
 
+  coverage:
+    desc: Generate test coverage report
+    cmds:
+      - echo "Generating test coverage report..."
+      - ginkgo --json-report ./ginkgo.report  -coverpkg=./... -coverprofile=./coverage/coverage.out  -r
+      - go tool cover -html=./coverage/coverage.out -o ./coverage/coverage.html
+
   clean:
     desc: Clean build artifacts
     cmds:
