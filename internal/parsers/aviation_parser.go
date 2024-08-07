@@ -11,20 +11,14 @@ import (
 )
 
 const (
-
-	// FlightNumber         = "number"
-	SSR           = "ssr"
-	DepartureCode = "dep"
-	DepartureTime = "dep_time"
-	ArrivalCode   = "arr"
-	ArrivalTime   = "arr_time"
-	// CategoryDeparture    = "DEP"
+	SSR             = "ssr"
+	DepartureCode   = "dep"
+	DepartureTime   = "dep_time"
+	ArrivalCode     = "arr"
+	ArrivalTime     = "arr_time"
 	DestinationCode = "dest"
 	OtherInfo       = "other"
-	// CategoryCancellation = "CNL"
-	// CategoryDelay        = "DLA"
-	// NewDepartureTime = "new_departure_time"
-	// CategoryFlightPlan   = "FPL"
+
 	ReferenceData        = "reference_data"
 	Aircraft             = "aircraft"
 	CategorySurveillance = "surve"
@@ -37,7 +31,6 @@ const (
 	Route                = "route"
 	EstimatedTime        = "estt"
 	AlternateAirport     = "alter"
-	// Register             = "reg"
 	PBN                  = "pbn"
 	NavigationEquipment  = "nav"
 	EstimatedElapsedTime = "eet"
@@ -45,7 +38,6 @@ const (
 	PerformanceCategory  = "per"
 	RerouteInformation   = "rif"
 	Remarks              = "remark"
-	// Index                = "idx"
 )
 
 var (
