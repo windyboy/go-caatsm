@@ -10,7 +10,7 @@ CREATE TABLE aviation.telegrams (
     originator VARCHAR(255),
     originator_date_time VARCHAR(255),
     category VARCHAR(255),
-    body_and_footer TEXT,
+    text TEXT,
     body_data JSONB,  -- JSONB to store parsed body data
     received_at TIMESTAMP NOT NULL,
     parsed_at TIMESTAMP,
