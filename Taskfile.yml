@@ -117,10 +117,11 @@ tasks:
       - >
         gq {{.hasura_endpoint}} -H 'X-Hasura-Admin-Secret:  {{.hasura_secret}}' --introspect > {{.schema_file}}
 
-  gen:
+  generate:
     desc: Generate code using genqlient
     cmds:
       - echo "Generating code using genqlient..."
+      - go get github.com/Khan/genqlient/generate
       - cd internal/repository && go run github.com/Khan/genqlient && cd ../..
 
   help:
@@ -133,6 +134,7 @@ tasks:
       - echo "  task run-prod       - Run the receiver in production mode"
       - echo "  task run-test       - Run the receiver in test mode"
       - echo "  task test           - Run tests"
+      - echo "  task coverage       - Generate test coverage report"
       - echo "  task install-test   - Install ginkgo for testing"
       - echo "  task clean          - Clean build artifacts"
       - echo "  task fmt            - Format the code"
@@ -140,6 +142,6 @@ tasks:
       - echo "  task lint           - Lint the code"
       - echo "  task install-gq     - Install hasura graphql engine introspection tool"
       - echo "  task schema         - Download the GraphQL schema from Hasura server"
-      - echo "  task gen            - Generate code using genqlient"
+      - echo "  task generate       - Generate code using genqlient"
       - echo "  task upgrade        - Upgrade go dependencies"
       - echo "  task help           - Show this help message"
