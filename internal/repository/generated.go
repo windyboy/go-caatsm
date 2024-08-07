@@ -13,7 +13,7 @@ import (
 
 // input type for inserting data into table "aviation.telegrams"
 type Aviation_telegrams_insert_input struct {
-	Text                 string          `json:"Text"`
+	Body_and_footer      string          `json:"body_and_footer"`
 	Body_data            json.RawMessage `json:"body_data"`
 	Category             string          `json:"category"`
 	Date_time            string          `json:"date_time"`
@@ -27,11 +27,12 @@ type Aviation_telegrams_insert_input struct {
 	Priority_indicator   string          `json:"priority_indicator"`
 	Received_at          time.Time       `json:"received_at"`
 	Secondary_addresses  string          `json:"secondary_addresses"`
+	Text                 string          `json:"text"`
 	Uuid                 uuid.UUID       `json:"uuid"`
 }
 
-// GetText returns Aviation_telegrams_insert_input.Text, and is useful for accessing the field via an interface.
-func (v *Aviation_telegrams_insert_input) GetText() string { return v.Text }
+// GetBody_and_footer returns Aviation_telegrams_insert_input.Body_and_footer, and is useful for accessing the field via an interface.
+func (v *Aviation_telegrams_insert_input) GetBody_and_footer() string { return v.Body_and_footer }
 
 // GetBody_data returns Aviation_telegrams_insert_input.Body_data, and is useful for accessing the field via an interface.
 func (v *Aviation_telegrams_insert_input) GetBody_data() json.RawMessage { return v.Body_data }
@@ -75,6 +76,9 @@ func (v *Aviation_telegrams_insert_input) GetReceived_at() time.Time { return v.
 func (v *Aviation_telegrams_insert_input) GetSecondary_addresses() string {
 	return v.Secondary_addresses
 }
+
+// GetText returns Aviation_telegrams_insert_input.Text, and is useful for accessing the field via an interface.
+func (v *Aviation_telegrams_insert_input) GetText() string { return v.Text }
 
 // GetUuid returns Aviation_telegrams_insert_input.Uuid, and is useful for accessing the field via an interface.
 func (v *Aviation_telegrams_insert_input) GetUuid() uuid.UUID { return v.Uuid }
