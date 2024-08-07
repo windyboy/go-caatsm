@@ -47,6 +47,7 @@ var (
 		pbnPattern,
 		eetPattern,
 		performancePattern,
+		regPattern,
 		reroutePattern}
 )
 
@@ -63,40 +64,36 @@ func NewBodyParser(body string) *BodyParser {
 	}
 }
 
-func (bp *BodyParser) GetBodyPatterns() map[string]BodyConfig {
-	bp.mu.Lock()
-	defer bp.mu.Unlock()
-	return bp.bodyPatterns
+func (parser *BodyParser) GetBodyPatterns() map[string]BodyConfig {
+	parser.mu.Lock()
+	defer parser.mu.Unlock()
+	return parser.bodyPatterns
 }
 
-func (bp *BodyParser) SetBodyPatterns(patterns map[string]BodyConfig) {
-	bp.mu.Lock()
-	defer bp.mu.Unlock()
-	bp.bodyPatterns = patterns
+func (parser *BodyParser) SetBodyPatterns(patterns map[string]BodyConfig) {
+	parser.mu.Lock()
+	defer parser.mu.Unlock()
+	parser.bodyPatterns = patterns
 }
 
-func (bp *BodyParser) Parse() (string, interface{}, error) {
-	bp.mu.Lock()
-	defer bp.mu.Unlock()
+func (parser *BodyParser) Parse() (string, interface{}, error) {
+	parser.mu.Lock()
+	defer parser.mu.Unlock()
 
-	bp.body = strings.TrimSpace(bp.body)
-	category := findCategory(bp.body)
+	parser.body = strings.TrimSpace(parser.body)
+	category := findCategory(parser.body)
 	if category == "" {
 		return "", nil, fmt.Errorf("no category found in body text")
 	}
 
-	if patternConfig, exists := bp.bodyPatterns[category]; exists && patternConfig.Patterns != nil {
+	if patternConfig, exists := parser.bodyPatterns[category]; exists && patternConfig.Patterns != nil {
 		for _, p := range patternConfig.Patterns {
-			// if match := p.Expression.FindStringSubmatch(bp.body); match != nil {
-			// 	data := extractData(match, p.Expression)
-			// 	return bp.createBodyData(data)
-			// }
-			if data := extract(bp.body, p.Expression); data != nil {
-				return bp.createBodyData(data)
+			if data := extract(parser.body, p.Expression); data != nil {
+				return parser.createBodyData(data)
 			}
 		}
 	}
-	return "", nil, fmt.Errorf("no matching pattern found for body: %s", bp.body)
+	return "", nil, fmt.Errorf("no matching pattern found for body: %s", parser.body)
 }
 
 func findCategory(body string) string {
@@ -128,7 +125,7 @@ func extractData(match []string, re *regexp.Regexp) map[string]string {
 	return data
 }
 
-func (bp *BodyParser) createBodyData(data map[string]string) (string, interface{}, error) {
+func (parser *BodyParser) createBodyData(data map[string]string) (string, interface{}, error) {
 	switch category := data["category"]; category {
 	case CategoryArrival:
 		return category, &domain.ARR{

@@ -99,6 +99,25 @@ NNNN`
 
 	})
 
+	Describe("Other Info", func() {
+		Context("PBN/A1B2B3B4B5D1L1 NAV/ABAS REG/B6513 EET/ZBPE0112 SEL/KMAL PER/C RIF/FRT N640 ZBYN RMK/TCAS EQUIPPED", func() {
+			It("should parse the other info correctly", func() {
+				otherInfo := "PBN/A1B2B3B4B5D1L1 NAV/ABAS REG/B6513 EET/ZBPE0112 SEL/KMAL PER/C RIF/FRT N640 ZBYN RMK/TCAS EQUIPPED"
+				parsed := parseOther(otherInfo)
+				Expect(parsed).ToNot(BeNil())
+				Expect(parsed[PBN]).To(Equal("A1B2B3B4B5D1L1"))
+				Expect(parsed[NavigationEquipment]).To(Equal("ABAS"))
+				Expect(parsed[Register]).To(Equal("B6513"))
+				Expect(parsed[EstimatedElapsedTime]).To(Equal("ZBPE0112"))
+				Expect(parsed[SELCALCode]).To(Equal("KMAL"))
+				Expect(parsed[PerformanceCategory]).To(Equal("C"))
+				Expect(parsed[RerouteInformation]).To(Equal("FRT N640 ZBYN"))
+				Expect(parsed[Remarks]).To(Equal("TCAS EQUIPPED"))
+			})
+		})
+
+	})
+
 	Describe("ParseBody", func() {
 
 		Context("with ARR body (ARR-CES5470-ZBTJ-ZSHC1614)", func() {
