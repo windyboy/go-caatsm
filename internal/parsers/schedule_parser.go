@@ -97,103 +97,6 @@ func ParseWithDef(line string, parserDef *LineParser) *domain.ScheduleLine {
 	return flightSchedule
 }
 
-// func ParseLine(line string) *domain.ScheduleLine {
-// 	log := utils.GetSugaredLogger()
-// 	cleanLine := strings.TrimSpace(line)
-// 	words := strings.Split(cleanLine, " ")
-// 	var flightSchedule = &domain.ScheduleLine{
-// 		Reference: line,
-// 	}
-// 	var data map[string]string
-
-// 	if indexData := extract(words[0], IndexExpression); indexData != nil {
-// 		flightSchedule.Index = indexData[Index]
-// 		words = words[1:]
-// 	}
-
-// 	// Define the parsing strategy
-// 	parseStrategy := []string{
-// 		Task,
-// 		Date,
-// 		FlightNumber,
-// 		Register,
-// 	}
-
-// 	// Track parsed fields to avoid re-parsing
-// 	parsed := make(map[string]bool)
-// 	var maxParsed int
-
-// 	// Parse each word in the line
-// 	for i, word := range words {
-// 		// Check if all fields have been parsed
-// 		for _, name := range parseStrategy {
-// 			// Skip if already parsed
-// 			if parsed[name] {
-// 				continue
-// 			}
-// 			// Parse the word
-// 			if data = extract(word, parserMap[name]); data != nil {
-// 				// Update the flight schedule
-// 				switch name {
-// 				case Task:
-// 					flightSchedule.Task = data[Task]
-// 					parsed[Task] = true
-// 					maxParsed = i
-// 				case Date:
-// 					flightSchedule.Date = data[Date]
-// 					parsed[Date] = true
-// 					maxParsed = i
-// 				case FlightNumber:
-// 					flightSchedule.FlightNumber = getFlightNumbers(data[FlightNumber])
-// 					parsed[FlightNumber] = true
-// 					maxParsed = i
-// 				case Register:
-// 					flightSchedule.AircraftReg = data[Register]
-// 					parsed[Register] = true
-// 					maxParsed = i
-// 				}
-// 				break
-// 			}
-// 		}
-
-// 	}
-// 	if maxParsed+1 < len(words) {
-// 		flightSchedule.Waypoints = parseWaypoints(words[maxParsed+1:])
-// 	} else {
-// 		log.Warn("No waypoints found")
-// 		flightSchedule.Comments = "No waypoints found"
-// 	}
-
-//		return flightSchedule
-//	}
-// func ParseLine(line string) *domain.ScheduleLine {
-// 	log := utils.GetSugaredLogger()
-// 	cleanLine := strings.TrimSpace(line)
-// 	words := strings.Split(cleanLine, " ")
-// 	flightSchedule := &domain.ScheduleLine{Reference: line}
-
-// 	if indexData := extract(words[0], IndexExpression); indexData != nil {
-// 		flightSchedule.Index = indexData[Index]
-// 		words = words[1:]
-// 	}
-
-// 	parseStrategy := []string{Task, Date, FlightNumber, Register}
-// 	_, maxParsed := parseFields(words, parseStrategy, flightSchedule)
-
-// 	if maxParsed+1 < len(words) {
-// 		flightSchedule.Waypoints = parseWaypoints(words[maxParsed+1:])
-// 	} else {
-// 		log.Warn("No waypoints found")
-// 		flightSchedule.Comments = "No waypoints found"
-// 	}
-// 	return flightSchedule
-// }
-
-// func parseFields(words []string, parseStrategy []string, flightSchedule *domain.ScheduleLine) (map[string]bool, int) {
-// 	parsed := make(map[string]bool)
-// 	var maxParsed int
-
-// 	for i, word := range words {
 // 		for _, name := range parseStrategy {
 // 			if parsed[name] {
 // 				continue
@@ -209,27 +112,6 @@ func ParseWithDef(line string, parserDef *LineParser) *domain.ScheduleLine {
 // 	return parsed, maxParsed
 // }
 
-// func updateFlightSchedule(flightSchedule *domain.ScheduleLine, name string, data map[string]string) {
-// 	switch name {
-// 	case Task:
-// 		flightSchedule.Task = data[Task]
-// 	case Date:
-// 		flightSchedule.Date = data[Date]
-// 	case FlightNumber:
-// 		flightSchedule.FlightNumber = getFlightNumbers(data[FlightNumber])
-// 	case Register:
-// 		flightSchedule.AircraftReg = data[Register]
-// 	}
-// }
-
-// func parseWaypoints(points []string) []domain.WayPoint {
-// 	log := utils.GetSugaredLogger()
-// 	if len(points) == 0 {
-// 		log.Warn("No waypoints found")
-// 		return nil
-// 	}
-
-// 	//find first waypoint
 // 	var realWaypoints []string
 // 	for i, point := range points {
 // 		if extract(point, WaypointExpression) != nil {
@@ -330,43 +212,36 @@ func updateFlightSchedule(flightSchedule *domain.ScheduleLine, name string, data
 }
 
 // parseWaypoints processes a slice of waypoint strings and returns a slice of WayPoint objects.
-func parseWaypoints(points []string) ([]domain.WayPoint, error) {
+func parseWaypoints(target []string) ([]domain.WayPoint, error) {
 	log := utils.GetSugaredLogger()
+	points := getValidPoints(target)
 	if len(points) == 0 {
 		log.Warn("No waypoints found")
 		return nil, errors.New("no waypoints")
 	}
-
-	//find first waypoint
-	var realWaypoints []string
+	var waypoints []domain.WayPoint
 	for i, point := range points {
-		if extract(point, WaypointExpression) != nil {
-			realWaypoints = points[i:]
-			break
+		if digits := extract(point, AllDigitsExpression); i > 0 && digits != nil && len(waypoints) > 0 {
+			waypoints[len(waypoints)-1].DepartureTime = digits[DepartureTime]
+		} else if waypoint := ExtractWaypoint(point); waypoint != nil {
+			waypoints = append(waypoints, *waypoint)
 		}
 	}
-	if len(realWaypoints) == 0 {
+	if len(waypoints) == 0 {
 		log.Warn("No waypoints found")
 		return nil, errors.New("no waypoints")
 	}
-	var waypoints []domain.WayPoint
-	for i, point := range realWaypoints {
-		// log.Debugf("Parsing waypoint: %s", point)
-		// check the next point for departure time
-		if digits := extract(point, AllDigitsExpression); i > 0 && digits != nil {
-			// if the previous point was a waypoint, update the departure time
-			if l := len(waypoints); l > 0 {
-				waypoints[l-1].DepartureTime = digits[DepartureTime]
-			}
-		} else if waypoint := ExtractWaypoint(point); waypoint != nil {
-			// log.Debugf("Waypoint: %v", waypoint)
-			waypoints = append(waypoints, *waypoint)
-		} else {
-			log.Warnf("Failed to parse waypoint: %s", point)
+	return waypoints, nil
+}
+
+func getValidPoints(data []string) []string {
+	var points []string
+	for i, point := range data {
+		if extract(point, WaypointExpression) != nil {
+			return data[i:]
 		}
 	}
-	// log.Debugf("Found %d waypoints", len(waypoints))
-	return waypoints, nil
+	return points
 }
 
 /**

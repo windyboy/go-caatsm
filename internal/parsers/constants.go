@@ -4,6 +4,17 @@ import "regexp"
 
 // String constants
 const (
+	StartIndicatorPrefix = "ZCZC"
+	EndHeaderMarker      = "."
+	BeginPartMarker      = "BEGIN PART"
+
+	Category             = "category"
+	CategoryArrival      = "ARR"
+	CategoryDeparture    = "DEP"
+	CategoryCancellation = "CNL"
+	CategoryDelay        = "DLA"
+	CategoryFlightPlan   = "FPL"
+
 	CANCELLED    = "CNL"
 	AirportCode  = "airport"
 	Date         = "date"
