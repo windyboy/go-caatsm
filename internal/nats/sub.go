@@ -45,7 +45,11 @@ func Subscribe(config *config.Config, marshaler *handlers.PlainTextMarshaler, ha
 	}
 
 	for msg := range messages {
-		handler.HandleMessage(msg)
-		msg.Ack()
+		if err := handler.HandleMessage(msg); err == nil {
+			msg.Ack()
+		} else {
+			logger.Error("Failed to handle message", err, map[string]interface{}{"message": msg})
+			msg.Nack()
+		}
 	}
 }
