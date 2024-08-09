@@ -51,7 +51,7 @@ NNNN`
 			Expect(parsedHeader.DateTime).To(Equal("160530"))
 			Expect(parsedHeader.PriorityIndicator).To(Equal("QU"))
 			Expect(parsedHeader.PrimaryAddress).To(Equal("TSNZPCA"))
-			Expect(parsedHeader.SecondaryAddresses).To(Equal([]string{"QU PEKUDCA TSNUOCA TSNZPCA TSNUFCA"}))
+			Expect(parsedHeader.SecondaryAddresses).To(Equal(" QU PEKUDCA TSNUOCA TSNZPCA TSNUFCA"))
 		})
 
 		It("should parse the header correctly with originator information", func() {
@@ -92,7 +92,7 @@ NNNN`
 			Expect(parsedHeader.DateTime).To(Equal("171000"))
 			Expect(parsedHeader.PriorityIndicator).To(Equal("QU"))
 			Expect(parsedHeader.PrimaryAddress).To(Equal("TSNZPCA"))
-			Expect(parsedHeader.SecondaryAddresses).To(Equal([]string{"QU PEKUDCA TSNUOCA TSNZPCA TSNUFCA"}))
+			Expect(parsedHeader.SecondaryAddresses).To(Equal(" QU PEKUDCA TSNUOCA TSNZPCA TSNUFCA"))
 			Expect(parsedHeader.Originator).To(Equal("SELOZKE"))
 			Expect(parsedHeader.OriginatorDateTime).To(Equal("170999"))
 		})
@@ -288,7 +288,7 @@ NNNN
 				Expect(parsedMessage.MessageID).To(Equal("TMQ2526"))
 				Expect(parsedMessage.DateTime).To(Equal("141605"))
 				Expect(parsedMessage.PrimaryAddress).To(Equal("ZBTJZPZX"))
-				Expect(parsedMessage.SecondaryAddresses).To(BeNil())
+				Expect(parsedMessage.SecondaryAddresses).To(Equal(""))
 				Expect(parsedMessage.PriorityIndicator).To(Equal("FF"))
 				Expect(parsedMessage.OriginatorDateTime).To(Equal("141604"))
 				Expect(parsedMessage.Originator).To(Equal("ZBACZQZX"))
@@ -339,7 +339,7 @@ NNNN
 				Expect(parsedMessage.MessageID).To(Equal("TMQ2617"))
 				Expect(parsedMessage.DateTime).To(Equal("142150"))
 				Expect(parsedMessage.PrimaryAddress).To(Equal("ZBTJZPZX"))
-				Expect(parsedMessage.SecondaryAddresses).To(BeNil())
+				Expect(parsedMessage.SecondaryAddresses).To(Equal(""))
 				Expect(parsedMessage.PriorityIndicator).To(Equal("GG"))
 				Expect(parsedMessage.OriginatorDateTime).To(Equal("150551"))
 				Expect(parsedMessage.Originator).To(Equal("ZBTJUOBK"))
@@ -409,7 +409,7 @@ NNNN`
 		It("should parse remaining lines correctly", func() {
 			lines := []string{"QU PEKUDCA TSNUOCA TSNZPCA TSNUFCA", ".SELOZKE 170999", "BEGIN PART 01"}
 			secondaryAddresses, originator, originatorDateTime, bodyAndFooter := parseRemainingLines(lines)
-			Expect(secondaryAddresses).To(Equal([]string{"QU PEKUDCA TSNUOCA TSNZPCA TSNUFCA"}))
+			Expect(secondaryAddresses).To(Equal(" QU PEKUDCA TSNUOCA TSNZPCA TSNUFCA"))
 			Expect(originator).To(Equal("SELOZKE"))
 			Expect(originatorDateTime).To(Equal("170999"))
 			Expect(bodyAndFooter).To(Equal("BEGIN PART 01\n"))

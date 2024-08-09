@@ -28,9 +28,9 @@ func New(config *config.Config) *MessageHandler {
 	}
 }
 
-func (n *MessageHandler) HandleMessage(msg *message.Message) error {
-	n.mu.Lock()
-	defer n.mu.Unlock()
+func (handler *MessageHandler) HandleMessage(msg *message.Message) error {
+	handler.mu.Lock()
+	defer handler.mu.Unlock()
 	log := utils.GetSugaredLogger()
 	if msg.Payload == nil {
 		log.Error("empty message")
@@ -43,7 +43,7 @@ func (n *MessageHandler) HandleMessage(msg *message.Message) error {
 	} else {
 		log.Infof("parsed [%s]: %v\n", msg.UUID, parsed)
 	}
-	n.SaveMessage(parsed, msg.UUID)
+	handler.SaveMessage(parsed, msg.UUID)
 	return nil
 }
 

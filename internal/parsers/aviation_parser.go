@@ -196,7 +196,7 @@ func Parse(rawText string) *domain.ParsedMessage {
 	message, err := ParseHeader(rawText)
 	if err != nil {
 		msg := domain.NewParsedMessage()
-		msg.Text = rawText
+		msg.Content = rawText
 		return msg
 	}
 
@@ -234,12 +234,12 @@ func ParseHeader(fullMessage string) (domain.ParsedMessage, error) {
 
 	if len(lines) < 3 {
 		log.Warnf("invalid message format: %s", fullMessage)
-		return domain.ParsedMessage{Text: fullMessage}, fmt.Errorf("invalid message format: %s", fullMessage)
+		return domain.ParsedMessage{Content: fullMessage}, fmt.Errorf("invalid message format: %s", fullMessage)
 	}
 
 	_, messageID, dateTime, err := parseStartIndicator(lines[0])
 	if err != nil {
-		return domain.ParsedMessage{Text: fullMessage}, err
+		return domain.ParsedMessage{Content: fullMessage}, err
 	}
 
 	priorityIndicator, primaryAddress := parsePriorityAndPrimary(lines[1])
@@ -253,7 +253,7 @@ func ParseHeader(fullMessage string) (domain.ParsedMessage, error) {
 		SecondaryAddresses: secondaryAddresses,
 		Originator:         originator,
 		OriginatorDateTime: originatorDateTime,
-		Text:               fullMessage,
+		Content:            fullMessage,
 		Body:               body,
 		ReceivedAt:         time.Now(),
 	}, nil
@@ -277,9 +277,9 @@ func parsePriorityAndPrimary(line string) (string, string) {
 	return "", ""
 }
 
-func parseRemainingLines(lines []string) ([]string, string, string, string) {
+func parseRemainingLines(lines []string) (string, string, string, string) {
 	var (
-		secondaryAddresses []string
+		secondaryAddresses string
 		originator         string
 		originatorDateTime string
 		bodyAndFooter      strings.Builder
@@ -311,7 +311,7 @@ func parseRemainingLines(lines []string) ([]string, string, string, string) {
 					originatorDateTime = o1
 					originator = o2
 				} else {
-					secondaryAddresses = append(secondaryAddresses, line)
+					secondaryAddresses = secondaryAddresses + " " + line
 				}
 			}
 		}
