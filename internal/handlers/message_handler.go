@@ -41,7 +41,7 @@ func (handler *MessageHandler) HandleMessage(msg *message.Message) error {
 	if parsed = parsers.Parse(payload); !parsed.Parsed {
 		log.Infof("not parsed: [%s] : {%s} \n", msg.UUID, msg.Payload)
 	} else {
-		log.Infof("parsed [%s]: %v\n", msg.UUID, parsed)
+		log.Infof("parsed [%s]: %v\n", msg.UUID, parsed.ToString())
 	}
 	handler.SaveMessage(parsed, msg.UUID)
 	return nil

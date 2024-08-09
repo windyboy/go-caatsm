@@ -115,3 +115,7 @@ func NewParsedMessage() *ParsedMessage {
 		Parsed: false,
 	}
 }
+
+func (message *ParsedMessage) ToString() string {
+	return message.MessageID + " " + message.Category + " " + message.Originator
+}
