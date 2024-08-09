@@ -6,12 +6,12 @@ CREATE TABLE aviation.telegrams (
     date_time VARCHAR(255) ,
     priority_indicator VARCHAR(255) ,
     primary_address VARCHAR(255) ,
-    secondary_addresses TEXT[],  -- Array of strings
+    secondary_addresses TEXT,  
     originator VARCHAR(255),
     originator_date_time VARCHAR(255),
     category VARCHAR(255),
-    text TEXT,
-    body_data JSONB,  -- JSONB to store parsed body data
+    content TEXT,
+    body_data JSONB,  
     received_at TIMESTAMP NOT NULL,
     parsed_at TIMESTAMP,
     dispatched_at TIMESTAMP,

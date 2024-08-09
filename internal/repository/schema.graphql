@@ -85,12 +85,12 @@ input String_comparison_exp {
 columns and relationships of "aviation.telegrams"
 """
 type aviation_telegrams {
-  body_and_footer: String
   body_data(
     """JSON select path"""
     path: String
   ): jsonb
   category: String
+  content: String
   date_time: String
   dispatched_at: timestamp
   message_id: String
@@ -102,7 +102,6 @@ type aviation_telegrams {
   priority_indicator: String
   received_at: timestamp!
   secondary_addresses: String
-  text: String!
   uuid: uuid!
 }
 
@@ -135,9 +134,9 @@ input aviation_telegrams_bool_exp {
   _and: [aviation_telegrams_bool_exp!]
   _not: aviation_telegrams_bool_exp
   _or: [aviation_telegrams_bool_exp!]
-  body_and_footer: String_comparison_exp
   body_data: jsonb_comparison_exp
   category: String_comparison_exp
+  content: String_comparison_exp
   date_time: String_comparison_exp
   dispatched_at: timestamp_comparison_exp
   message_id: String_comparison_exp
@@ -149,7 +148,6 @@ input aviation_telegrams_bool_exp {
   priority_indicator: String_comparison_exp
   received_at: timestamp_comparison_exp
   secondary_addresses: String_comparison_exp
-  text: String_comparison_exp
   uuid: uuid_comparison_exp
 }
 
@@ -188,9 +186,9 @@ input aviation_telegrams_delete_key_input {
 input type for inserting data into table "aviation.telegrams"
 """
 input aviation_telegrams_insert_input {
-  body_and_footer: String
   body_data: jsonb
   category: String
+  content: String
   date_time: String
   dispatched_at: timestamp
   message_id: String
@@ -202,14 +200,13 @@ input aviation_telegrams_insert_input {
   priority_indicator: String
   received_at: timestamp
   secondary_addresses: String
-  text: String
   uuid: uuid
 }
 
 """aggregate max on columns"""
 type aviation_telegrams_max_fields {
-  body_and_footer: String
   category: String
+  content: String
   date_time: String
   dispatched_at: timestamp
   message_id: String
@@ -220,14 +217,13 @@ type aviation_telegrams_max_fields {
   priority_indicator: String
   received_at: timestamp
   secondary_addresses: String
-  text: String
   uuid: uuid
 }
 
 """aggregate min on columns"""
 type aviation_telegrams_min_fields {
-  body_and_footer: String
   category: String
+  content: String
   date_time: String
   dispatched_at: timestamp
   message_id: String
@@ -238,7 +234,6 @@ type aviation_telegrams_min_fields {
   priority_indicator: String
   received_at: timestamp
   secondary_addresses: String
-  text: String
   uuid: uuid
 }
 
@@ -264,9 +259,9 @@ input aviation_telegrams_on_conflict {
 
 """Ordering options when selecting data from "aviation.telegrams"."""
 input aviation_telegrams_order_by {
-  body_and_footer: order_by
   body_data: order_by
   category: order_by
+  content: order_by
   date_time: order_by
   dispatched_at: order_by
   message_id: order_by
@@ -278,7 +273,6 @@ input aviation_telegrams_order_by {
   priority_indicator: order_by
   received_at: order_by
   secondary_addresses: order_by
-  text: order_by
   uuid: order_by
 }
 
@@ -297,13 +291,13 @@ select columns of table "aviation.telegrams"
 """
 enum aviation_telegrams_select_column {
   """column name"""
-  body_and_footer
-
-  """column name"""
   body_data
 
   """column name"""
   category
+
+  """column name"""
+  content
 
   """column name"""
   date_time
@@ -339,9 +333,6 @@ enum aviation_telegrams_select_column {
   secondary_addresses
 
   """column name"""
-  text
-
-  """column name"""
   uuid
 }
 
@@ -349,9 +340,9 @@ enum aviation_telegrams_select_column {
 input type for updating data in table "aviation.telegrams"
 """
 input aviation_telegrams_set_input {
-  body_and_footer: String
   body_data: jsonb
   category: String
+  content: String
   date_time: String
   dispatched_at: timestamp
   message_id: String
@@ -363,7 +354,6 @@ input aviation_telegrams_set_input {
   priority_indicator: String
   received_at: timestamp
   secondary_addresses: String
-  text: String
   uuid: uuid
 }
 
@@ -380,9 +370,9 @@ input aviation_telegrams_stream_cursor_input {
 
 """Initial value of the column from where the streaming should start"""
 input aviation_telegrams_stream_cursor_value_input {
-  body_and_footer: String
   body_data: jsonb
   category: String
+  content: String
   date_time: String
   dispatched_at: timestamp
   message_id: String
@@ -394,7 +384,6 @@ input aviation_telegrams_stream_cursor_value_input {
   priority_indicator: String
   received_at: timestamp
   secondary_addresses: String
-  text: String
   uuid: uuid
 }
 
@@ -403,13 +392,13 @@ update columns of table "aviation.telegrams"
 """
 enum aviation_telegrams_update_column {
   """column name"""
-  body_and_footer
-
-  """column name"""
   body_data
 
   """column name"""
   category
+
+  """column name"""
+  content
 
   """column name"""
   date_time
@@ -443,9 +432,6 @@ enum aviation_telegrams_update_column {
 
   """column name"""
   secondary_addresses
-
-  """column name"""
-  text
 
   """column name"""
   uuid

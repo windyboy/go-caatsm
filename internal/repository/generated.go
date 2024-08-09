@@ -13,9 +13,9 @@ import (
 
 // input type for inserting data into table "aviation.telegrams"
 type Aviation_telegrams_insert_input struct {
-	Body_and_footer      string          `json:"body_and_footer"`
 	Body_data            json.RawMessage `json:"body_data"`
 	Category             string          `json:"category"`
+	Content              string          `json:"content"`
 	Date_time            string          `json:"date_time"`
 	Dispatched_at        time.Time       `json:"dispatched_at"`
 	Message_id           string          `json:"message_id"`
@@ -27,18 +27,17 @@ type Aviation_telegrams_insert_input struct {
 	Priority_indicator   string          `json:"priority_indicator"`
 	Received_at          time.Time       `json:"received_at"`
 	Secondary_addresses  string          `json:"secondary_addresses"`
-	Text                 string          `json:"text"`
 	Uuid                 uuid.UUID       `json:"uuid"`
 }
-
-// GetBody_and_footer returns Aviation_telegrams_insert_input.Body_and_footer, and is useful for accessing the field via an interface.
-func (v *Aviation_telegrams_insert_input) GetBody_and_footer() string { return v.Body_and_footer }
 
 // GetBody_data returns Aviation_telegrams_insert_input.Body_data, and is useful for accessing the field via an interface.
 func (v *Aviation_telegrams_insert_input) GetBody_data() json.RawMessage { return v.Body_data }
 
 // GetCategory returns Aviation_telegrams_insert_input.Category, and is useful for accessing the field via an interface.
 func (v *Aviation_telegrams_insert_input) GetCategory() string { return v.Category }
+
+// GetContent returns Aviation_telegrams_insert_input.Content, and is useful for accessing the field via an interface.
+func (v *Aviation_telegrams_insert_input) GetContent() string { return v.Content }
 
 // GetDate_time returns Aviation_telegrams_insert_input.Date_time, and is useful for accessing the field via an interface.
 func (v *Aviation_telegrams_insert_input) GetDate_time() string { return v.Date_time }
@@ -76,9 +75,6 @@ func (v *Aviation_telegrams_insert_input) GetReceived_at() time.Time { return v.
 func (v *Aviation_telegrams_insert_input) GetSecondary_addresses() string {
 	return v.Secondary_addresses
 }
-
-// GetText returns Aviation_telegrams_insert_input.Text, and is useful for accessing the field via an interface.
-func (v *Aviation_telegrams_insert_input) GetText() string { return v.Text }
 
 // GetUuid returns Aviation_telegrams_insert_input.Uuid, and is useful for accessing the field via an interface.
 func (v *Aviation_telegrams_insert_input) GetUuid() uuid.UUID { return v.Uuid }
