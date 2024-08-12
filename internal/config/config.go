@@ -15,6 +15,7 @@ var MyConfig *Config
 type Config struct {
 	Nats         NatsConfig
 	Subscription SubscriptionConfig
+	Publisher    PublisherConfig
 	Timeouts     TimeoutsConfig
 	Hasura       HasuraConfig
 }
@@ -28,6 +29,10 @@ type NatsConfig struct {
 type SubscriptionConfig struct {
 	Topic      string `mapstructure:"topic"`
 	QueueGroup string `mapstructure:"queue_group"`
+}
+
+type PublisherConfig struct {
+	Topic string `mapstructure:"topic"`
 }
 
 type TimeoutsConfig struct {
