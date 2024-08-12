@@ -49,4 +49,4 @@ go.sum
 
 # test report
 *.report
-coverage.html
+coverage.*
