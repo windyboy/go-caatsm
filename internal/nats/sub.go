@@ -2,15 +2,16 @@ package nats
 
 import (
 	"caatsm/internal/config"
-	"caatsm/internal/handlers"
 	"context"
+	"errors"
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill-nats/v2/pkg/nats"
+	"github.com/ThreeDotsLabs/watermill/message"
 	nc "github.com/nats-io/nats.go"
 )
 
-func Subscribe(config *config.Config, marshaler *handlers.PlainTextMarshaler, handler *handlers.MessageHandler) {
+func Subscribe(config *config.Config, marshaler *PlainTextMarshaler) {
 	logger := watermill.NewStdLogger(false, false)
 	options := []nc.Option{
 		nc.RetryOnFailedConnect(true),
@@ -44,12 +45,27 @@ func Subscribe(config *config.Config, marshaler *handlers.PlainTextMarshaler, ha
 		return
 	}
 
+	handlers := New(config)
 	for msg := range messages {
-		if err := handler.HandleMessage(msg); err == nil {
+		if err := handlers.HandleMessage(msg); err == nil {
 			msg.Ack()
 		} else {
 			logger.Error("Failed to handle message", err, map[string]interface{}{"message": msg})
 			msg.Nack()
 		}
 	}
+}
+
+type PlainTextMarshaler struct{}
+
+func (m *PlainTextMarshaler) Marshal(topic string, msg nc.Msg) ([]byte, error) {
+	return msg.Data, nil
+}
+
+func (m *PlainTextMarshaler) Unmarshal(newMsg *nc.Msg) (*message.Message, error) {
+	if newMsg == nil {
+		return nil, errors.New("empty message")
+	}
+	msg := message.NewMessage(watermill.NewUUID(), newMsg.Data)
+	return msg, nil
 }

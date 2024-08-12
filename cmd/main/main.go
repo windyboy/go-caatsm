@@ -2,7 +2,6 @@ package main
 
 import (
 	"caatsm/internal/config"
-	"caatsm/internal/handlers"
 	"caatsm/internal/nats"
 	"caatsm/pkg/utils"
 	"os"
@@ -83,7 +82,7 @@ func executeListen(c *cli.Context) error {
 	fmt.Println("Loaded configuration successfully")
 	log := utils.GetLogger()
 	log.Info("Starting nats subscriber")
-	handler := handlers.New(cfg)
-	nats.Subscribe(cfg, &handlers.PlainTextMarshaler{}, handler)
+	// handler := handlers.New(cfg)
+	nats.Subscribe(cfg, &nats.PlainTextMarshaler{})
 	return nil
 }
