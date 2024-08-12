@@ -7,6 +7,9 @@ cluster = "tele-cluster"
 topic = "Telegram.Serial"
 queue = "tele-queue"
 
+[publisher]
+topic = "Telegram.Json"
+
 [timeouts]
 server = "5s"
 reconnect_wait = "5s"
