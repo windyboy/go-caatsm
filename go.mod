@@ -11,7 +11,7 @@ require (
 	github.com/onsi/ginkgo/v2 v2.19.1
 	github.com/onsi/gomega v1.34.1
 	github.com/spf13/viper v1.19.0
-	github.com/urfave/cli/v2 v2.27.3
+	github.com/urfave/cli/v2 v2.27.4
 	go.uber.org/zap v1.27.0
 	golang.org/x/oauth2 v0.22.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1
