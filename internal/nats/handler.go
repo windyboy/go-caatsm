@@ -1,4 +1,4 @@
-package handlers
+package nats
 
 import (
 	"caatsm/internal/config"
@@ -6,13 +6,11 @@ import (
 	"caatsm/internal/parsers"
 	"caatsm/internal/repository"
 	"caatsm/pkg/utils"
-	"errors"
 	"fmt"
 	"sync"
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill/message"
-	nc "github.com/nats-io/nats.go"
 )
 
 type MessageHandler struct {
@@ -44,6 +42,7 @@ func (handler *MessageHandler) HandleMessage(msg *message.Message) error {
 		log.Infof("parsed [%s]: %v\n", msg.UUID, parsed.ToString())
 	}
 	handler.SaveMessage(parsed, msg.UUID)
+	handler.Publish(parsed)
 	return nil
 }
 
@@ -57,16 +56,8 @@ func (n *MessageHandler) SaveMessage(parsed *domain.ParsedMessage, uuid string) 
 	}
 }
 
-type PlainTextMarshaler struct{}
-
-func (m *PlainTextMarshaler) Marshal(topic string, msg nc.Msg) ([]byte, error) {
-	return msg.Data, nil
-}
-
-func (m *PlainTextMarshaler) Unmarshal(newMsg *nc.Msg) (*message.Message, error) {
-	if newMsg == nil {
-		return nil, errors.New("empty message")
+func (n *MessageHandler) Publish(parsed *domain.ParsedMessage) {
+	if err := Publish(n.config, parsed); err != nil {
+		utils.GetSugaredLogger().Error("error publishing message", err, map[string]interface{}{"message": parsed})
 	}
-	msg := message.NewMessage(watermill.NewUUID(), newMsg.Data)
-	return msg, nil
 }
