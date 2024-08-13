@@ -11,8 +11,23 @@ import (
 	nc "github.com/nats-io/nats.go"
 )
 
-func Subscribe(config *config.Config, marshaler *PlainTextMarshaler) {
+type PlainTextMarshaler struct{}
+
+func (m *PlainTextMarshaler) Marshal(topic string, msg nc.Msg) ([]byte, error) {
+	return msg.Data, nil
+}
+
+func (m *PlainTextMarshaler) Unmarshal(newMsg *nc.Msg) (*message.Message, error) {
+	if newMsg == nil {
+		return nil, errors.New("empty message")
+	}
+	msg := message.NewMessage(watermill.NewUUID(), newMsg.Data)
+	return msg, nil
+}
+
+func Subscribe(config *config.Config) {
 	logger := watermill.NewStdLogger(false, false)
+	marshaler := &PlainTextMarshaler{}
 	options := []nc.Option{
 		nc.RetryOnFailedConnect(true),
 		nc.Timeout(config.Timeouts.Server),
@@ -54,18 +69,4 @@ func Subscribe(config *config.Config, marshaler *PlainTextMarshaler) {
 			msg.Nack()
 		}
 	}
-}
-
-type PlainTextMarshaler struct{}
-
-func (m *PlainTextMarshaler) Marshal(topic string, msg nc.Msg) ([]byte, error) {
-	return msg.Data, nil
-}
-
-func (m *PlainTextMarshaler) Unmarshal(newMsg *nc.Msg) (*message.Message, error) {
-	if newMsg == nil {
-		return nil, errors.New("empty message")
-	}
-	msg := message.NewMessage(watermill.NewUUID(), newMsg.Data)
-	return msg, nil
 }

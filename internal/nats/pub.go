@@ -10,8 +10,11 @@ import (
 	nc "github.com/nats-io/nats.go"
 )
 
-func Publish(config *config.Config, parsedMessage interface{}) error {
-	logger := watermill.NewStdLogger(false, false)
+func getLogger() watermill.LoggerAdapter {
+	return watermill.NewStdLogger(false, false)
+}
+
+func getPublisher(config *config.Config, logger watermill.LoggerAdapter) (*nats.Publisher, error) {
 	options := []nc.Option{
 		nc.RetryOnFailedConnect(true),
 		nc.Timeout(config.Timeouts.Server),
@@ -19,7 +22,7 @@ func Publish(config *config.Config, parsedMessage interface{}) error {
 	}
 	jsConfig := nats.JetStreamConfig{Disabled: true}
 
-	publisher, err := nats.NewPublisher(
+	return nats.NewPublisher(
 		nats.PublisherConfig{
 			URL:         config.Nats.URL,
 			NatsOptions: options,
@@ -27,22 +30,42 @@ func Publish(config *config.Config, parsedMessage interface{}) error {
 		},
 		logger,
 	)
-	if err != nil {
-		panic(err)
-	}
+}
 
-	logger.Info("NATS server connected", map[string]interface{}{"url": config.Nats.URL})
-	logger.Info("Publishing message to NATS topic", map[string]interface{}{"topic": config.Publisher.Topic})
-
+func publishMessage(publisher *nats.Publisher, topic string, parsedMessage interface{}, logger watermill.LoggerAdapter) error {
 	messageText, err := json.Marshal(parsedMessage)
 	if err != nil {
 		logger.Error("Failed to marshal message", err, map[string]interface{}{"message": parsedMessage})
-	}
-	msg := message.NewMessage(watermill.NewUUID(), []byte(messageText))
-	err = publisher.Publish(config.Publisher.Topic, msg)
-	if err != nil {
-		logger.Error("Failed to publish message to NATS topic", err, map[string]interface{}{"topic": config.Publisher.Topic})
 		return err
 	}
+
+	msg := message.NewMessage(watermill.NewUUID(), []byte(messageText))
+	err = publisher.Publish(topic, msg)
+	if err != nil {
+		logger.Error("Failed to publish message to NATS topic", err, map[string]interface{}{"topic": topic})
+		return err
+	}
+
+	return nil
+}
+
+func Publish(config *config.Config, parsedMessage interface{}) error {
+	logger := getLogger()
+
+	publisher, err := getPublisher(config, logger)
+	if err != nil {
+		logger.Error("Failed to create publisher", err, nil)
+		return err
+	}
+
+	// logger.Info("NATS server connected", map[string]interface{}{"url": config.Nats.URL})
+	// logger.Info("Publishing message to NATS topic", map[string]interface{}{"topic": config.Publisher.Topic})
+
+	err = publishMessage(publisher, config.Publisher.Topic, parsedMessage, logger)
+	if err != nil {
+		logger.Error("Failed to publish message", err, map[string]interface{}{"message": parsedMessage})
+		return err
+	}
+
 	return nil
 }
