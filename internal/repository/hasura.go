@@ -10,7 +10,6 @@ import (
 	"caatsm/pkg/utils"
 
 	"github.com/Khan/genqlient/graphql"
-	"github.com/google/uuid"
 	"golang.org/x/oauth2"
 )
 
@@ -34,10 +33,12 @@ func NewHasura(config *config.Config) *HasuraRepository {
 }
 
 // InsertParsedMessage inserts a new ParsedMessage into the Hasura GraphQL API
-func (hr *HasuraRepository) CreateNew(pm *domain.ParsedMessage, msg_uuid []byte) error {
+func (hr *HasuraRepository) CreateNew(pm *domain.ParsedMessage) error {
 	log := utils.GetSugaredLogger()
 	bodyString, _ := json.Marshal(pm.BodyData)
 	secondAddress, _ := json.Marshal(pm.SecondaryAddresses)
+	var err error
+	msgUuid := utils.GetUuid(pm.Uuid)
 	variables := Aviation_telegrams_insert_input{
 		Message_id:           pm.MessageID,
 		Priority_indicator:   pm.PriorityIndicator,
@@ -48,7 +49,7 @@ func (hr *HasuraRepository) CreateNew(pm *domain.ParsedMessage, msg_uuid []byte)
 		Category:             pm.Category,
 		Date_time:            pm.DateTime,
 		Dispatched_at:        pm.DispatchedAt,
-		Uuid:                 uuid.Must(uuid.FromBytes(msg_uuid)),
+		Uuid:                 msgUuid,
 		Received_at:          pm.ReceivedAt,
 		Originator:           pm.Originator,
 		Originator_date_time: pm.OriginatorDateTime,

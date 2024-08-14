@@ -50,5 +50,6 @@ func (n *NatsPublisher) Publish(parsedMessage interface{}) error {
 		logger.Errorf("Failed to publish message: %v", err)
 		return err
 	}
+	logger.Infof("Message published: %s", msg.UUID)
 	return nil
 }
