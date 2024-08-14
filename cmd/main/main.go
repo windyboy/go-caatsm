@@ -3,6 +3,7 @@ package main
 import (
 	"caatsm/internal/config"
 	"caatsm/internal/nats"
+	"caatsm/internal/repository"
 	"caatsm/pkg/utils"
 	"os"
 
@@ -82,7 +83,10 @@ func executeListen(c *cli.Context) error {
 	fmt.Println("Loaded configuration successfully")
 	log := utils.GetLogger()
 	log.Info("Starting nats subscriber")
-	// handler := handlers.New(cfg)
-	nats.Subscribe(cfg)
+	publisher := nats.NewPub(cfg)
+	repository := repository.NewHasura(cfg)
+	handler := nats.NewHandler(cfg, publisher, repository)
+	subscriber := nats.NewSub(cfg)
+	subscriber.Subscribe(cfg, handler)
 	return nil
 }
