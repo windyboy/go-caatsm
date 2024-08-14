@@ -44,11 +44,11 @@ func NewSub(config *config.Config) *NatsSubscriber {
 	}
 }
 
-func (n *NatsSubscriber) Subscribe(config *config.Config, handlers iface.MessageHandler) {
+func (n *NatsSubscriber) Subscribe(handlers iface.MessageHandler) {
 	logger := utils.GetSugaredLogger()
 
 	defer n.subscriber.Close()
-	messages, err := n.subscriber.Subscribe(context.Background(), config.Subscription.Topic)
+	messages, err := n.subscriber.Subscribe(context.Background(), n.config.Subscription.Topic)
 	if err != nil {
 		logger.Errorf("Failed to subscribe to topic: %v", err)
 		return
