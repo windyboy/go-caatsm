@@ -25,7 +25,7 @@ func NewHandler(config *config.Config, publisher iface.MessagePublisher, reposit
 	}
 }
 
-func (handler *MessageHandler) HandleMessage(msg []byte, uuid []byte) error {
+func (handler *MessageHandler) HandleMessage(msg []byte, id string) error {
 	handler.mu.Lock()
 	defer handler.mu.Unlock()
 	log := utils.GetSugaredLogger()
@@ -36,28 +36,14 @@ func (handler *MessageHandler) HandleMessage(msg []byte, uuid []byte) error {
 	payload := string(msg)
 	var parsed *domain.ParsedMessage
 	if parsed = parsers.Parse(payload); !parsed.Parsed {
-		log.Infof("not parsed: [%s] : {%s} \n", uuid, payload)
+		log.Infof("not parsed: [%s] : {%s} \n", id, payload)
 	} else {
-		log.Infof("parsed [%s]: %v\n", uuid, parsed.ToString())
+		parsed.Uuid = id
+		log.Infof("parsed [%s]: %v\n", id, parsed.ToString())
 	}
-	handler.repository.CreateNew(parsed, uuid)
+	handler.repository.CreateNew(parsed)
+
 	handler.publisher.Publish(parsed)
+
 	return nil
 }
-
-// func (n *MessageHandler) SaveMessage(parsed *domain.ParsedMessage, uuid string) {
-// 	logger := watermill.NewStdLogger(false, false)
-// 	if parsed != nil {
-// 		parsed.Uuid = uuid
-// 		if err := n.hasuraRepo.CreateNew(parsed); err != nil {
-// 			logger.Error("error inserting message", err, map[string]interface{}{"message": parsed})
-// 		}
-// 		logger.Info("message inserted", map[string]interface{}{"message": parsed.Uuid})
-// 	}
-// }
-
-// func (n *MessageHandler) Publish(parsed *domain.ParsedMessage) {
-// 	if err := Publish(n.config, parsed); err != nil {
-// 		utils.GetSugaredLogger().Error("error publishing message", err, map[string]interface{}{"message": parsed})
-// 	}
-// }

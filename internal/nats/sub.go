@@ -55,10 +55,11 @@ func (n *NatsSubscriber) Subscribe(config *config.Config, handlers iface.Message
 	}
 
 	for msg := range messages {
-		if err := handlers.HandleMessage(msg.Payload, []byte(msg.UUID)); err == nil {
+		if err := handlers.HandleMessage(msg.Payload, msg.UUID); err == nil {
+			logger.Infof("Message handled: %s", msg.UUID)
 			msg.Ack()
 		} else {
-			logger.Error("Failed to handle message", err, map[string]interface{}{"message": msg})
+			logger.Errorf("Failed to handle message [%s]: %v", msg.UUID, err)
 			msg.Nack()
 		}
 	}

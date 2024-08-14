@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 const (
@@ -211,6 +213,7 @@ func Parse(rawText string) *domain.ParsedMessage {
 	}
 	message.Parsed = true
 	message.BodyData = bodyData
+	message.Uuid = uuid.New().String()
 	return &message
 }
 

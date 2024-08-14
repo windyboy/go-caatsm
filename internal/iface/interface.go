@@ -6,7 +6,7 @@ import (
 )
 
 type MessageHandler interface {
-	HandleMessage(msg []byte, uuid []byte) error
+	HandleMessage(msg []byte, id string) error
 }
 
 type MessagePublisher interface {
@@ -18,5 +18,5 @@ type MessageSubscriber interface {
 }
 
 type MessageRepository interface {
-	CreateNew(message *domain.ParsedMessage, uuid []byte) error
+	CreateNew(message *domain.ParsedMessage) error
 }
