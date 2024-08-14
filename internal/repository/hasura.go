@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 
+	"caatsm/internal/config"
 	"caatsm/internal/domain"
 	"caatsm/pkg/utils"
 
@@ -18,18 +19,22 @@ type HasuraRepository struct {
 }
 
 // New creates a new HasuraRepository
-func New(endpoint, secret string) *HasuraRepository {
+func NewHasura(config *config.Config) *HasuraRepository {
+	token := os.Getenv("GRAPHQL_TOKEN")
+	if token == "" {
+		token = config.Hasura.Secret
+	}
 	src := oauth2.StaticTokenSource(
-		&oauth2.Token{AccessToken: os.Getenv("GRAPHQL_TOKEN")},
+		&oauth2.Token{AccessToken: token},
 	)
 	httpClient := oauth2.NewClient(context.Background(), src)
 	return &HasuraRepository{
-		client: graphql.NewClient(endpoint, httpClient),
+		client: graphql.NewClient(config.Hasura.Endpoint, httpClient),
 	}
 }
 
 // InsertParsedMessage inserts a new ParsedMessage into the Hasura GraphQL API
-func (hr *HasuraRepository) CreateNew(pm *domain.ParsedMessage) error {
+func (hr *HasuraRepository) CreateNew(pm *domain.ParsedMessage, msg_uuid []byte) error {
 	log := utils.GetSugaredLogger()
 	bodyString, _ := json.Marshal(pm.BodyData)
 	secondAddress, _ := json.Marshal(pm.SecondaryAddresses)
@@ -43,7 +48,7 @@ func (hr *HasuraRepository) CreateNew(pm *domain.ParsedMessage) error {
 		Category:             pm.Category,
 		Date_time:            pm.DateTime,
 		Dispatched_at:        pm.DispatchedAt,
-		Uuid:                 uuid.New(),
+		Uuid:                 uuid.Must(uuid.FromBytes(msg_uuid)),
 		Received_at:          pm.ReceivedAt,
 		Originator:           pm.Originator,
 		Originator_date_time: pm.OriginatorDateTime,

@@ -2,6 +2,8 @@ package nats
 
 import (
 	"caatsm/internal/config"
+	"caatsm/internal/iface"
+	"caatsm/pkg/utils"
 	"context"
 	"errors"
 
@@ -11,7 +13,12 @@ import (
 	nc "github.com/nats-io/nats.go"
 )
 
-func Subscribe(config *config.Config) {
+type NatsSubscriber struct {
+	config     *config.Config
+	subscriber *nats.Subscriber
+}
+
+func NewSub(config *config.Config) *NatsSubscriber {
 	logger := watermill.NewStdLogger(false, false)
 	marshaler := &PlainTextMarshaler{}
 	options := []nc.Option{
@@ -20,8 +27,7 @@ func Subscribe(config *config.Config) {
 		nc.ReconnectWait(config.Timeouts.ReconnectWait),
 	}
 	jsConfig := nats.JetStreamConfig{Disabled: true}
-
-	subscriber, err := nats.NewSubscriber(
+	subscriber, _ := nats.NewSubscriber(
 		nats.SubscriberConfig{
 			URL:            config.Nats.URL,
 			CloseTimeout:   config.Timeouts.Close,
@@ -32,23 +38,24 @@ func Subscribe(config *config.Config) {
 		},
 		logger,
 	)
-	if err != nil {
-		panic(err)
+	return &NatsSubscriber{
+		config:     config,
+		subscriber: subscriber,
 	}
+}
 
-	logger.Info("NATS server connected", map[string]interface{}{"url": config.Nats.URL})
-	logger.Info("Subscribing to NATS topic", map[string]interface{}{"topic": config.Subscription.Topic})
+func (n *NatsSubscriber) Subscribe(config *config.Config, handlers iface.MessageHandler) {
+	logger := utils.GetSugaredLogger()
 
-	defer subscriber.Close()
-	messages, err := subscriber.Subscribe(context.Background(), config.Subscription.Topic)
+	defer n.subscriber.Close()
+	messages, err := n.subscriber.Subscribe(context.Background(), config.Subscription.Topic)
 	if err != nil {
-		logger.Error("Failed to subscribe to NATS topic", err, map[string]interface{}{"topic": config.Subscription.Topic})
+		logger.Errorf("Failed to subscribe to topic: %v", err)
 		return
 	}
 
-	handlers := New(config)
 	for msg := range messages {
-		if err := handlers.HandleMessage(msg); err == nil {
+		if err := handlers.HandleMessage(msg.Payload, []byte(msg.UUID)); err == nil {
 			msg.Ack()
 		} else {
 			logger.Error("Failed to handle message", err, map[string]interface{}{"message": msg})

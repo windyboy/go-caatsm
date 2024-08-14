@@ -2,6 +2,7 @@ package nats
 
 import (
 	"caatsm/internal/config"
+	"caatsm/pkg/utils"
 	"encoding/json"
 
 	"github.com/ThreeDotsLabs/watermill"
@@ -10,38 +11,43 @@ import (
 	nc "github.com/nats-io/nats.go"
 )
 
-func Publish(config *config.Config, parsedMessage interface{}) error {
+type NatsPublisher struct {
+	config    *config.Config
+	publisher *nats.Publisher
+}
+
+func NewPub(config *config.Config) *NatsPublisher {
 	logger := watermill.NewStdLogger(false, false)
+
+	jsConfig := nats.JetStreamConfig{Disabled: true}
 	options := []nc.Option{
 		nc.RetryOnFailedConnect(true),
 		nc.Timeout(config.Timeouts.Server),
 		nc.ReconnectWait(config.Timeouts.ReconnectWait),
 	}
-	jsConfig := nats.JetStreamConfig{Disabled: true}
-
-	publisher, err := nats.NewPublisher(
+	publisher, _ := nats.NewPublisher(
 		nats.PublisherConfig{
 			URL:         config.Nats.URL,
 			NatsOptions: options,
 			JetStream:   jsConfig,
-		},
-		logger,
-	)
-	if err != nil {
-		panic(err)
+		}, logger)
+	return &NatsPublisher{
+		config:    config,
+		publisher: publisher,
 	}
+}
 
-	logger.Info("NATS server connected", map[string]interface{}{"url": config.Nats.URL})
-	logger.Info("Publishing message to NATS topic", map[string]interface{}{"topic": config.Publisher.Topic})
+func (n *NatsPublisher) Publish(parsedMessage interface{}) error {
+	logger := utils.GetSugaredLogger()
 
 	messageText, err := json.Marshal(parsedMessage)
 	if err != nil {
-		logger.Error("Failed to marshal message", err, map[string]interface{}{"message": parsedMessage})
+		logger.Errorf("Failed to marshal message: %v", err)
 	}
 	msg := message.NewMessage(watermill.NewUUID(), []byte(messageText))
-	err = publisher.Publish(config.Publisher.Topic, msg)
+	err = n.publisher.Publish(n.config.Publisher.Topic, msg)
 	if err != nil {
-		logger.Error("Failed to publish message to NATS topic", err, map[string]interface{}{"topic": config.Publisher.Topic})
+		logger.Errorf("Failed to publish message: %v", err)
 		return err
 	}
 	return nil
