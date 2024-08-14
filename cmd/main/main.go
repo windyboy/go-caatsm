@@ -83,10 +83,13 @@ func executeListen(c *cli.Context) error {
 	fmt.Println("Loaded configuration successfully")
 	log := utils.GetLogger()
 	log.Info("Starting nats subscriber")
-	publisher := nats.NewPub(cfg)
-	repository := repository.NewHasura(cfg)
-	handler := nats.NewHandler(cfg, publisher, repository)
-	subscriber := nats.NewSub(cfg)
-	subscriber.Subscribe(cfg, handler)
+	subscribe(cfg)
 	return nil
+}
+
+func subscribe(config *config.Config) {
+	pub := nats.NewPub(config)
+	repo := repository.NewHasura(config)
+	handler := nats.NewHandler(config, pub, repo)
+	nats.NewSub(config).Subscribe(handler)
 }
