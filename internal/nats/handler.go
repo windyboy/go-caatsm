@@ -53,6 +53,7 @@ func (n *MessageHandler) SaveMessage(parsed *domain.ParsedMessage, uuid string) 
 		if err := n.hasuraRepo.CreateNew(parsed); err != nil {
 			logger.Error("error inserting message", err, map[string]interface{}{"message": parsed})
 		}
+		logger.Info("message inserted", map[string]interface{}{"message": parsed.Uuid})
 	}
 }
 

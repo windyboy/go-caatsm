@@ -83,6 +83,6 @@ func executeListen(c *cli.Context) error {
 	log := utils.GetLogger()
 	log.Info("Starting nats subscriber")
 	// handler := handlers.New(cfg)
-	nats.Subscribe(cfg, &nats.PlainTextMarshaler{})
+	nats.Subscribe(cfg)
 	return nil
 }

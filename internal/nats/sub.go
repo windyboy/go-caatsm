@@ -11,8 +11,9 @@ import (
 	nc "github.com/nats-io/nats.go"
 )
 
-func Subscribe(config *config.Config, marshaler *PlainTextMarshaler) {
+func Subscribe(config *config.Config) {
 	logger := watermill.NewStdLogger(false, false)
+	marshaler := &PlainTextMarshaler{}
 	options := []nc.Option{
 		nc.RetryOnFailedConnect(true),
 		nc.Timeout(config.Timeouts.Server),
