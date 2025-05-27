@@ -44,21 +44,46 @@ var _ = Describe("ALN", func() {
 			Expect(err).NotTo(HaveOccurred())
 		})
 
-		It("should fail validation for missing required fields", func() {
-			invalidALN := ALN{
-				Category: "AFTN",
-				// AircraftID is missing
-				SSRModeAndCode:     "A1234",
-				FlightRulesAndType: "IFR",
-				DepartureAirport:   "JFK",
-				DepartureTime:      "150405",
-				ArrivalAirport:     "LAX",
-				ArrivalTime:        "180405",
-			}
+		DescribeTable("when a mandatory field is missing",
+			func(fieldToOmit string, expectedErrorMsgComponent string) {
+				invalidALN := original // Start with a valid one
+				switch fieldToOmit {
+				case "Category":
+					invalidALN.Category = ""
+				case "AircraftID":
+					invalidALN.AircraftID = ""
+				case "SSRModeAndCode":
+					invalidALN.SSRModeAndCode = ""
+				case "FlightRulesAndType":
+					invalidALN.FlightRulesAndType = ""
+				case "DepartureAirport":
+					invalidALN.DepartureAirport = ""
+				case "DepartureTime":
+					invalidALN.DepartureTime = ""
+				case "ArrivalAirport":
+					invalidALN.ArrivalAirport = ""
+				case "ArrivalTime":
+					invalidALN.ArrivalTime = ""
+				}
+				err := invalidALN.Validate()
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(Equal(expectedErrorMsgComponent))
+			},
+			Entry("should fail if Category is missing", "Category", "ALN.Category: telegram category is required"),
+			Entry("should fail if AircraftID is missing", "AircraftID", "ALN.AircraftID: aircraft id is required"),
+			Entry("should fail if SSRModeAndCode is missing", "SSRModeAndCode", "ALN.SSRModeAndCode: ssr mode and code is required"),
+			Entry("should fail if FlightRulesAndType is missing", "FlightRulesAndType", "ALN.FlightRulesAndType: flight rules and type is required"),
+			Entry("should fail if DepartureAirport is missing", "DepartureAirport", "ALN.DepartureAirport: departure airport is required"),
+			Entry("should fail if DepartureTime is missing", "DepartureTime", "ALN.DepartureTime: departure time is required"),
+			Entry("should fail if ArrivalAirport is missing", "ArrivalAirport", "ALN.ArrivalAirport: arrival airport is required"),
+			Entry("should fail if ArrivalTime is missing", "ArrivalTime", "ALN.ArrivalTime: arrival time is required"),
+		)
 
-			err := invalidALN.Validate()
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("aircraft id is required"))
+		It("should validate successfully if optional OtherInfo is missing", func() {
+			validALN := original
+			validALN.OtherInfo = "" // Optional field
+			err := validALN.Validate()
+			Expect(err).NotTo(HaveOccurred())
 		})
 	})
 })

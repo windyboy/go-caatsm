@@ -1,4 +1,4 @@
-package domain
+package domain // Already has package comment
 
 import "fmt"
 
@@ -50,38 +50,40 @@ OtherInfo (其他信息, optional):
 Field: OtherInfo
 Description: This field contains any additional relevant information. It is optional and indicated as a pointer.
 */
-// DEP 电报体中的起飞报文结构
+// DEP represents a Departure message (起飞报文).
+// It signifies that an aircraft has departed from an airport.
 type DEP struct {
-	Category             string `json:"category"`                    // 电报类别
-	AircraftID           string `json:"aircraft_id"`                 // 航空器识别标志
-	SSRModeAndCode       string `json:"ssr_mode_and_code,omitempty"` // SSR 模式及编码（可选）
-	DepartureAirport     string `json:"departure_airport"`           // 起飞机场
-	DepartureTime        string `json:"departure_time"`              // 起飞时间
-	Destination          string `json:"destination"`                 // 目的地机场
-	EstimatedElapsedTime string `json:"estimated_elapsed_time"`      // 估计总耗时
-	AlternateAirport     string `json:"alternate_airport,omitempty"` // 目的地备降机场（可选）
-	OtherInfo            string `json:"other_info,omitempty"`        // 其他信息（可选）
+	Category             string `json:"category"`                    // Category is the message type, typically "DEP". (电报类别)
+	AircraftID           string `json:"aircraft_id"`                 // AircraftID is the unique identifier of the aircraft. (航空器识别标志)
+	SSRModeAndCode       string `json:"ssr_mode_and_code,omitempty"` // SSRModeAndCode is the SSR mode and code (optional). (SSR 模式及编码)
+	DepartureAirport     string `json:"departure_airport"`           // DepartureAirport is the ICAO code of the departure airport. (起飞机场)
+	DepartureTime        string `json:"departure_time"`              // DepartureTime is the actual departure time (typically HHMMSS or similar format). (起飞时间)
+	Destination          string `json:"destination"`                 // Destination is the ICAO code of the destination airport. (目的地机场)
+	EstimatedElapsedTime string `json:"estimated_elapsed_time"`      // EstimatedElapsedTime is the estimated total flight time. (估计总耗时)
+	AlternateAirport     string `json:"alternate_airport,omitempty"` // AlternateAirport is the ICAO code of the alternate destination airport (optional). (目的地备降机场)
+	OtherInfo            string `json:"other_info,omitempty"`        // OtherInfo provides a field for any additional relevant information (optional). (其他信息)
 }
 
-// Validate validates the DEP struct fields
+// Validate checks if the mandatory fields of the DEP message are present.
+// Returns an error if any mandatory field is empty, otherwise nil.
 func (d *DEP) Validate() error {
 	if d.Category == "" {
-		return fmt.Errorf("telegram category is required")
+		return fmt.Errorf("DEP.Category: telegram category is required")
 	}
 	if d.AircraftID == "" {
-		return fmt.Errorf("aircraft id is required")
+		return fmt.Errorf("DEP.AircraftID: aircraft id is required")
 	}
 	if d.DepartureAirport == "" {
-		return fmt.Errorf("departure airport is required")
+		return fmt.Errorf("DEP.DepartureAirport: departure airport is required")
 	}
 	if d.DepartureTime == "" {
-		return fmt.Errorf("departure time is required")
+		return fmt.Errorf("DEP.DepartureTime: departure time is required")
 	}
 	if d.Destination == "" {
-		return fmt.Errorf("destination is required")
+		return fmt.Errorf("DEP.Destination: destination is required")
 	}
 	if d.EstimatedElapsedTime == "" {
-		return fmt.Errorf("estimated elapsed time is required")
+		return fmt.Errorf("DEP.EstimatedElapsedTime: estimated elapsed time is required")
 	}
 	return nil
 }

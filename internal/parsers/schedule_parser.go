@@ -1,4 +1,4 @@
-package parsers
+package parsers // Package comment already added
 
 import (
 	"caatsm/internal/domain"

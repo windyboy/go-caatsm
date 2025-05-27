@@ -1,10 +1,65 @@
-package domain
+package domain // Already has package comment
 
 import (
 	"caatsm/pkg/utils"
 	"fmt"
 	"time"
 )
+
+// SITA represents a generic SITA message structure.
+// It encapsulates header information, priority, sender/receiver details,
+// the main text content, and metadata about its processing.
+type SITA struct {
+	Header            SITAHeader     `json:"header"`          // Header information of the SITA telegram.
+	PriorityAndSender PrioritySender `json:"priority_sender"` // PriorityAndSender contains priority and sender address details.
+	TimeAndReceiver   TimeReceiver   `json:"time_receiver"`   // TimeAndReceiver contains time and receiver address details.
+	Text              string         `json:"text"`            // Text is the main content/body of the SITA telegram.
+	ReceivedTime      time.Time      `json:"received_time"`   // ReceivedTime is the timestamp when the SITA message was received by the system.
+	Category          string         `json:"category"`        // Category is an application-specific category assigned to the message (e.g., based on content).
+	BodyData          interface{}    `json:"body_data"`       // BodyData can hold structured data parsed from the Text field.
+}
+
+// SITAHeader defines the standard header part of a SITA telegram.
+type SITAHeader struct {
+	StartSignal string `json:"start_signal"` // StartSignal indicates the beginning of the telegram (e.g., "ZCZC").
+	SendID      string `json:"send_id"`      // SendID is a sending identifier, often a sequence number or unique ID from the source.
+	SendTime    string `json:"send_time"`    // SendTime is the time the message was sent, typically in DDHHMM format.
+}
+
+// PrioritySender holds the priority indicator and sender's address from a SITA message.
+type PrioritySender struct {
+	Priority string `json:"priority"` // Priority is the message priority code (e.g., "QQ", "FF").
+	Sender   string `json:"sender"`   // Sender is the SITA address of the message originator.
+}
+
+// TimeReceiver holds the timestamp and receiver's address from a SITA message.
+type TimeReceiver struct {
+	Time     string `json:"time"`     // Time associated with the receiver line, often similar to SendTime or a processing time.
+	Receiver string `json:"receiver"` // Receiver is the SITA address of the message recipient.
+}
+
+// Validate checks the SITAHeader, currently focusing on the SendTime format.
+// Returns an error if validation fails, otherwise nil.
+func (h *SITAHeader) Validate() error {
+	log := utils.GetLogger() // Consider if logger is needed here or if errors should just be returned.
+	// Validate SendTime format (e.g., DDHHMM)
+	if len(h.SendTime) != 6 {
+		errMsg := "invalid send_time format, expected DDHHMM"
+		log.Errorf("SITAHeader.Validate: %s. Received: %s", errMsg, h.SendTime) // Log includes received value
+		return fmt.Errorf("SITAHeader.SendTime: %s", errMsg)                     // Returned error is generic
+	}
+	return nil
+}
+
+// Validate checks the SITA message, currently by validating its embedded SITAHeader.
+// Returns an error if the header validation fails, otherwise nil.
+func (s *SITA) Validate() error {
+	if err := s.Header.Validate(); err != nil {
+		return err
+	}
+	// Add more validation for other SITA fields as needed
+	return nil
+}
 
 /*
 QU TSNZPCA
@@ -63,53 +118,3 @@ NNNN
 
 
 */
-
-// SITA defines the structure of a SITA telegram
-type SITA struct {
-	Header            SITAHeader     `json:"header"`          // Header information of the telegram
-	PriorityAndSender PrioritySender `json:"priority_sender"` // Priority and sender information
-	TimeAndReceiver   TimeReceiver   `json:"time_receiver"`   // Time and receiver information
-	Text              string         `json:"text"`            // Content of the telegram
-	ReceivedTime      time.Time      `json:"received_time"`   // Time the telegram was received
-	Category          string         `json:"category"`        // Category of the telegram
-	BodyData          interface{}    `json:"body_data"`       // Additional body data
-}
-
-// SITAHeader defines the header of a SITA telegram
-type SITAHeader struct {
-	StartSignal string `json:"start_signal"` // Start signal indicating the beginning of the telegram
-	SendID      string `json:"send_id"`      // Sending ID uniquely identifying the telegram
-	SendTime    string `json:"send_time"`    // Sending time in the format DDHHMM
-}
-
-// PrioritySender defines priority and sender address
-type PrioritySender struct {
-	Priority string `json:"priority"` // Priority level
-	Sender   string `json:"sender"`   // Sending address
-}
-
-// TimeReceiver defines time and receiver address
-type TimeReceiver struct {
-	Time     string `json:"time"`     // Time of the telegram
-	Receiver string `json:"receiver"` // Receiving address
-}
-
-func (h *SITAHeader) Validate() error {
-	log := utils.GetLogger()
-	// Validate SendTime format (e.g., DDHHMM)
-	if len(h.SendTime) != 6 {
-		err := "invalid send_time format"
-
-		log.Errorf("error validating send_time: %v", err)
-		return fmt.Errorf(err)
-	}
-	return nil
-}
-
-func (s *SITA) Validate() error {
-	if err := s.Header.Validate(); err != nil {
-		return err
-	}
-	// Add more validation as needed
-	return nil
-}

@@ -1,4 +1,4 @@
-package domain
+package domain // Already has package comment
 
 import "fmt"
 
@@ -64,49 +64,51 @@ Description: Indicates the part of the flight plan that is being changed.
 
 */
 
-// CHG 电报体中的航班计划修改报文结构
+// CHG represents a Change message (航班计划修改报文).
+// It is used to notify changes to a previously submitted flight plan.
 type CHG struct {
-	Category             string `json:"category"`               // 电报类别
-	AircraftID           string `json:"aircraft_id"`            // 航空器识别标志
-	SSRModeAndCode       string `json:"ssr_mode_and_code"`      // SSR 模式及编码
-	DepartureAirport     string `json:"departure_airport"`      // 起飞机场
-	DepartureTime        string `json:"departure_time"`         // 起飞时间
-	ArrivalAirport       string `json:"arrival_airport"`        // 到达机场
-	ArrivalTime          string `json:"arrival_time"`           // 到达时间
-	EstimatedElapsedTime string `json:"estimated_elapsed_time"` // 估计总耗时
-	AlternateAirport     string `json:"alternate_airport"`      // 目的地备降机场 (optional)
-	OtherInfo            string `json:"other_info"`             // 其他信息 (optional)
-	ChangePart           string `json:"change_part"`            // 修改部分
+	Category             string `json:"category"`                         // Category is the message type, typically "CHG". (电报类别)
+	AircraftID           string `json:"aircraft_id"`                      // AircraftID is the unique identifier of the aircraft. (航空器识别标志)
+	SSRModeAndCode       string `json:"ssr_mode_and_code"`                // SSRModeAndCode is the SSR mode and code. (SSR 模式及编码)
+	DepartureAirport     string `json:"departure_airport"`                // DepartureAirport is the ICAO code of the departure airport. (起飞机场)
+	DepartureTime        string `json:"departure_time"`                   // DepartureTime is the original or new departure time (typically HHMMSS or similar format). (起飞时间)
+	ArrivalAirport       string `json:"arrival_airport"`                  // ArrivalAirport is the ICAO code of the arrival airport. (到达机场)
+	ArrivalTime          string `json:"arrival_time"`                     // ArrivalTime is the original or new estimated arrival time (typically HHMMSS or similar format). (到达时间)
+	EstimatedElapsedTime string `json:"estimated_elapsed_time"`           // EstimatedElapsedTime is the estimated total flight time. (估计总耗时)
+	AlternateAirport     string `json:"alternate_airport,omitempty"`      // AlternateAirport is the alternate destination airport (optional). (目的地备降机场)
+	OtherInfo            string `json:"other_info,omitempty"`             // OtherInfo provides a field for any additional relevant information (optional). (其他信息)
+	ChangePart           string `json:"change_part"`                      // ChangePart describes the specific part of the flight plan that is being changed. (修改部分)
 }
 
-// Validate validates the CHG struct fields
+// Validate checks if the mandatory fields of the CHG message are present.
+// Returns an error if any mandatory field is empty, otherwise nil.
 func (c *CHG) Validate() error {
 	if c.Category == "" {
-		return fmt.Errorf("category is required")
+		return fmt.Errorf("CHG.Category: category is required")
 	}
 	if c.AircraftID == "" {
-		return fmt.Errorf("aircraft id is required")
+		return fmt.Errorf("CHG.AircraftID: aircraft id is required")
 	}
 	if c.SSRModeAndCode == "" {
-		return fmt.Errorf("ssr mode and code is required")
+		return fmt.Errorf("CHG.SSRModeAndCode: ssr mode and code is required")
 	}
 	if c.DepartureAirport == "" {
-		return fmt.Errorf("departure airport is required")
+		return fmt.Errorf("CHG.DepartureAirport: departure airport is required")
 	}
 	if c.DepartureTime == "" {
-		return fmt.Errorf("departure time is required")
+		return fmt.Errorf("CHG.DepartureTime: departure time is required")
 	}
 	if c.ArrivalAirport == "" {
-		return fmt.Errorf("arrival airport is required")
+		return fmt.Errorf("CHG.ArrivalAirport: arrival airport is required")
 	}
 	if c.ArrivalTime == "" {
-		return fmt.Errorf("arrival time is required")
+		return fmt.Errorf("CHG.ArrivalTime: arrival time is required")
 	}
 	if c.EstimatedElapsedTime == "" {
-		return fmt.Errorf("estimated elapsed time is required")
+		return fmt.Errorf("CHG.EstimatedElapsedTime: estimated elapsed time is required")
 	}
 	if c.ChangePart == "" {
-		return fmt.Errorf("change part is required")
+		return fmt.Errorf("CHG.ChangePart: change part is required")
 	}
 	return nil
 }

@@ -1,4 +1,4 @@
-package domain
+package domain // Already has package comment
 
 import "fmt"
 
@@ -77,53 +77,55 @@ Description: Optional field for any additional relevant information.
 
 */
 
-// CPL 电报体中的航班计划变更报文结构
+// CPL represents a Current Flight Plan message (当前飞行计划报文).
+// This message type details the current and active flight plan for an aircraft.
 type CPL struct {
-	Category                string `json:"category"`                    // 电报类别
-	AircraftID              string `json:"aircraft_id"`                 // 航空器识别标志
-	SSRModeAndCode          string `json:"ssr_mode_and_code"`           // SSR 模式及编码
-	FlightRulesAndType      string `json:"flight_rules_and_type"`       // 飞行规则和类型
-	AircraftAndEquipment    string `json:"aircraft_and_equipment"`      // 航机和设备
-	CruisingSpeedAndLevel   string `json:"cruising_speed_and_level"`    // 巡航速度和飞行高度
-	DepartureAirport        string `json:"departure_airport"`           // 起飞机场
-	DepartureTime           string `json:"departure_time"`              // 起飞时间
-	Route                   string `json:"route"`                       // 航路
-	DestinationAndTotalTime string `json:"destination_and_total_time"`  // 目的地机场和总时间
-	AlternateAirport        string `json:"alternate_airport,omitempty"` // 目的地备降机场 (optional)
-	OtherInfo               string `json:"other_info,omitempty"`        // 其他信息 (optional)
+	Category                string `json:"category"`                    // Category is the message type, typically "CPL". (电报类别)
+	AircraftID              string `json:"aircraft_id"`                 // AircraftID is the unique identifier of the aircraft. (航空器识别标志)
+	SSRModeAndCode          string `json:"ssr_mode_and_code"`           // SSRModeAndCode is the SSR mode and code. (SSR 模式及编码)
+	FlightRulesAndType      string `json:"flight_rules_and_type"`       // FlightRulesAndType indicates the flight rules (e.g., IFR) and type of flight. (飞行规则和类型)
+	AircraftAndEquipment    string `json:"aircraft_and_equipment"`      // AircraftAndEquipment specifies the aircraft type and its equipment. (航机和设备)
+	CruisingSpeedAndLevel   string `json:"cruising_speed_and_level"`    // CruisingSpeedAndLevel indicates the planned cruising speed and flight level. (巡航速度和飞行高度)
+	DepartureAirport        string `json:"departure_airport"`           // DepartureAirport is the ICAO code of the departure airport. (起飞机场)
+	DepartureTime           string `json:"departure_time"`              // DepartureTime is the departure time (typically HHMMSS or similar format). (起飞时间)
+	Route                   string `json:"route"`                       // Route describes the planned flight path. (航路)
+	DestinationAndTotalTime string `json:"destination_and_total_time"`  // DestinationAndTotalTime includes the ICAO code of the destination airport and the total estimated elapsed time. (目的地机场和总时间)
+	AlternateAirport        string `json:"alternate_airport,omitempty"` // AlternateAirport is the ICAO code of the alternate destination airport (optional). (目的地备降机场)
+	OtherInfo               string `json:"other_info,omitempty"`        // OtherInfo provides a field for any additional relevant information (optional). (其他信息)
 }
 
-// Validate validates the CPL struct fields
+// Validate checks if the mandatory fields of the CPL message are present.
+// Returns an error if any mandatory field is empty, otherwise nil.
 func (c *CPL) Validate() error {
 	if c.Category == "" {
-		return fmt.Errorf("category is required")
+		return fmt.Errorf("CPL.Category: category is required")
 	}
 	if c.AircraftID == "" {
-		return fmt.Errorf("aircraft id is required")
+		return fmt.Errorf("CPL.AircraftID: aircraft id is required")
 	}
 	if c.SSRModeAndCode == "" {
-		return fmt.Errorf("ssr mode and code is required")
+		return fmt.Errorf("CPL.SSRModeAndCode: ssr mode and code is required")
 	}
 	if c.FlightRulesAndType == "" {
-		return fmt.Errorf("flight rules and type is required")
+		return fmt.Errorf("CPL.FlightRulesAndType: flight rules and type is required")
 	}
 	if c.AircraftAndEquipment == "" {
-		return fmt.Errorf("aircraft and equipment is required")
+		return fmt.Errorf("CPL.AircraftAndEquipment: aircraft and equipment is required")
 	}
 	if c.CruisingSpeedAndLevel == "" {
-		return fmt.Errorf("cruising speed and level is required")
+		return fmt.Errorf("CPL.CruisingSpeedAndLevel: cruising speed and level is required")
 	}
 	if c.DepartureAirport == "" {
-		return fmt.Errorf("departure airport is required")
+		return fmt.Errorf("CPL.DepartureAirport: departure airport is required")
 	}
 	if c.DepartureTime == "" {
-		return fmt.Errorf("departure time is required")
+		return fmt.Errorf("CPL.DepartureTime: departure time is required")
 	}
 	if c.Route == "" {
-		return fmt.Errorf("route is required")
+		return fmt.Errorf("CPL.Route: route is required")
 	}
 	if c.DestinationAndTotalTime == "" {
-		return fmt.Errorf("destination and total time is required")
+		return fmt.Errorf("CPL.DestinationAndTotalTime: destination and total time is required")
 	}
 	return nil
 }

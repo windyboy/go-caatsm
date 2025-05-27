@@ -1,3 +1,6 @@
+// Package domain contains the core data structures (models) used throughout the caatsm application.
+// These structures represent various aviation message types, scheduling information,
+// and general message parsing results.
 package domain
 
 import "time"
@@ -84,38 +87,48 @@ DispatchedAt: time.Time{}.
 NeedDispatch: false.
 */
 
-// ParsedMessage holds the parsed data from an aviation message
+// ParsedMessage holds the structured data extracted from a raw aviation message.
+// It includes header information, the raw content, and potentially structured body data
+// if parsing was successful.
 type ParsedMessage struct {
-	// StartIndicator     string      `json:"startIndicator"`               // 电报开始标识: The start of the message indicator (e.g., 'ZCZC').
-	Uuid               string      `json:"uuid"`
-	MessageID          string      `json:"messageId"`                    // 信息ID: The message ID (e.g., 'TMQ1324').
-	DateTime           string      `json:"dateTime"`                     // 日期时间: The date and time of the message (e.g., '150631').
-	PriorityIndicator  string      `json:"priorityIndicator"`            // 优先级标识: The priority level of the message (e.g., 'FF').
-	PrimaryAddress     string      `json:"primaryAddress"`               // 主要地址: The primary recipient address (e.g., 'ZBTJZPZX').
-	SecondaryAddresses string      `json:"secondaryAddresses,omitempty"` // 次要地址: Additional recipient addresses (e.g., ['150630', 'ZBACZQZX']).
-	Originator         string      `json:"originator,omitempty"`         // 发件人: The sender of the message.
-	OriginatorDateTime string      `json:"originatorDateTime,omitempty"` // 发件日期时间: The date and time when the originator sent the message.
-	Category           string      `json:"category,omitempty"`           // 类别: The category of the message.
-	Body               string      // 正文和页脚: The body and footer of the message (e.g., 'CALLSIGN/ABC123\nFPL/AB1234-AB\n...').
-	Content            string      `json:"content,omitempty"`      // 正文: The body of the message.
-	BodyData           interface{} `json:"bodyData,omitempty"`     // 正文数据: Parsed body data.
-	ReceivedAt         time.Time   `json:"receivedAt"`             // 接收时间: The time when the message was received.
-	ParsedAt           time.Time   `json:"parsedAt,omitempty"`     // 解析时间: The time when the message was parsed.
-	DispatchedAt       time.Time   `json:"dispatchedAt,omitempty"` // 分发时间: The time when the message was dispatched.
-	NeedDispatch       bool        `json:"needDispatch"`           // 需要分发: Indicates if the message needs to be dispatched.
-	Parsed             bool        `json:"parsed"`                 // 解析: Indicates if the message has been parsed.
-	Comments           string      `json:"comments,omitempty"`     // 备注: Additional comments.
+	StartIndicator     string      `json:"startIndicator"`               // StartIndicator is the beginning marker of the message (e.g., "ZCZC"). (电报开始标识)
+	Uuid               string      `json:"uuid"`                         // Uuid is a unique identifier assigned to the message upon processing.
+	MessageID          string      `json:"messageId"`                    // MessageID is the identifier extracted from the message itself (e.g., "TMQ1324"). (信息ID)
+	DateTime           string      `json:"dateTime"`                     // DateTime is the date and time group from the message header (e.g., "150631"). (日期时间)
+	PriorityIndicator  string      `json:"priorityIndicator"`            // PriorityIndicator signifies the message's urgency (e.g., "FF", "GG"). (优先级标识)
+	PrimaryAddress     string      `json:"primaryAddress"`               // PrimaryAddress is the main recipient address. (主要地址)
+	SecondaryAddresses string      `json:"secondaryAddresses,omitempty"` // SecondaryAddresses are additional recipient addresses, stored as a single string. (次要地址)
+	Originator         string      `json:"originator,omitempty"`         // Originator is the sender's address or identifier. (发件人)
+	OriginatorDateTime string      `json:"originatorDateTime,omitempty"` // OriginatorDateTime is the timestamp from the originator line. (发件日期时间)
+	Category           string      `json:"category,omitempty"`           // Category is the identified type of the aviation message (e.g., "ARR", "FPL"). (类别)
 
+	// Body is the extracted body portion of the message, used by the parser to create specific message types (e.g., FPL, ARR).
+	// This field is primarily for internal parser use and not typically marshalled to JSON directly,
+	// as its structured representation is in BodyData.
+	Body string
+
+	// Content represents the complete raw content of the received message. (正文)
+	Content string `json:"content,omitempty"`
+
+	BodyData     interface{} `json:"bodyData,omitempty"`     // BodyData holds the parsed, structured data specific to the message Category (e.g., an ARR struct, FPL struct). (正文数据)
+	ReceivedAt   time.Time   `json:"receivedAt"`             // ReceivedAt is the timestamp when the message was received by the system. (接收时间)
+	ParsedAt     time.Time   `json:"parsedAt,omitempty"`     // ParsedAt is the timestamp when the message was successfully parsed. (解析时间)
+	DispatchedAt time.Time   `json:"dispatchedAt,omitempty"` // DispatchedAt is the timestamp when the message was dispatched (e.g., to another system). (分发时间)
+	NeedDispatch bool        `json:"needDispatch"`           // NeedDispatch indicates if the message should be further dispatched. (需要分发)
+	Parsed       bool        `json:"parsed"`                 // Parsed indicates whether the BodyData has been successfully populated. (解析)
+	Comments     string      `json:"comments,omitempty"`     // Comments holds any remarks or error messages generated during parsing or processing. (备注)
 }
 
-// NewParsedMessage initializes a ParsedMessage with default values
+// NewParsedMessage initializes a new ParsedMessage with default values,
+// particularly setting Parsed to false.
 func NewParsedMessage() *ParsedMessage {
 	return &ParsedMessage{
-		// SecondaryAddresses: []string{},
 		Parsed: false,
 	}
 }
 
+// ToString provides a brief string representation of the ParsedMessage,
+// typically used for quick logging or identification.
 func (message *ParsedMessage) ToString() string {
 	return message.MessageID + " " + message.Category + " " + message.Originator
 }

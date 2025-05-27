@@ -1,4 +1,4 @@
-package domain
+package domain // Already has package comment
 
 import "fmt"
 
@@ -52,79 +52,89 @@ Example message:
  A/WHITE GREEN)
 */
 
-// FPL represents the structure of a Flight Plan message in the FPL telegram body
+// FPL represents a Filed Flight Plan message (飞行计划报文).
+// It contains comprehensive details about a planned flight.
 type FPL struct {
-	Category                string `json:"category"`                      // 电报类别: The category of the telegram (e.g., 'FPL' for Flight Plan).
-	FlightNumber            string `json:"flight_number"`                 // 航班号: The flight number (e.g., 'JAE7433').
-	ReferenceData           string `json:"reference_data,omitempty"`      // 参考数据（可选）: Reference data, if applicable.
-	AircraftID              string `json:"aircraft_id"`                   // 航空器识别标志: The aircraft identification (e.g., 'B744/H').
-	SSRModeAndCode          string `json:"ssr_mode_and_code"`             // SSR 模式及编码: The SSR mode and code (e.g., 'SXIRPZJWY/S').
-	FlightRulesAndType      string `json:"flight_rules_and_type"`         // 飞行规则和类型: Flight rules and type (e.g., 'IS').
-	CruisingSpeedAndLevel   string `json:"cruising_speed_and_level"`      // 巡航速度和飞行高度: Cruising speed and flight level (e.g., 'K0926S0920').
-	DepartureAirport        string `json:"departure_airport"`             // 起飞机场: Departure airport code (e.g., 'ZBTJ').
-	DepartureTime           string `json:"departure_time"`                // 起飞时间: Departure time (e.g., '1755').
-	Route                   string `json:"route"`                         // 航路: The flight route (e.g., 'CG A326 VYK W80 HUR ... GED2W').
-	DestinationAndTotalTime string `json:"destination_and_total_time"`    // 目的地机场和估计总耗时: Destination airport and estimated total time (e.g., 'EDDF0948').
-	AlternateAirport        string `json:"alternate_airport,omitempty"`   // 目的地备降机场（可选）: Alternate airport (e.g., 'EDDK').
-	OtherInfo               string `json:"other_info,omitempty"`          // 其他信息（可选）: Other information.
-	SupplementaryInfo       string `json:"supplementary_info,omitempty"`  // 补充信息（可选）: Supplementary information.
-	EstimatedArrivalTime    string `json:"estimated_arrival_time"`        // 预计到达时间: Estimated time of arrival (e.g., '0948').
-	PBN                     string `json:"pbn"`                           // 性能导航: Performance-based navigation equipment (e.g., 'A1B2B3B4B5D1L1').
-	NavigationEquipment     string `json:"navigation_equipment"`          // 导航设备: Navigation equipment (e.g., 'NAV/ABAS').
-	EstimatedElapsedTime    string `json:"estimated_elapsed_time"`        // 估计飞行时间: Estimated elapsed time (e.g., 'EET/ZMUB0100').
-	SELCALCode              string `json:"selcal_code"`                   // SELCAL代码: SELCAL code (e.g., 'JLAD').
-	Register                string `json:"register,omitempty"`            // 注册号（可选）: Aircraft registration number (e.g., 'B2422').
-	PerformanceCategory     string `json:"performance_category"`          // 性能类别: Aircraft performance category (e.g., 'C').
-	RerouteInformation      string `json:"reroute_information,omitempty"` // 重航信息（可选）: Reroute information (e.g., 'RIF/FRT N640 ZBYN').
-	Remarks                 string `json:"remarks,omitempty"`             // 备注（可选）: Remarks (e.g., 'RMK/TCAS EQUIPPED').
+	Category                string `json:"category"`                      // Category is the message type, typically "FPL". (电报类别)
+	FlightNumber            string `json:"flight_number"`                 // FlightNumber is the flight identifier (e.g., "JAE7433"). (航班号)
+	ReferenceData           string `json:"reference_data,omitempty"`      // ReferenceData provides any reference information if applicable (optional). (参考数据)
+	AircraftID              string `json:"aircraft_id"`                   // AircraftID is the aircraft type and wake turbulence category (e.g., "B744/H"). (航空器识别标志 - 通常指机型和尾流)
+	SSRModeAndCode          string `json:"ssr_mode_and_code"`             // SSRModeAndCode is the SSR mode and code, often including equipment codes (e.g., "SXIRPZJWY/S"). (SSR 模式及编码 - 通常指设备能力)
+	FlightRulesAndType      string `json:"flight_rules_and_type"`         // FlightRulesAndType indicates flight rules (e.g., IFR-"I") and type of flight (e.g., Scheduled-"S"). (飞行规则和类型)
+	CruisingSpeedAndLevel   string `json:"cruising_speed_and_level"`      // CruisingSpeedAndLevel is the planned cruising speed and flight level (e.g., "K0926S0920"). (巡航速度和飞行高度)
+	DepartureAirport        string `json:"departure_airport"`             // DepartureAirport is the ICAO code of the departure airport (e.g., "ZBTJ"). (起飞机场)
+	DepartureTime           string `json:"departure_time"`                // DepartureTime is the estimated off-block time or departure time (typically HHMM or HHMMSS format). (起飞时间)
+	Route                   string `json:"route"`                         // Route describes the planned flight path. (航路)
+	DestinationAndTotalTime string `json:"destination_and_total_time"`    // DestinationAndTotalTime includes the ICAO code of the destination airport and total estimated elapsed time (e.g., "EDDF0948"). (目的地机场和估计总耗时)
+	AlternateAirport        string `json:"alternate_airport,omitempty"`   // AlternateAirport is the ICAO code of the alternate destination airport(s) (optional). (目的地备降机场)
+	OtherInfo               string `json:"other_info,omitempty"`          // OtherInfo contains various supplementary details, often structured with sub-fields (e.g., PBN, NAV, REG, EET) (optional). (其他信息 - 通常指FIELD 18)
+	SupplementaryInfo       string `json:"supplementary_info,omitempty"`  // SupplementaryInfo (FIELD 19) contains coded or plain language data required by authorities (optional). (补充信息)
+	EstimatedArrivalTime    string `json:"estimated_arrival_time"`        // EstimatedArrivalTime is the estimated time of arrival, often derived from DestinationAndTotalTime. (预计到达时间)
+	PBN                     string `json:"pbn"`                           // PBN indicates Performance-Based Navigation capabilities (parsed from OtherInfo). (性能导航)
+	NavigationEquipment     string `json:"navigation_equipment"`          // NavigationEquipment specifies navigation aids (parsed from OtherInfo). (导航设备)
+	EstimatedElapsedTime    string `json:"estimated_elapsed_time"`        // EstimatedElapsedTime is the estimated elapsed time to specific points or FIR boundaries (parsed from OtherInfo EET/). (估计飞行时间)
+	SELCALCode              string `json:"selcal_code"`                   // SELCALCode is the aircraft's SELCAL code (parsed from OtherInfo SEL/). (SELCAL代码)
+	Register                string `json:"register,omitempty"`            // Register is the aircraft registration mark (parsed from OtherInfo REG/) (optional). (注册号)
+	PerformanceCategory     string `json:"performance_category"`          // PerformanceCategory indicates aircraft performance category (parsed from OtherInfo PER/). (性能类别)
+	RerouteInformation      string `json:"reroute_information,omitempty"` // RerouteInformation details any reroutes (parsed from OtherInfo RIF/) (optional). (重航信息)
+	Remarks                 string `json:"remarks,omitempty"`             // Remarks provides additional plain language remarks (parsed from OtherInfo RMK/) (optional). (备注)
 }
 
-// Validate validates the FPL struct fields
+// Validate checks if the mandatory fields of the FPL message are present.
+// Returns an error if any mandatory field is empty, otherwise nil.
 func (f *FPL) Validate() error {
+	// Assuming Category is a standard field for FPL messages, similar to other types.
+	// If Category is not part of the FPL specific data but rather the envelope, this check might be redundant here.
+	if f.Category == "" {
+		return fmt.Errorf("FPL.Category: category is required")
+	}
 	if f.FlightNumber == "" {
-		return fmt.Errorf("flight number is required")
+		return fmt.Errorf("FPL.FlightNumber: flight number is required")
 	}
 	if f.AircraftID == "" {
-		return fmt.Errorf("aircraft id is required")
+		return fmt.Errorf("FPL.AircraftID: aircraft id is required")
 	}
 	if f.SSRModeAndCode == "" {
-		return fmt.Errorf("SSR mode and code is required")
+		return fmt.Errorf("FPL.SSRModeAndCode: SSR mode and code is required")
 	}
 	if f.FlightRulesAndType == "" {
-		return fmt.Errorf("flight rules and type is required")
+		return fmt.Errorf("FPL.FlightRulesAndType: flight rules and type is required")
 	}
 	if f.CruisingSpeedAndLevel == "" {
-		return fmt.Errorf("cruising speed and level is required")
+		return fmt.Errorf("FPL.CruisingSpeedAndLevel: cruising speed and level is required")
 	}
 	if f.DepartureAirport == "" {
-		return fmt.Errorf("departure airport is required")
+		return fmt.Errorf("FPL.DepartureAirport: departure airport is required")
 	}
 	if f.DepartureTime == "" {
-		return fmt.Errorf("departure time is required")
+		return fmt.Errorf("FPL.DepartureTime: departure time is required")
 	}
 	if f.Route == "" {
-		return fmt.Errorf("route is required")
+		return fmt.Errorf("FPL.Route: route is required")
 	}
 	if f.DestinationAndTotalTime == "" {
-		return fmt.Errorf("destination and total time is required")
+		return fmt.Errorf("FPL.DestinationAndTotalTime: destination and total time is required")
 	}
+	// Note: Fields like PBN, NavigationEquipment, EstimatedElapsedTime, SELCALCode, PerformanceCategory
+	// are listed as required in validation. These are often part of Field 18 (OtherInfo).
+	// This strict validation implies they must be present and parsed from OtherInfo.
 	if f.EstimatedArrivalTime == "" {
-		return fmt.Errorf("estimated arrival time is required")
+		return fmt.Errorf("FPL.EstimatedArrivalTime: estimated arrival time is required")
 	}
 	if f.PBN == "" {
-		return fmt.Errorf("PBN is required")
+		return fmt.Errorf("FPL.PBN: PBN information is required")
 	}
 	if f.NavigationEquipment == "" {
-		return fmt.Errorf("navigation equipment is required")
+		return fmt.Errorf("FPL.NavigationEquipment: navigation equipment is required")
 	}
 	if f.EstimatedElapsedTime == "" {
-		return fmt.Errorf("estimated elapsed time is required")
+		return fmt.Errorf("FPL.EstimatedElapsedTime: estimated elapsed time (EET) is required")
 	}
 	if f.SELCALCode == "" {
-		return fmt.Errorf("SELCAL code is required")
+		return fmt.Errorf("FPL.SELCALCode: SELCAL code is required")
 	}
 	if f.PerformanceCategory == "" {
-		return fmt.Errorf("performance category is required")
+		return fmt.Errorf("FPL.PerformanceCategory: performance category is required")
 	}
 	return nil
 }

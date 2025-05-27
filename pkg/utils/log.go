@@ -1,3 +1,5 @@
+// Package utils provides utility functions and shared components for the caatsm application,
+// such as logging configuration and general helper functions.
 package utils
 
 import (

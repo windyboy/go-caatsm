@@ -43,19 +43,52 @@ var _ = Describe("ARR", func() {
 			Expect(err).NotTo(HaveOccurred())
 		})
 
-		It("should fail validation for missing required fields", func() {
-			invalidARR := ARR{
-				Category: "ARR",
-				// AircraftID is missing
-				DepartureAirport: "JFK",
-				DepartureTime:    "150405",
-				ArrivalAirport:   "LAX",
-				ArrivalTime:      "180405",
-			}
+		DescribeTable("when a mandatory field is missing",
+			func(fieldToOmit string, expectedErrorMsgComponent string) {
+				invalidARR := original // Start with a valid one
+				switch fieldToOmit {
+				case "Category":
+					invalidARR.Category = ""
+				case "AircraftID":
+					invalidARR.AircraftID = ""
+				case "DepartureAirport":
+					invalidARR.DepartureAirport = ""
+				case "DepartureTime":
+					invalidARR.DepartureTime = ""
+				case "ArrivalAirport":
+					invalidARR.ArrivalAirport = ""
+				case "ArrivalTime":
+					invalidARR.ArrivalTime = ""
+				}
+				err := invalidARR.Validate()
+				Expect(err).To(HaveOccurred())
+				Expect(err.Error()).To(Equal(expectedErrorMsgComponent))
+			},
+			Entry("should fail if Category is missing", "Category", "ARR.Category: category is required"),
+			Entry("should fail if AircraftID is missing", "AircraftID", "ARR.AircraftID: aircraft id is required"),
+			Entry("should fail if DepartureAirport is missing", "DepartureAirport", "ARR.DepartureAirport: departure airport is required"),
+			Entry("should fail if DepartureTime is missing", "DepartureTime", "ARR.DepartureTime: departure time is required"),
+			Entry("should fail if ArrivalAirport is missing", "ArrivalAirport", "ARR.ArrivalAirport: arrival airport is required"),
+			Entry("should fail if ArrivalTime is missing", "ArrivalTime", "ARR.ArrivalTime: arrival time is required"),
+		)
 
-			err := invalidARR.Validate()
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("aircraft id is required"))
+		It("should validate successfully even if optional fields are missing", func() {
+			validARR := ARR{ // Only mandatory fields
+				Category:         "ARR",
+				AircraftID:       "ABCD1234",
+				DepartureAirport: "JFK",
+				DepartureTime:    time.Now().Format("150405"),
+				ArrivalAirport:   "LAX",
+				ArrivalTime:      time.Now().Add(5 * time.Hour).Format("150405"),
+			}
+			// Explicitly make optional fields empty
+			validARR.SSRModeAndCode = ""
+			validARR.EstimatedElapsedTime = ""
+			validARR.AlternateAirport = ""
+			validARR.OtherInfo = ""
+
+			err := validARR.Validate()
+			Expect(err).NotTo(HaveOccurred())
 		})
 	})
 })

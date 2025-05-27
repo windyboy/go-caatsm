@@ -1,4 +1,4 @@
-package domain
+package domain // Already has package comment from aviation.go
 
 import "fmt"
 
@@ -37,44 +37,47 @@ OtherInfo (其他信息): Optional field for any additional relevant information
 
 */
 
-// ALN 电报体中的预警报文结构
+// ALN represents an Alert message (预警报文).
+// It contains details about a flight alert, including aircraft identification,
+// flight rules, departure/arrival information, and SSR data.
 type ALN struct {
-	Category           string `json:"category"`              // 电报类别
-	AircraftID         string `json:"aircraft_id"`           // 航空器识别标志
-	SSRModeAndCode     string `json:"ssr_mode_and_code"`     // SSR 模式及编码
-	FlightRulesAndType string `json:"flight_rules_and_type"` // 飞行规则和类型
-	DepartureAirport   string `json:"departure_airport"`     // 起飞机场
-	DepartureTime      string `json:"departure_time"`        // 起飞时间
-	ArrivalAirport     string `json:"arrival_airport"`       // 到达机场
-	ArrivalTime        string `json:"arrival_time"`          // 到达时间
-	OtherInfo          string `json:"other_info,omitempty"`  // 其他信息 (optional)
+	Category           string `json:"category"`              // Category is the message type, typically "ALN". (电报类别)
+	AircraftID         string `json:"aircraft_id"`           // AircraftID is the unique identifier of the aircraft. (航空器识别标志)
+	SSRModeAndCode     string `json:"ssr_mode_and_code"`     // SSRModeAndCode is the Secondary Surveillance Radar mode and code. (SSR 模式及编码)
+	FlightRulesAndType string `json:"flight_rules_and_type"` // FlightRulesAndType indicates the flight rules (e.g., IFR) and type of flight. (飞行规则和类型)
+	DepartureAirport   string `json:"departure_airport"`     // DepartureAirport is the ICAO code of the departure airport. (起飞机场)
+	DepartureTime      string `json:"departure_time"`        // DepartureTime is the departure time in UTC (typically HHMMSS or similar format). (起飞时间)
+	ArrivalAirport     string `json:"arrival_airport"`       // ArrivalAirport is the ICAO code of the arrival airport. (到达机场)
+	ArrivalTime        string `json:"arrival_time"`          // ArrivalTime is the estimated arrival time in UTC (typically HHMMSS or similar format). (到达时间)
+	OtherInfo          string `json:"other_info,omitempty"`  // OtherInfo provides a field for any additional relevant information (optional). (其他信息)
 }
 
-// Validate validates the ALN struct fields
+// Validate checks if the mandatory fields of the ALN message are present.
+// Returns an error if any mandatory field is empty, otherwise nil.
 func (a *ALN) Validate() error {
 	if a.Category == "" {
-		return fmt.Errorf("telegram category is required")
+		return fmt.Errorf("ALN.Category: telegram category is required")
 	}
 	if a.AircraftID == "" {
-		return fmt.Errorf("aircraft id is required")
+		return fmt.Errorf("ALN.AircraftID: aircraft id is required")
 	}
 	if a.SSRModeAndCode == "" {
-		return fmt.Errorf("ssr mode and code is required")
+		return fmt.Errorf("ALN.SSRModeAndCode: ssr mode and code is required")
 	}
 	if a.FlightRulesAndType == "" {
-		return fmt.Errorf("flight rules and type is required")
+		return fmt.Errorf("ALN.FlightRulesAndType: flight rules and type is required")
 	}
 	if a.DepartureAirport == "" {
-		return fmt.Errorf("departure airport is required")
+		return fmt.Errorf("ALN.DepartureAirport: departure airport is required")
 	}
 	if a.DepartureTime == "" {
-		return fmt.Errorf("departure time is required")
+		return fmt.Errorf("ALN.DepartureTime: departure time is required")
 	}
 	if a.ArrivalAirport == "" {
-		return fmt.Errorf("arrival airport is required")
+		return fmt.Errorf("ALN.ArrivalAirport: arrival airport is required")
 	}
 	if a.ArrivalTime == "" {
-		return fmt.Errorf("arrival time is required")
+		return fmt.Errorf("ALN.ArrivalTime: arrival time is required")
 	}
 	return nil
 }
