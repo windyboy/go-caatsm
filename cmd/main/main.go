@@ -1,36 +1,28 @@
 package main
 
 import (
-	"caatsm/internal/config"
-	"caatsm/internal/nats"
-	"caatsm/internal/repository"
-	"caatsm/pkg/utils"
-	"os"
-
+	"caatsm/pkg/di"
+	"context"
 	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/urfave/cli/v2"
-)
-
-var (
-	cfg *config.Config
 )
 
 func main() {
 	app := setupApp()
 	if err := app.Run(os.Args); err != nil {
 		fmt.Printf("Error running application: %v\n", err)
+		os.Exit(1)
 	}
 }
 
 func setupApp() *cli.App {
-	app := &cli.App{
+	return &cli.App{
 		Name:  "telegram message process",
-		Usage: "A Civial Aviation Authority Telegram Message Processor",
-		Before: func(c *cli.Context) error {
-
-			return nil
-		},
+		Usage: "A Civil Aviation Authority Telegram Message Processor",
 		Commands: []*cli.Command{
 			{
 				Name:  "listen",
@@ -55,38 +47,43 @@ func setupApp() *cli.App {
 			},
 		},
 	}
-	return app
-}
-
-func overrideConfig(c *cli.Context) {
-	if c.IsSet("nats") {
-		cfg.Nats.URL = c.String("nats")
-		fmt.Printf("Overriding nats url to %s\n", cfg.Nats.URL)
-	}
-	if c.IsSet("topic") {
-		cfg.Subscription.Topic = c.String("topic")
-		fmt.Printf("Overriding nats topic to %s\n", cfg.Subscription.Topic)
-	}
 }
 
 func executeListen(c *cli.Context) error {
-	cfg, err := config.LoadConfig()
+	// Initialize dependencies using Wire
+	processor, consumer, err := di.InitializeApp()
 	if err != nil {
-		fmt.Printf("Error loading configuration: %v\n", err)
+		return fmt.Errorf("failed to initialize app: %w", err)
+	}
+
+	// Create context with cancellation
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Handle graceful shutdown
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
+	// Start consumer in a goroutine
+	errChan := make(chan error, 1)
+	go func() {
+		if err := consumer.Start(ctx); err != nil {
+			errChan <- fmt.Errorf("consumer error: %w", err)
+		}
+	}()
+
+	// Wait for signal or error
+	select {
+	case sig := <-sigChan:
+		fmt.Printf("Received signal: %v, shutting down...\n", sig)
+		cancel()
+	case err := <-errChan:
 		return err
 	}
-	if err := config.ValidateConfig(cfg); err != nil {
-		fmt.Printf("Invalid configuration: %v\n", err)
-		return err
-	}
-	overrideConfig(c)
-	fmt.Println("Loaded configuration successfully")
-	log := utils.GetLogger()
-	log.Info("Starting nats subscriber")
-	publisher := nats.NewPub(cfg)
-	repository := repository.NewHasura(cfg)
-	handler := nats.NewHandler(cfg, publisher, repository)
-	subscriber := nats.NewSub(cfg)
-	subscriber.Subscribe(cfg, handler)
+
+	// Note: processor is initialized but not directly used here
+	// It's used by the consumer internally
+	_ = processor
+
 	return nil
 }
