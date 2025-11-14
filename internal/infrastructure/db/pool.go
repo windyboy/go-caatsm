@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"caatsm/internal/config"
-	"caatsm/pkg/utils"
+	applog "caatsm/internal/infra/log"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -52,8 +52,8 @@ func NewConnectionPool(cfg *config.DatabaseConfig) (*pgxpool.Pool, error) {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
-	log := utils.GetSugaredLogger()
-	log.Infof("Database connection pool created: %s@%s:%d/%s", cfg.User, cfg.Host, cfg.Port, cfg.Database)
+	logger := applog.Sugared()
+	logger.Infof("Database connection pool created: %s@%s:%d/%s", cfg.User, cfg.Host, cfg.Port, cfg.Database)
 
 	return pool, nil
 }

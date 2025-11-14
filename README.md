@@ -110,6 +110,7 @@ Configuration is managed through TOML files in the `configs/` directory. The app
 - `[nats]`: NATS connection and JetStream configuration
 - `[api]`: API server settings
 - `[redis]`: Redis cache settings (optional)
+- `[timeouts]`: Dial, reconnect, close, and ack-wait tuning for worker/runtime clients
 
 See `configs/config.dev.toml` for example configuration.
 
@@ -131,6 +132,17 @@ All configuration keys can be overridden with a `CAATSM_` environment variable. 
 | `CAATSM_TLS_CERT`, `CAATSM_TLS_KEY` | Optional TLS material for API/worker servers | unset |
 
 Document and store secrets (database passwords, NATS credentials) in a secret manager such as Vault or Kubernetes Secrets instead of committing them to the repository.
+
+#### Timeout Defaults
+
+If the `[timeouts]` block omits any value, the worker falls back to safe defaults to keep JetStream consumers predictable:
+
+| Field | Description | Default |
+| --- | --- | --- |
+| `server` | NATS connect timeout | `5s` |
+| `reconnect_wait` | Delay between reconnect attempts | `2s` |
+| `close` | Grace period when closing client connections | `5s` |
+| `ack_wait` | Maximum duration JetStream waits for an ACK before redelivery | `30s` |
 
 ## API Usage
 

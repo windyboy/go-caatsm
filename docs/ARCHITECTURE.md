@@ -58,7 +58,7 @@ The Aviation Telegram Processing System is designed to receive, parse, store, an
 ### Supporting Technologies
 - **Monitoring**: Prometheus + Grafana
 - **Logging**: zap
-- **Configuration**: viper
+- **Configuration**: koanf
 - **Migration**: golang-migrate
 - **API Documentation**: OpenAPI/Swagger
 

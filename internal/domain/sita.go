@@ -4,7 +4,7 @@ import (
 	"errors"
 	"time"
 
-	"caatsm/pkg/utils"
+	applog "caatsm/internal/infra/log"
 )
 
 /*
@@ -96,7 +96,7 @@ type TimeReceiver struct {
 }
 
 func (h *SITAHeader) Validate() error {
-	log := utils.GetLogger()
+	log := applog.Sugared()
 	// Validate SendTime format (e.g., DDHHMM)
 	if len(h.SendTime) != 6 {
 		err := "invalid send_time format"

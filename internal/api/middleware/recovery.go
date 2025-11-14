@@ -3,7 +3,7 @@ package middleware
 import (
 	"net/http"
 
-	"caatsm/pkg/utils"
+	applog "caatsm/internal/infra/log"
 
 	"github.com/labstack/echo/v4"
 )
@@ -14,8 +14,8 @@ func Recovery() echo.MiddlewareFunc {
 		return func(c echo.Context) error {
 			defer func() {
 				if r := recover(); r != nil {
-					log := utils.GetSugaredLogger()
-					log.Errorf("Panic recovered: %v", r)
+					logger := applog.Sugared()
+					logger.Errorf("Panic recovered: %v", r)
 
 					err := echo.NewHTTPError(http.StatusInternalServerError, "Internal Server Error")
 					c.Error(err)

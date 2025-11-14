@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"caatsm/internal/config"
-	"caatsm/pkg/utils"
+	applog "caatsm/internal/infra/log"
 
 	"github.com/nats-io/nats.go"
 )
@@ -28,7 +28,7 @@ func NewJetStream(cfg *config.NatsConfig) (nats.JetStreamContext, error) {
 
 // EnsureStream ensures a JetStream stream exists with the given configuration
 func EnsureStream(js nats.JetStreamContext, streamConfig *nats.StreamConfig) error {
-	log := utils.GetSugaredLogger()
+	log := applog.Sugared()
 
 	stream, err := js.StreamInfo(streamConfig.Name)
 	if err != nil && err != nats.ErrStreamNotFound {

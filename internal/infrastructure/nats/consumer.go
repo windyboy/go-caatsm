@@ -7,8 +7,8 @@ import (
 
 	"caatsm/internal/config"
 	"caatsm/internal/iface"
+	applog "caatsm/internal/infra/log"
 	"caatsm/internal/observability/metrics"
-	"caatsm/pkg/utils"
 
 	"github.com/nats-io/nats.go"
 )
@@ -30,7 +30,7 @@ func NewConsumer(js nats.JetStreamContext, cfg *config.Config, handler iface.Mes
 
 // Subscribe subscribes to a JetStream subject and processes messages
 func (c *Consumer) Subscribe(ctx context.Context) error {
-	log := utils.GetSugaredLogger()
+	log := applog.Sugared()
 
 	subject := c.config.Subscription.Topic
 	queueGroup := c.config.Subscription.QueueGroup
@@ -66,7 +66,7 @@ func (c *Consumer) Subscribe(ctx context.Context) error {
 }
 
 func (c *Consumer) processMessages(ctx context.Context) {
-	log := utils.GetSugaredLogger()
+	log := applog.Sugared()
 	batchSize := 10
 	subject := c.config.Subscription.Topic
 

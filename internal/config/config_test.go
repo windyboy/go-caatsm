@@ -1,12 +1,13 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"testing"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/spf13/viper"
 )
 
 func TestConfig(t *testing.T) {
@@ -15,15 +16,13 @@ func TestConfig(t *testing.T) {
 }
 
 var _ = Describe("Config", func() {
-	var originalEnv string
+	var (
+		originalEnv string
+		configFile  string
+		envName     string
+	)
 
-	BeforeEach(func() {
-		// Save the original GO_ENV value
-		originalEnv = os.Getenv("GO_ENV")
-		// Set up a temporary configuration file for testing
-		viper.Reset()
-		viper.SetConfigType("toml")
-		configContent := `
+	configContent := `
 [nats]
 client = "test-client"
 url = "nats://localhost:4222"
@@ -64,25 +63,22 @@ reconnect_wait = "10s"
 close = "10s"
 ack_wait = "5s"
 `
-		tmpFile, err := os.CreateTemp("", "config.*.toml")
+	BeforeEach(func() {
+		originalEnv = os.Getenv("GO_ENV")
+		envName = fmt.Sprintf("test_%d", time.Now().UnixNano())
+		os.Setenv("GO_ENV", envName)
+		tmpFile, err := os.CreateTemp("", fmt.Sprintf("config.%s.*.toml", envName))
 		Expect(err).NotTo(HaveOccurred())
-		_, err = tmpFile.Write([]byte(configContent))
+		configFile = tmpFile.Name()
+		err = os.WriteFile(configFile, []byte(configContent), 0o600)
 		Expect(err).NotTo(HaveOccurred())
-		err = tmpFile.Close()
-		Expect(err).NotTo(HaveOccurred())
-
-		viper.SetConfigFile(tmpFile.Name())
-		err = viper.ReadInConfig()
-		Expect(err).NotTo(HaveOccurred())
-
-		// Load the configuration
-		MyConfig = &Config{}
-		err = viper.Unmarshal(MyConfig)
-		Expect(err).NotTo(HaveOccurred())
+		os.Setenv("CAATSM_CONFIG_FILE", configFile)
+		MyConfig = nil
 	})
 
 	AfterEach(func() {
-		// Restore the original GO_ENV value
+		os.Remove(configFile)
+		os.Unsetenv("CAATSM_CONFIG_FILE")
 		os.Setenv("GO_ENV", originalEnv)
 	})
 
@@ -129,6 +125,27 @@ ack_wait = "5s"
 			err := ValidateConfig(cfg)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(Equal("subscription topic is required"))
+		})
+	})
+
+	Context("Environment overrides", func() {
+		AfterEach(func() {
+			os.Unsetenv("TELE_NATS_URL")
+			os.Unsetenv("TELE_TIMEOUTS_ACK_WAIT")
+		})
+
+		It("should override simple keys via environment variables", func() {
+			os.Setenv("TELE_NATS_URL", "nats://override:4222")
+			cfg, err := LoadConfig()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.Nats.URL).To(Equal("nats://override:4222"))
+		})
+
+		It("should override keys that contain underscores", func() {
+			os.Setenv("TELE_TIMEOUTS_ACK_WAIT", "45s")
+			cfg, err := LoadConfig()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(cfg.Timeouts.AckWait).To(Equal(45 * time.Second))
 		})
 	})
 })

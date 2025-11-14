@@ -3,7 +3,7 @@ package middleware
 import (
 	"time"
 
-	"caatsm/pkg/utils"
+	applog "caatsm/internal/infra/log"
 
 	"github.com/labstack/echo/v4"
 )
@@ -19,8 +19,8 @@ func Logger() echo.MiddlewareFunc {
 			req := c.Request()
 			res := c.Response()
 
-			log := utils.GetSugaredLogger()
-			log.Infof(
+			logger := applog.Sugared()
+			logger.Infof(
 				"method=%s uri=%s status=%d latency=%s",
 				req.Method,
 				req.RequestURI,

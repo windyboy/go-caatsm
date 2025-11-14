@@ -7,9 +7,9 @@ import (
 
 	"caatsm/internal/config"
 	"caatsm/internal/iface"
+	applog "caatsm/internal/infra/log"
 	"caatsm/internal/observability/metrics"
 	"caatsm/internal/parsers"
-	"caatsm/pkg/utils"
 )
 
 const MaxMessageSize = 10 * 1024 * 1024 // 10MB
@@ -30,7 +30,7 @@ func NewMessageService(cfg *config.Config, repo iface.TelegramRepository, publis
 
 // ProcessMessage parses, validates, stores, and publishes a message payload.
 func (s *MessageService) ProcessMessage(ctx context.Context, rawMessage []byte, messageID string) error {
-	log := utils.GetSugaredLogger()
+	log := applog.Sugared()
 	start := time.Now()
 	status := "success"
 	categoryLabel := "unknown"

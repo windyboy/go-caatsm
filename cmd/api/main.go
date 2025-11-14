@@ -12,10 +12,10 @@ import (
 	"caatsm/internal/api"
 	"caatsm/internal/api/handler"
 	"caatsm/internal/config"
+	applog "caatsm/internal/infra/log"
 	"caatsm/internal/infrastructure/db"
 	"caatsm/internal/repository/postgres"
 	"caatsm/internal/service"
-	"caatsm/pkg/utils"
 )
 
 func main() {
@@ -31,7 +31,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	log := utils.GetLogger()
+	log := applog.Sugared()
 	log.Info("Starting API server")
 
 	// Initialize database connection pool

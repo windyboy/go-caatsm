@@ -1,14 +1,17 @@
 package config
 
 import (
-	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
 
-	"github.com/spf13/viper"
+	"github.com/knadh/koanf/parsers/toml"
+	envprovider "github.com/knadh/koanf/providers/env"
+	"github.com/knadh/koanf/providers/file"
+	"github.com/knadh/koanf/v2"
 )
 
 // Deprecated: Use explicit config passing instead. Will be removed in v2.0
@@ -96,6 +99,23 @@ const (
 	EnvTest = "test"
 )
 
+var (
+	envPrefixes           = []string{"TELE_", "CAATSM_"}
+	underscoreLiteralKeys = []string{
+		"stream_name",
+		"max_pending",
+		"auto_provision",
+		"queue_group",
+		"ssl_mode",
+		"max_conns",
+		"min_conns",
+		"max_conn_lifetime",
+		"reconnect_wait",
+		"ack_wait",
+	}
+	underscorePlaceholder = "-koanf-underscore-"
+)
+
 // Deprecated: Use explicit config passing instead. Will be removed in v2.0
 func SetMyConfig(cfg *Config) {
 	MyConfig = cfg
@@ -115,31 +135,37 @@ func GetMyConfig() *Config {
 
 // LoadConfig loads the configuration from a file
 func LoadConfig() (*Config, error) {
-	// log := utils.Logger
 	env := os.Getenv("GO_ENV")
 	if env == "" {
-		env = "dev"
+		env = EnvDev
 	}
-	// log.Infof("Environment: %s", env)
 
-	viper.SetConfigType("toml")
-	viper.SetConfigName("config." + env)
-	viper.AddConfigPath("configs")
-	viper.SetEnvPrefix("tele")
-	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	k := koanf.New(".")
+	configFile := os.Getenv("CAATSM_CONFIG_FILE")
+	if configFile == "" {
+		configDir := os.Getenv("CAATSM_CONFIG_DIR")
+		if configDir == "" {
+			configDir = "configs"
+		}
+		configFile = filepath.Join(configDir, fmt.Sprintf("config.%s.toml", env))
+	}
 
-	if err := viper.ReadInConfig(); err != nil {
-		errMsg := fmt.Sprintf("error reading config file for environment '%s': %v", env, err)
-		// log.Error(errMsg)
-		return nil, errors.New(errMsg)
+	if err := k.Load(file.Provider(configFile), toml.Parser()); err != nil {
+		return nil, fmt.Errorf("error reading config file for environment '%s': %w", env, err)
+	}
+
+	for _, prefix := range envPrefixes {
+		if err := k.Load(envprovider.Provider(prefix, ".", envKeyMap(prefix)), nil); err != nil {
+			return nil, fmt.Errorf("error loading environment overrides for prefix '%s': %w", prefix, err)
+		}
 	}
 
 	var config Config
-	if err := viper.Unmarshal(&config); err != nil {
-		errMsg := fmt.Sprintf("unable to decode config into struct for environment '%s': %v", env, err)
-		// log.Error(errMsg)
-		return nil, errors.New(errMsg)
+	if err := k.UnmarshalWithConf("", &config, koanf.UnmarshalConf{Tag: "mapstructure"}); err != nil {
+		return nil, fmt.Errorf("unable to decode config into struct for environment '%s': %w", env, err)
 	}
+
+	applyDefaults(&config)
 	return &config, nil
 }
 
@@ -163,5 +189,53 @@ func ValidateConfig(cfg *Config) error {
 	if cfg.API.Port == 0 {
 		return fmt.Errorf("api port is required")
 	}
+	if cfg.Timeouts.Server <= 0 {
+		return fmt.Errorf("timeouts server must be greater than 0")
+	}
+	if cfg.Timeouts.ReconnectWait <= 0 {
+		return fmt.Errorf("timeouts reconnect_wait must be greater than 0")
+	}
+	if cfg.Timeouts.Close <= 0 {
+		return fmt.Errorf("timeouts close must be greater than 0")
+	}
+	if cfg.Timeouts.AckWait <= 0 {
+		return fmt.Errorf("timeouts ack_wait must be greater than 0")
+	}
 	return nil
+}
+
+func applyDefaults(cfg *Config) {
+	if cfg.Timeouts.Server <= 0 {
+		cfg.Timeouts.Server = 5 * time.Second
+	}
+	if cfg.Timeouts.ReconnectWait <= 0 {
+		cfg.Timeouts.ReconnectWait = 2 * time.Second
+	}
+	if cfg.Timeouts.Close <= 0 {
+		cfg.Timeouts.Close = 5 * time.Second
+	}
+	if cfg.Timeouts.AckWait <= 0 {
+		cfg.Timeouts.AckWait = 30 * time.Second
+	}
+}
+
+func envKeyMap(prefix string) func(string) string {
+	return func(s string) string {
+		key := strings.TrimPrefix(s, prefix)
+		key = strings.ToLower(key)
+		if key == "" {
+			return ""
+		}
+
+		placeholderKey := key
+		for _, literal := range underscoreLiteralKeys {
+			placeholder := strings.ReplaceAll(literal, "_", underscorePlaceholder)
+			placeholderKey = strings.ReplaceAll(placeholderKey, literal, placeholder)
+		}
+
+		placeholderKey = strings.ReplaceAll(placeholderKey, "_", ".")
+		placeholderKey = strings.ReplaceAll(placeholderKey, underscorePlaceholder, "_")
+
+		return placeholderKey
+	}
 }

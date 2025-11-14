@@ -9,7 +9,7 @@ import (
 
 	"caatsm/internal/domain"
 	"caatsm/internal/iface"
-	"caatsm/pkg/utils"
+	applog "caatsm/internal/infra/log"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -199,8 +199,8 @@ func (r *TelegramRepository) GetByID(ctx context.Context, id string) (*domain.Pa
 
 	if len(bodyDataJSON) > 0 {
 		if err := json.Unmarshal(bodyDataJSON, &msg.BodyData); err != nil {
-			log := utils.GetSugaredLogger()
-			log.Warnf("Failed to unmarshal body data for UUID %s: %v", id, err)
+			logger := applog.Sugared()
+			logger.Warnf("Failed to unmarshal body data for UUID %s: %v", id, err)
 		}
 	}
 

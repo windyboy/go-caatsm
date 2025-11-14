@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"caatsm/internal/config"
-	"caatsm/pkg/utils"
+	applog "caatsm/internal/infra/log"
 
 	"github.com/nats-io/nats.go"
 )
@@ -52,8 +52,8 @@ func (p *Publisher) PublishAsync(ctx context.Context, subject string, message in
 
 	go func() {
 		if err := pubAckFuture.Ok(); err != nil {
-			log := utils.GetSugaredLogger()
-			log.Errorf("Failed to publish message asynchronously: %v", err)
+			logger := applog.Sugared()
+			logger.Errorf("Failed to publish message asynchronously: %v", err)
 		}
 	}()
 
