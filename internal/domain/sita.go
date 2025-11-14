@@ -100,8 +100,8 @@ func (h *SITAHeader) Validate() error {
 	if len(h.SendTime) != 6 {
 		err := "invalid send_time format"
 
-		log.Errorf("error validating send_time: %v", err)
-		return fmt.Errorf(err)
+		log.Errorf("error validating send_time: %s", err)
+		return fmt.Errorf("%s", err)
 	}
 	return nil
 }

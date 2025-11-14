@@ -57,7 +57,7 @@ tasks:
     desc: Upgrade go dependencies
     cmds:
       - echo "Upgrading go dependencies..."
-      - go get -u -d -v ./...
+      - go get -u -v ./...
       - go mod tidy
 
   install-test:

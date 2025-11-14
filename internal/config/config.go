@@ -94,16 +94,14 @@ func LoadConfig() (*Config, error) {
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
 	if err := viper.ReadInConfig(); err != nil {
-		errMsg := fmt.Sprintf("error reading config file for environment '%s': %v", env, err)
-		// log.Error(errMsg)
-		return nil, fmt.Errorf(errMsg)
+		// log.Errorf("error reading config file for environment '%s': %v", env, err)
+		return nil, fmt.Errorf("error reading config file for environment '%s': %w", env, err)
 	}
 
 	var config Config
 	if err := viper.Unmarshal(&config); err != nil {
-		errMsg := fmt.Sprintf("unable to decode config into struct for environment '%s': %v", env, err)
-		// log.Error(errMsg)
-		return nil, fmt.Errorf(errMsg)
+		// log.Errorf("unable to decode config into struct for environment '%s': %v", env, err)
+		return nil, fmt.Errorf("unable to decode config into struct for environment '%s': %w", env, err)
 	}
 	return &config, nil
 }
