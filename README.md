@@ -1,5 +1,10 @@
 # Aviation Telegram Processing System
 
+[![CI](https://github.com/your-org/go-caatsm/actions/workflows/ci.yml/badge.svg)](https://github.com/your-org/go-caatsm/actions/workflows/ci.yml)
+![Coverage](https://img.shields.io/badge/coverage-%E2%89%A580%25-brightgreen)
+
+_Update badge URLs to match your GitHub namespace._
+
 A high-performance system for processing, storing, and querying aviation telegram messages in real-time.
 
 ## Architecture
@@ -108,6 +113,25 @@ Configuration is managed through TOML files in the `configs/` directory. The app
 
 See `configs/config.dev.toml` for example configuration.
 
+### Environment Variables
+
+All configuration keys can be overridden with a `CAATSM_` environment variable. Frequently tuned settings are summarized below:
+
+| Variable | Description | Default |
+| --- | --- | --- |
+| `GO_ENV` | Selects `config.<GO_ENV>.toml` | `dev` |
+| `CAATSM_DATABASE_URL` | Full PostgreSQL/TimescaleDB DSN (include `sslmode=require` in prod) | Derived from `[database]` section |
+| `CAATSM_NATS_URL` | NATS connection string, e.g. `nats://user:pass@host:4222` | `nats://localhost:4222` |
+| `CAATSM_JETSTREAM_STREAM` | JetStream stream name used by the worker | `TELEGRAMS` |
+| `CAATSM_SUBSCRIPTION_QUEUE` | Consumer queue group for the worker | `tele-queue` |
+| `CAATSM_PUBLISHER_TOPIC` | Topic used by the JSON publisher | `Telegram.Json` |
+| `CAATSM_BATCH_SIZE` | Worker batch size when persisting telegrams | `25` |
+| `CAATSM_BATCH_TIMEOUT` | Maximum wait before flushing a batch | `1s` |
+| `CAATSM_REDIS_ADDR` | Redis address if caching is enabled | `localhost:6379` |
+| `CAATSM_TLS_CERT`, `CAATSM_TLS_KEY` | Optional TLS material for API/worker servers | unset |
+
+Document and store secrets (database passwords, NATS credentials) in a secret manager such as Vault or Kubernetes Secrets instead of committing them to the repository.
+
 ## API Usage
 
 ### Health Check
@@ -177,6 +201,25 @@ Full API documentation is available in OpenAPI format:
 go test ./...
 ```
 
+To enforce the project-wide coverage gate used in CI:
+
+```bash
+go test ./... -coverprofile=cover.out -covermode=atomic
+go tool cover -func=cover.out
+```
+
+Integration tests can be executed locally with Docker:
+
+```bash
+./tests/integration/run.sh up
+INTEGRATION_DATABASE_URL=postgres://postgres:postgres@localhost:55432/aviation?sslmode=disable \
+INTEGRATION_NATS_URL=nats://localhost:54222 \
+go test ./tests/integration -tags=integration -count=1
+./tests/integration/run.sh down
+```
+
+> The CI workflow runs integration tests only when the `run_integration=true` input is supplied to the workflow_dispatch trigger.
+
 ### Code Generation
 
 ```bash
@@ -184,47 +227,61 @@ go test ./...
 swag init -g cmd/api/main.go
 ```
 
-## Monitoring
+## Monitoring & Alerting
 
 ### Metrics
 
-The API service exposes Prometheus metrics at `/metrics`. Key metrics include:
+Both API and worker services expose Prometheus metrics at `/metrics`. Key series include:
 
-- HTTP request count and duration
-- Message processing count and duration
-- Database query duration
-- NATS message count
-- Connection pool metrics
+- `http_requests_total`, `http_request_duration_seconds`
+- `messages_processed_total`, `message_processing_duration_seconds`
+- `message_processing_failures_total{stage=parser|repository|publisher}`
+- `nats_messages_consumed_total`, `nats_messages_published_total`, `message_processing_retries_total`
+- `worker_batch_duration_seconds`
+- `database_query_duration_seconds`, `database_connections_active`
+
+Recommended alerts:
+
+- Processing failures or retries exceed rolling baseline
+- JetStream consumer lag/backlog grows beyond recovery window
+- `/health/ready` returns `503` for longer than 2 consecutive probes
+- Database connection utilization > 85% for sustained periods
 
 ### Health Checks
 
-- `/health` - Basic health check
-- `/health/ready` - Readiness check (database, cache)
+- `/health` - Basic heartbeat
+- `/health/ready` - Dependency readiness (database, Redis, NATS) with JSON status per dependency
 - `/health/live` - Liveness check
 
 ## Deployment
 
-See `docs/UPGRADE.md` for detailed deployment instructions.
+Detailed deployment playbooks, including container images, Helm/Kubernetes manifests, and rolling-upgrade workflows, are available in `docs/DEPLOYMENT.md`. `docs/UPGRADE.md` covers schema/data migrations and zero-downtime strategies.
 
 ### Production Considerations
 
-1. **Database**: Use SSL connections, configure connection pooling
-2. **NATS**: Use TLS, configure appropriate retention policies
-3. **API**: Implement authentication/authorization
-4. **Monitoring**: Set up Prometheus and Grafana
-5. **Logging**: Configure structured logging
-6. **Secrets**: Use environment variables or secret management
+1. **Database**: Enforce TLS, create least-privilege roles (read-only API, insert-only worker), and size pgx pools based on workload.
+2. **NATS/JetStream**: Enable authentication/TLS, configure retention, dead-letter streams, and max delivery attempts to match your SLOs.
+3. **API**: Front with an ingress that terminates TLS and injects auth (mTLS, OAuth2, or API keys).
+4. **Monitoring**: Scrape `/metrics` from API and worker pods, alert on failure counters and backlog depth.
+5. **Logging**: Ship structured zap logs to your aggregator, capturing `message_id`, `batch_id`, and processing duration.
+6. **Secrets**: Load secrets from Vault or Kubernetes Secrets rather than plaintext config files.
 
 ## Documentation
 
 - [Architecture Documentation](docs/ARCHITECTURE.md)
 - [Upgrade Guide](docs/UPGRADE.md)
+- [Deployment Guide](docs/DEPLOYMENT.md)
+- [Releasing Guide](docs/RELEASING.md)
 - [Architecture Decision Records](docs/ADR/)
+
+## Security & Secrets
+
+- **Transport security**: enable TLS for PostgreSQL (`sslmode=require`) and NATS (certs or NKey/JWT). Expose JetStream APIs only on private networks.
+- **Secret management**: project configuration supports the `CAATSM_` prefix so you can load secrets from Vault, AWS/GCP Secret Manager, or Kubernetes Secrets via environment variables.
+- **Least privilege**: create separate DB roles for API reads and worker inserts. Limit JetStream permissions to the specific subjects (`Telegram.Serial`, `Telegram.Json`).
+- **Auditing**: zap logs already include `message_id`; forward them to your SIEM to trace suspect traffic.
 
 ## License
 
-[Your License Here]
+Distributed under the MIT License. See `LICENSE` for details.
 
-## Contributing
-
-[Contributing Guidelines]

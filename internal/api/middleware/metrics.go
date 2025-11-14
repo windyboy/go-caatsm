@@ -1,7 +1,7 @@
 package middleware
 
 import (
-	"caatsm/internal/api/metrics"
+	"caatsm/internal/observability/metrics"
 	"time"
 
 	"github.com/labstack/echo/v4"

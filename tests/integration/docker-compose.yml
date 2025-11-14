@@ -1,0 +1,30 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: timescale/timescaledb:latest-pg14
+    container_name: caatsm-it-postgres
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: aviation
+    ports:
+      - "55432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  nats:
+    image: nats:2.10
+    container_name: caatsm-it-nats
+    command: ["-js"]
+    ports:
+      - "54222:4222"
+      - "58222:8222"
+    healthcheck:
+      test: ["CMD", "nats-server", "--help"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+

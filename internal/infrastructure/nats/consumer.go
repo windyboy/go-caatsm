@@ -7,6 +7,7 @@ import (
 
 	"caatsm/internal/config"
 	"caatsm/internal/iface"
+	"caatsm/internal/observability/metrics"
 	"caatsm/pkg/utils"
 
 	"github.com/nats-io/nats.go"
@@ -67,6 +68,7 @@ func (c *Consumer) Subscribe(ctx context.Context) error {
 func (c *Consumer) processMessages(ctx context.Context) {
 	log := utils.GetSugaredLogger()
 	batchSize := 10
+	subject := c.config.Subscription.Topic
 
 	for {
 		select {
@@ -74,6 +76,7 @@ func (c *Consumer) processMessages(ctx context.Context) {
 			log.Info("Context cancelled, stopping message processing")
 			return
 		default:
+			batchStart := time.Now()
 			msgs, err := c.sub.Fetch(batchSize, nats.MaxWait(5*time.Second))
 			if err != nil {
 				if err == nats.ErrTimeout {
@@ -83,11 +86,14 @@ func (c *Consumer) processMessages(ctx context.Context) {
 				time.Sleep(1 * time.Second)
 				continue
 			}
+			metrics.WorkerBatchDuration.Observe(time.Since(batchStart).Seconds())
 
 			for _, msg := range msgs {
+				metrics.NATSMessagesConsumed.WithLabelValues(subject).Inc()
 				if err := c.handleMessage(ctx, msg); err != nil {
 					log.Errorf("Failed to handle message: %v", err)
 					msg.Nak()
+					metrics.MessageRetriesTotal.Inc()
 				} else {
 					msg.Ack()
 				}

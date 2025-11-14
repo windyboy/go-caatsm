@@ -83,18 +83,14 @@ var _ = Describe("MessageService", func() {
 	})
 
 	Context("validation", func() {
-		It("returns an error for empty messages", func() {
-			err := svc.ProcessMessage(ctx, []byte{}, messageID)
+		DescribeTable("rejects invalid payloads", func(payload []byte, expected string) {
+			err := svc.ProcessMessage(ctx, payload, messageID)
 			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("empty message"))
-		})
-
-		It("returns an error for oversized messages", func() {
-			largeMsg := make([]byte, MaxMessageSize+1)
-			err := svc.ProcessMessage(ctx, largeMsg, messageID)
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("exceeds maximum"))
-		})
+			Expect(err.Error()).To(ContainSubstring(expected))
+		},
+			Entry("empty payload", []byte{}, "empty message"),
+			Entry("oversized payload", make([]byte, MaxMessageSize+1), "exceeds maximum"),
+		)
 	})
 
 	Context("persistence", func() {
@@ -121,6 +117,13 @@ var _ = Describe("MessageService", func() {
 			err := svc.ProcessMessage(ctx, validMsg, messageID)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("publish error"))
+		})
+
+		It("fails fast when publisher topic is missing", func() {
+			cfg.Publisher.Topic = ""
+			err := svc.ProcessMessage(ctx, validMsg, messageID)
+			Expect(err).To(HaveOccurred())
+			Expect(err.Error()).To(ContainSubstring("publisher topic is not configured"))
 		})
 	})
 

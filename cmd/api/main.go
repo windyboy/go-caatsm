@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"caatsm/internal/api"
+	"caatsm/internal/api/handler"
 	"caatsm/internal/config"
 	"caatsm/internal/infrastructure/db"
 	"caatsm/internal/repository/postgres"
@@ -46,8 +47,11 @@ func main() {
 	// Initialize service
 	telegramService := service.NewTelegramService(repo)
 
-	// Setup router
-	e := api.SetupRouter(telegramService)
+	// Setup router with health checks
+	e := api.SetupRouter(
+		telegramService,
+		handler.WithDatabase(pool),
+	)
 
 	// Start server
 	addr := fmt.Sprintf("%s:%d", cfg.API.Host, cfg.API.Port)

@@ -42,6 +42,30 @@ var (
 		[]string{"category"},
 	)
 
+	MessageProcessingFailures = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "message_processing_failures_total",
+			Help: "Number of message processing failures, labeled by stage",
+		},
+		[]string{"stage"},
+	)
+
+	MessageRetriesTotal = promauto.NewCounter(
+		prometheus.CounterOpts{
+			Name: "message_processing_retries_total",
+			Help: "Total number of message retry attempts",
+		},
+	)
+
+	// Batch/worker metrics
+	WorkerBatchDuration = promauto.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:    "worker_batch_duration_seconds",
+			Help:    "Duration of worker batch flush operations",
+			Buckets: prometheus.DefBuckets,
+		},
+	)
+
 	// Database metrics
 	DatabaseQueryDuration = promauto.NewHistogramVec(
 		prometheus.HistogramOpts{

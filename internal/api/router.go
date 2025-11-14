@@ -10,8 +10,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-// SetupRouter configures and returns the Echo router
-func SetupRouter(telegramService *service.TelegramService) *echo.Echo {
+// SetupRouter configures and returns the Echo router.
+func SetupRouter(telegramService *service.TelegramService, healthOptions ...handler.HealthOption) *echo.Echo {
 	e := echo.New()
 
 	// Middleware
@@ -22,7 +22,7 @@ func SetupRouter(telegramService *service.TelegramService) *echo.Echo {
 	e.Use(echoMiddleware.RequestID())
 
 	// Health check endpoints
-	healthHandler := handler.NewHealthHandler()
+	healthHandler := handler.NewHealthHandler(healthOptions...)
 	e.GET("/health", healthHandler.Health)
 	e.GET("/health/ready", healthHandler.Ready)
 	e.GET("/health/live", healthHandler.Live)

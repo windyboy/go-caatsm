@@ -6,6 +6,7 @@ import (
 
 // BodyConfig represents the configuration for parsing message bodies.
 type BodyConfig struct {
+	Name     string
 	Patterns []PatternConfig
 }
 
@@ -34,6 +35,7 @@ func init() {
 	// Initialize body patterns.
 	bodyPatterns = map[string]BodyConfig{
 		"ARR": {
+			Name: "ARR",
 			Patterns: []PatternConfig{
 				{
 					Pattern:    ArrPatternString,
@@ -43,6 +45,7 @@ func init() {
 			},
 		},
 		"DEP": {
+			Name: "DEP",
 			Patterns: []PatternConfig{
 				{
 					Pattern:    DepPatternString,
@@ -52,6 +55,7 @@ func init() {
 			},
 		},
 		"FPL": {
+			Name: "FPL",
 			Patterns: []PatternConfig{
 				{
 					Pattern:    FplPatternString,
@@ -61,6 +65,7 @@ func init() {
 			},
 		},
 		"CNL": {
+			Name: "CNL",
 			Patterns: []PatternConfig{
 				{
 					Pattern:    CnlPatternString,
@@ -70,6 +75,7 @@ func init() {
 			},
 		},
 		"DLA": {
+			Name: "DLA",
 			Patterns: []PatternConfig{
 				{
 					Pattern:    DlaPatternString,

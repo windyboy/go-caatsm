@@ -1,0 +1,97 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      run_integration:
+        description: "Run integration test harness"
+        required: false
+        default: "false"
+
+jobs:
+  lint-test:
+    runs-on: ubuntu-latest
+    env:
+      GO111MODULE: "on"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Verify gofmt
+        run: |
+          fmt_output=$(git ls-files '*.go' | xargs gofmt -l)
+          if [ -n "$fmt_output" ]; then
+            echo "The following files need gofmt:"
+            echo "$fmt_output"
+            exit 1
+          fi
+
+      - name: Go vet
+        run: go vet ./...
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: v1.59.0
+
+      - name: Run unit tests with coverage
+        run: go test ./... -coverprofile=cover.out -covermode=atomic
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: cover.out
+
+      - name: Enforce coverage threshold
+        run: |
+          COVERAGE=$(go tool cover -func=cover.out | grep total | awk '{print substr($3, 1, length($3)-1)}')
+          python - <<'PY'
+import os, sys
+coverage = float(os.environ["COVERAGE"])
+threshold = 80.0
+if coverage < threshold:
+    print(f"Coverage {coverage:.2f}% is below required {threshold}%")
+    sys.exit(1)
+print(f"Coverage {coverage:.2f}% meets threshold {threshold}%")
+PY
+
+  integration-tests:
+    if: github.event_name == 'workflow_dispatch' && inputs.run_integration == 'true'
+    needs: lint-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Start integration stack
+        run: ./tests/integration/run.sh up
+
+      - name: Run integration tests
+        env:
+          INTEGRATION_DATABASE_URL: postgres://postgres:postgres@localhost:55432/aviation?sslmode=disable
+          INTEGRATION_NATS_URL: nats://localhost:54222
+        run: go test ./tests/integration -tags=integration -count=1 -v
+
+      - name: Tear down integration stack
+        if: always()
+        run: ./tests/integration/run.sh down
+
