@@ -6,5 +6,6 @@ import "caatsm/internal/domain"
 type Parser interface {
 	// Parse parses a raw message string and returns a ParsedMessage
 	Parse(rawText string) *domain.ParsedMessage
-}
 
+	// TODO: consider returning (*domain.ParsedMessage, error) to surface parse failures explicitly.
+}

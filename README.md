@@ -70,6 +70,9 @@ psql -U postgres -f internal/repository/telegrams.ddl
 
 Configuration is loaded from TOML files and environment variables. The configuration file should be located at `configs/config.{env}.toml` where `{env}` is determined by the `GO_ENV` environment variable (defaults to `dev`).
 
+- `nats.url` and `nats.stream` are required (the latter defaults to `TELEGRAM` when omitted).
+- `subscription.topic` is optional; when not provided the application subscribes to `telegram.>`.
+
 ### Configuration Structure
 
 ```toml
@@ -92,6 +95,7 @@ ack_wait = "30s"
 max_ack_pending = 1024
 
 [subscription]
+# Optional. Defaults to "telegram.>" when omitted.
 topic = "telegram.serial"
 
 [publisher]
@@ -110,6 +114,10 @@ monitor_interval = "30s"
 [log]
 level = "info"
 format = "json"
+
+### Timeouts and Ack Wait
+
+`[timeouts]` is optional, but if you plan to tune JetStream redelivery you should set `timeouts.ack_wait` and/or `[nats.consumer].ack_wait`. When neither is specified the application defaults both values to `30s`, ensuring predictable redelivery timing.
 ```
 
 ### Environment Variables
@@ -472,6 +480,8 @@ Logs include contextual information:
 
 - **Batch Processing**: Messages are processed in configurable batches (default: 50)
 - **Database Inserts**: Uses PostgreSQL `COPY FROM` for efficient batch inserts
+  via `Repository.InsertBatch`. The default processor issues single inserts,
+  but you can switch to buffered batches in high-throughput deployments.
 - **Connection Pooling**: Configurable PostgreSQL connection pool
 - **JetStream**: Reliable message delivery with automatic retries
 

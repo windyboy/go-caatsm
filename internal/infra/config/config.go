@@ -174,12 +174,11 @@ func LoadConfig() (*Config, error) {
 	if cfg.NATS.ConsumerRules.MaxDeliver == 0 {
 		cfg.NATS.ConsumerRules.MaxDeliver = 5
 	}
+	if cfg.Timeouts.AckWait == 0 {
+		cfg.Timeouts.AckWait = 30 * time.Second
+	}
 	if cfg.NATS.ConsumerRules.AckWait == 0 {
-		if cfg.Timeouts.AckWait != 0 {
-			cfg.NATS.ConsumerRules.AckWait = cfg.Timeouts.AckWait
-		} else {
-			cfg.NATS.ConsumerRules.AckWait = 30 * time.Second
-		}
+		cfg.NATS.ConsumerRules.AckWait = cfg.Timeouts.AckWait
 	}
 	if cfg.NATS.ConsumerRules.MaxAckPending == 0 {
 		cfg.NATS.ConsumerRules.MaxAckPending = 1024
@@ -198,8 +197,8 @@ func (c *Config) Validate() error {
 	if c.NATS.URL == "" {
 		return fmt.Errorf("nats.url is required")
 	}
-	if c.Subscription.Topic == "" && c.NATS.Stream == "" {
-		return fmt.Errorf("subscription.topic or nats.stream is required")
+	if c.NATS.Stream == "" {
+		return fmt.Errorf("nats.stream is required")
 	}
 	if c.Publisher.Topic == "" {
 		return fmt.Errorf("publisher.topic is required")

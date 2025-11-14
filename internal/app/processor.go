@@ -5,6 +5,8 @@ import (
 	"caatsm/internal/adapter/parser"
 	"context"
 	"fmt"
+	"strings"
+	"time"
 
 	"go.uber.org/zap"
 )
@@ -38,26 +40,42 @@ func (p *MessageProcessor) Handle(ctx context.Context, raw []byte, msgID string)
 		return Permanent(fmt.Errorf("empty message"))
 	}
 
-	// Parse the message
+	receivedAt := time.Now()
+
 	parsed := p.parser.Parse(string(raw))
 	if parsed == nil {
 		return Permanent(fmt.Errorf("parser returned nil"))
 	}
 
-	// Set the message ID from NATS
-	parsed.Uuid = msgID
+	if msgID != "" {
+		if parsed.Comments == "" {
+			parsed.Comments = fmt.Sprintf("nats_msg_id=%s", msgID)
+		} else if !strings.Contains(parsed.Comments, "nats_msg_id=") {
+			parsed.Comments = fmt.Sprintf("%s; nats_msg_id=%s", parsed.Comments, msgID)
+		}
+	}
+	if parsed.ReceivedAt.IsZero() {
+		parsed.ReceivedAt = receivedAt
+	}
+	if parsed.ParsedAt.IsZero() {
+		parsed.ParsedAt = time.Now()
+	}
 
 	// Log parsing result
 	if !parsed.Parsed {
-		p.logger.Info("Message not parsed",
+		p.logger.Warn("Message not parsed",
 			zap.String("msg_id", msgID),
-			zap.String("content_preview", truncateContent(parsed.Content, 200)),
+			zap.String("message_id", parsed.MessageID),
+			zap.String("category", parsed.Category),
+			zap.String("content_preview", truncateContent(parsed.Content, 256)),
 		)
 	} else {
 		p.logger.Info("Message parsed successfully",
 			zap.String("msg_id", msgID),
 			zap.String("message_id", parsed.MessageID),
 			zap.String("category", parsed.Category),
+			zap.Time("received_at", parsed.ReceivedAt),
+			zap.Time("parsed_at", parsed.ParsedAt),
 		)
 	}
 

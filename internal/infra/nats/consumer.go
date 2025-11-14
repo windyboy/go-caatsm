@@ -6,9 +6,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
+
 	"github.com/nats-io/nats.go"
 	"go.uber.org/zap"
-	"time"
 )
 
 // Consumer handles NATS JetStream message consumption
@@ -69,6 +70,7 @@ func (c *Consumer) ensureConsumer() error {
 	if ackWait == 0 {
 		ackWait = 30 * time.Second
 	}
+	c.cfg.NATS.ConsumerRules.AckWait = ackWait
 
 	consumerConfig := &nats.ConsumerConfig{
 		Durable:       c.consumerName,
@@ -90,6 +92,7 @@ func (c *Consumer) ensureConsumer() error {
 			zap.String("consumer", c.consumerName),
 			zap.String("stream", streamName),
 			zap.String("subject", c.subject),
+			zap.Duration("ack_wait", ackWait),
 		)
 	}
 
@@ -157,6 +160,7 @@ func (c *Consumer) Start(ctx context.Context) error {
 		}
 
 		// Process each message
+		// TODO: consider buffering messages to take advantage of Repository.InsertBatch for higher throughput.
 		for _, msg := range msgs {
 			if err := c.processMessage(ctx, msg); err != nil {
 				isPermanent := app.IsPermanent(err)

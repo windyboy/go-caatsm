@@ -34,7 +34,7 @@ MessageID: "TMQ1324".
 DateTime: "150631".
 PriorityIndicator: "FF".
 PrimaryAddress: "ZBTJZPZX".
-SecondaryAddresses: ["150630", "ZBACZQZX"].
+SecondaryAddresses: "150630 ZBACZQZX".
 Originator: "".
 OriginatorDateTime: "".
 Category: "".
@@ -72,7 +72,7 @@ MessageID: "XMP4567".
 DateTime: "120915".
 PriorityIndicator: "DD".
 PrimaryAddress: "KLAXZPZX".
-SecondaryAddresses: ["120914", "KSFOZQZX"].
+SecondaryAddresses: "120914 KSFOZQZX".
 Originator: "".
 OriginatorDateTime: "".
 Category: "".
@@ -92,7 +92,7 @@ type ParsedMessage struct {
 	DateTime           string      `json:"dateTime"`                     // 日期时间: The date and time of the message (e.g., '150631').
 	PriorityIndicator  string      `json:"priorityIndicator"`            // 优先级标识: The priority level of the message (e.g., 'FF').
 	PrimaryAddress     string      `json:"primaryAddress"`               // 主要地址: The primary recipient address (e.g., 'ZBTJZPZX').
-	SecondaryAddresses string      `json:"secondaryAddresses,omitempty"` // 次要地址: Additional recipient addresses (e.g., ['150630', 'ZBACZQZX']).
+	SecondaryAddresses string      `json:"secondaryAddresses,omitempty"` // 次要地址: Additional recipient addresses (space-separated string such as "150630 ZBACZQZX").
 	Originator         string      `json:"originator,omitempty"`         // 发件人: The sender of the message.
 	OriginatorDateTime string      `json:"originatorDateTime,omitempty"` // 发件日期时间: The date and time when the originator sent the message.
 	Category           string      `json:"category,omitempty"`           // 类别: The category of the message.

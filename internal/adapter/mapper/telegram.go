@@ -4,6 +4,8 @@ import (
 	"caatsm/internal/domain"
 	"encoding/json"
 	"fmt"
+	"time"
+
 	"github.com/google/uuid"
 )
 
@@ -42,28 +44,87 @@ func (m *TelegramMapper) ToDBRow(msg *domain.ParsedMessage) ([]interface{}, erro
 	secondaryAddresses := msg.SecondaryAddresses
 
 	return []interface{}{
-		msgUUID,                    // uuid
-		msg.MessageID,              // message_id
-		msg.DateTime,               // date_time
-		msg.PriorityIndicator,      // priority_indicator
-		msg.PrimaryAddress,         // primary_address
-		secondaryAddresses,         // secondary_addresses (TEXT)
-		msg.Originator,             // originator
-		msg.OriginatorDateTime,     // originator_date_time
-		msg.Category,               // category
-		msg.Content,                // content (TEXT, original message)
-		bodyDataJSON,               // body_data (JSONB)
-		msg.ReceivedAt,             // received_at
-		msg.ParsedAt,               // parsed_at
-		msg.DispatchedAt,           // dispatched_at
-		msg.NeedDispatch,           // need_dispatch
+		msgUUID,                // uuid
+		msg.MessageID,          // message_id
+		msg.DateTime,           // date_time
+		msg.PriorityIndicator,  // priority_indicator
+		msg.PrimaryAddress,     // primary_address
+		secondaryAddresses,     // secondary_addresses (TEXT)
+		msg.Originator,         // originator
+		msg.OriginatorDateTime, // originator_date_time
+		msg.Category,           // category
+		msg.Content,            // content (TEXT, original message)
+		bodyDataJSON,           // body_data (JSONB)
+		msg.ReceivedAt,         // received_at
+		msg.ParsedAt,           // parsed_at
+		msg.DispatchedAt,       // dispatched_at
+		msg.NeedDispatch,       // need_dispatch
 	}, nil
 }
 
 // FromDBRow converts a database row to a domain.ParsedMessage
 func (m *TelegramMapper) FromDBRow(row []interface{}) (*domain.ParsedMessage, error) {
-	// This is a placeholder - will be implemented if needed for queries
-	// For now, we only need ToDBRow for inserts
-	return nil, fmt.Errorf("FromDBRow not implemented")
-}
+	const expectedColumns = 15
+	if len(row) < expectedColumns {
+		return nil, fmt.Errorf("expected %d columns, got %d", expectedColumns, len(row))
+	}
 
+	msgUUID, ok := row[0].(uuid.UUID)
+	if !ok {
+		return nil, fmt.Errorf("column 0 must be uuid.UUID")
+	}
+
+	toString := func(v interface{}) string {
+		if v == nil {
+			return ""
+		}
+		if s, ok := v.(string); ok {
+			return s
+		}
+		return fmt.Sprint(v)
+	}
+
+	parseTime := func(v interface{}) time.Time {
+		if v == nil {
+			return time.Time{}
+		}
+		if t, ok := v.(time.Time); ok {
+			return t
+		}
+		return time.Time{}
+	}
+
+	var bodyData interface{}
+	if raw := row[10]; raw != nil {
+		switch val := raw.(type) {
+		case []byte:
+			if len(val) > 0 {
+				if err := json.Unmarshal(val, &bodyData); err != nil {
+					return nil, fmt.Errorf("failed to unmarshal body data: %w", err)
+				}
+			}
+		default:
+			bodyData = val
+		}
+	}
+
+	needDispatch, _ := row[14].(bool)
+
+	return &domain.ParsedMessage{
+		Uuid:               msgUUID.String(),
+		MessageID:          toString(row[1]),
+		DateTime:           toString(row[2]),
+		PriorityIndicator:  toString(row[3]),
+		PrimaryAddress:     toString(row[4]),
+		SecondaryAddresses: toString(row[5]),
+		Originator:         toString(row[6]),
+		OriginatorDateTime: toString(row[7]),
+		Category:           toString(row[8]),
+		Content:            toString(row[9]),
+		BodyData:           bodyData,
+		ReceivedAt:         parseTime(row[11]),
+		ParsedAt:           parseTime(row[12]),
+		DispatchedAt:       parseTime(row[13]),
+		NeedDispatch:       needDispatch,
+	}, nil
+}
