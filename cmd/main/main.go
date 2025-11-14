@@ -1,6 +1,7 @@
 package main
 
 import (
+	"caatsm/internal/infra/config"
 	"caatsm/pkg/di"
 	"context"
 	"errors"
@@ -52,8 +53,21 @@ func setupApp() *cli.App {
 }
 
 func executeListen(c *cli.Context) error {
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	if flagURL := c.String("nats"); flagURL != "" {
+		cfg.NATS.URL = flagURL
+	}
+
+	if flagTopic := c.String("topic"); flagTopic != "" {
+		cfg.Subscription.Topic = flagTopic
+	}
+
 	// Initialize dependencies using Wire
-	processor, consumer, err := di.InitializeApp()
+	processor, consumer, err := di.InitializeAppWithConfig(cfg)
 	if err != nil {
 		return fmt.Errorf("failed to initialize app: %w", err)
 	}

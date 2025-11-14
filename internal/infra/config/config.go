@@ -244,3 +244,16 @@ func (c *Config) Validate() error {
 func ProvideConfig() (*Config, error) {
 	return LoadConfig()
 }
+
+// EffectiveSubscriptionTopic returns the active subscription subject.
+// Retains support for legacy config.Subscription fields while allowing
+// future consolidation.
+func (c *Config) EffectiveSubscriptionTopic() string {
+	if c == nil {
+		return ""
+	}
+	if topic := c.Subscription.Topic; topic != "" {
+		return topic
+	}
+	return "telegram.>"
+}

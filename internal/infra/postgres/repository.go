@@ -6,6 +6,7 @@ import (
 	"caatsm/internal/domain"
 	"context"
 	"fmt"
+
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.uber.org/zap"
@@ -45,12 +46,20 @@ func (r *Repository) InsertOne(ctx context.Context, msg *domain.ParsedMessage) e
 		ON CONFLICT (uuid) DO NOTHING
 	`
 
-	_, err = r.pool.Exec(ctx, query,
+	tag, err := r.pool.Exec(ctx, query,
 		row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8],
 		row[9], row[10], row[11], row[12], row[13], row[14],
 	)
 	if err != nil {
 		return fmt.Errorf("failed to insert message: %w", err)
+	}
+
+	if tag.RowsAffected() == 0 {
+		r.logger.Info("Duplicate message skipped",
+			zap.String("uuid", msg.Uuid),
+			zap.String("message_id", msg.MessageID),
+		)
+		return nil
 	}
 
 	r.logger.Debug("Inserted message",

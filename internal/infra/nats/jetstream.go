@@ -2,7 +2,9 @@ package nats
 
 import (
 	"caatsm/internal/infra/config"
+	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/nats-io/nats.go"
@@ -43,10 +45,7 @@ func ProvideJetStream(nc *nats.Conn, cfg *config.Config, logger *zap.Logger) (na
 
 	// Create stream if it doesn't exist
 	streamName := cfg.NATS.Stream
-	subject := cfg.Subscription.Topic
-	if subject == "" {
-		subject = "telegram.>"
-	}
+	subject := cfg.EffectiveSubscriptionTopic()
 
 	streamLimits := cfg.NATS.StreamLimits
 	storage := nats.FileStorage
@@ -74,15 +73,58 @@ func ProvideJetStream(nc *nats.Conn, cfg *config.Config, logger *zap.Logger) (na
 		Replicas:  streamLimits.Replicas,
 	}
 
-	_, err = js.AddStream(streamConfig)
-	if err != nil && err != nats.ErrStreamNameAlreadyInUse {
-		nc.Close()
-		return nil, fmt.Errorf("failed to create stream: %w", err)
-	}
-
-	if err == nil {
-		logger.Info("Created JetStream", zap.String("stream", streamName), zap.String("subject", subject))
+	info, err := js.StreamInfo(streamName)
+	if err != nil {
+		if errors.Is(err, nats.ErrStreamNotFound) {
+			if shouldBootstrapStream() {
+				if _, err = js.AddStream(streamConfig); err != nil {
+					nc.Close()
+					return nil, fmt.Errorf("failed to create stream: %w", err)
+				}
+				logger.Info("Created JetStream", zap.String("stream", streamName), zap.String("subject", subject))
+			} else {
+				nc.Close()
+				return nil, fmt.Errorf("stream %s not found and auto-creation disabled", streamName)
+			}
+		} else {
+			nc.Close()
+			return nil, fmt.Errorf("failed to fetch stream info: %w", err)
+		}
+	} else {
+		validateStreamConfig(info, subject, logger)
 	}
 
 	return js, nil
+}
+
+func shouldBootstrapStream() bool {
+	switch strings.ToLower(os.Getenv("GO_ENV")) {
+	case "", "dev", "development", "test", "testing":
+		return true
+	default:
+		return false
+	}
+}
+
+func validateStreamConfig(info *nats.StreamInfo, expectedSubject string, logger *zap.Logger) {
+	if info == nil {
+		return
+	}
+
+	if !subjectListContains(info.Config.Subjects, expectedSubject) {
+		logger.Warn("JetStream stream subjects do not match config",
+			zap.String("stream", info.Config.Name),
+			zap.Strings("stream_subjects", info.Config.Subjects),
+			zap.String("configured_subject", expectedSubject),
+		)
+	}
+}
+
+func subjectListContains(subjects []string, target string) bool {
+	for _, s := range subjects {
+		if s == target {
+			return true
+		}
+	}
+	return false
 }

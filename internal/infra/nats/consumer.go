@@ -30,10 +30,7 @@ func ProvideConsumer(
 	cfg *config.Config,
 	logger *zap.Logger,
 ) (*Consumer, error) {
-	subject := cfg.Subscription.Topic
-	if subject == "" {
-		subject = "telegram.>"
-	}
+	subject := cfg.EffectiveSubscriptionTopic()
 
 	consumerName := cfg.NATS.Consumer
 	if consumerName == "" {
@@ -170,8 +167,8 @@ func (c *Consumer) Start(ctx context.Context) error {
 				)
 
 				if isPermanent {
-					if termErr := msg.Term(); termErr != nil {
-						c.logger.Error("Failed to TERM message", zap.Error(termErr))
+					if ackErr := msg.Ack(); ackErr != nil {
+						c.logger.Error("Failed to ACK permanent-error message", zap.Error(ackErr))
 					}
 					continue
 				}
@@ -255,14 +252,16 @@ func (c *Consumer) Shutdown(ctx context.Context) error {
 
 // processMessage processes a single message
 func (c *Consumer) processMessage(ctx context.Context, msg *nats.Msg) error {
-	msgID := msg.Header.Get("Nats-Msg-Id")
-	if msgID == "" {
-		// Use reply subject or generate a simple ID
-		if msg.Reply != "" {
-			msgID = msg.Reply
-		} else {
-			msgID = fmt.Sprintf("msg-%d", time.Now().UnixNano())
-		}
+	msgID, source, err := c.resolveMsgID(msg)
+	if err != nil {
+		return fmt.Errorf("unable to resolve message id: %w", err)
+	}
+	if source != "header" {
+		c.logger.Warn("Message missing NATS id header; using fallback",
+			zap.String("subject", msg.Subject),
+			zap.String("msg_id_source", source),
+			zap.String("msg_id", msgID),
+		)
 	}
 
 	c.logger.Debug("Processing message",
@@ -277,4 +276,17 @@ func (c *Consumer) processMessage(ctx context.Context, msg *nats.Msg) error {
 	}
 
 	return nil
+}
+
+func (c *Consumer) resolveMsgID(msg *nats.Msg) (string, string, error) {
+	if id := msg.Header.Get("Nats-Msg-Id"); id != "" {
+		return id, "header", nil
+	}
+
+	meta, err := msg.Metadata()
+	if err != nil {
+		return "", "", fmt.Errorf("fetch metadata: %w", err)
+	}
+
+	return fmt.Sprintf("js-%d", meta.Sequence.Stream), "metadata", nil
 }

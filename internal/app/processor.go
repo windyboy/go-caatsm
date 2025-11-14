@@ -5,6 +5,7 @@ import (
 	"caatsm/internal/adapter/parser"
 	"context"
 	"fmt"
+
 	"go.uber.org/zap"
 )
 
@@ -33,7 +34,7 @@ func NewMessageProcessor(
 
 // Handle processes a message
 func (p *MessageProcessor) Handle(ctx context.Context, raw []byte, msgID string) error {
-	if raw == nil || len(raw) == 0 {
+	if len(raw) == 0 {
 		return Permanent(fmt.Errorf("empty message"))
 	}
 
@@ -50,7 +51,7 @@ func (p *MessageProcessor) Handle(ctx context.Context, raw []byte, msgID string)
 	if !parsed.Parsed {
 		p.logger.Info("Message not parsed",
 			zap.String("msg_id", msgID),
-			zap.String("content", parsed.Content),
+			zap.String("content_preview", truncateContent(parsed.Content, 200)),
 		)
 	} else {
 		p.logger.Info("Message parsed successfully",
@@ -72,9 +73,19 @@ func (p *MessageProcessor) Handle(ctx context.Context, raw []byte, msgID string)
 			zap.String("msg_id", msgID),
 			zap.Error(err),
 		)
-		// Return error to trigger NAK and retry
-		return fmt.Errorf("failed to publish message: %w", err)
+		// Mark as permanent so the consumer will ack instead of retrying
+		return Permanent(fmt.Errorf("failed to publish message: %w", err))
 	}
 
 	return nil
+}
+
+func truncateContent(content string, limit int) string {
+	if limit <= 0 || len(content) <= limit {
+		return content
+	}
+	if limit <= 3 {
+		return content[:limit]
+	}
+	return content[:limit-3] + "..."
 }

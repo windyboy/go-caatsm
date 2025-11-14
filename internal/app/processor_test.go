@@ -94,7 +94,7 @@ func TestHandleSuccessSetsUuidAndPublishes(t *testing.T) {
 	}
 }
 
-func TestHandlePublisherErrorIsRetriable(t *testing.T) {
+func TestHandlePublisherErrorIsPermanent(t *testing.T) {
 	parsed := domain.NewParsedMessage()
 	parsed.Parsed = true
 
@@ -106,8 +106,8 @@ func TestHandlePublisherErrorIsRetriable(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected error when publisher fails")
 	}
-	if IsPermanent(err) {
-		t.Fatalf("publisher failure should not be permanent")
+	if !IsPermanent(err) {
+		t.Fatalf("publisher failure should be permanent")
 	}
 	if len(repo.inserted) != 1 {
 		t.Fatalf("expected message to insert before publish failure")
