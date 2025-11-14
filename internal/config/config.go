@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
@@ -10,20 +11,32 @@ import (
 	"github.com/spf13/viper"
 )
 
+// Deprecated: Use explicit config passing instead. Will be removed in v2.0
 var MyConfig *Config
 
 type Config struct {
 	Nats         NatsConfig
 	Subscription SubscriptionConfig
 	Publisher    PublisherConfig
+	Database     DatabaseConfig
+	Redis        RedisConfig
+	API          APIConfig
 	Timeouts     TimeoutsConfig
-	Hasura       HasuraConfig
 }
 
 type NatsConfig struct {
-	Client  string
-	URL     string
-	Cluster string
+	Client    string
+	URL       string
+	Cluster   string
+	JetStream JetStreamConfig
+}
+
+type JetStreamConfig struct {
+	Enabled       bool   `mapstructure:"enabled"`
+	StreamName    string `mapstructure:"stream_name"`
+	Subject       string `mapstructure:"subject"`
+	MaxPending    int    `mapstructure:"max_pending"`
+	AutoProvision bool   `mapstructure:"auto_provision"`
 }
 
 type SubscriptionConfig struct {
@@ -33,6 +46,31 @@ type SubscriptionConfig struct {
 
 type PublisherConfig struct {
 	Topic string `mapstructure:"topic"`
+}
+
+type DatabaseConfig struct {
+	Host            string        `mapstructure:"host"`
+	Port            int           `mapstructure:"port"`
+	User            string        `mapstructure:"user"`
+	Password        string        `mapstructure:"password"`
+	Database        string        `mapstructure:"database"`
+	SSLMode         string        `mapstructure:"ssl_mode"`
+	MaxConns        int           `mapstructure:"max_conns"`
+	MinConns        int           `mapstructure:"min_conns"`
+	MaxConnLifetime time.Duration `mapstructure:"max_conn_lifetime"`
+}
+
+type RedisConfig struct {
+	Addr     string `mapstructure:"addr"`
+	Password string `mapstructure:"password"`
+	DB       int    `mapstructure:"db"`
+	Enabled  bool   `mapstructure:"enabled"`
+}
+
+type APIConfig struct {
+	Host string `mapstructure:"host"`
+	Port int    `mapstructure:"port"`
+	Mode string `mapstructure:"mode"` // dev, prod
 }
 
 type TimeoutsConfig struct {
@@ -52,21 +90,18 @@ type PatternConfig struct {
 	Expression *regexp.Regexp
 }
 
-type HasuraConfig struct {
-	Endpoint string
-	Secret   string
-}
-
 const (
 	EnvProd = "prod"
 	EnvDev  = "dev"
 	EnvTest = "test"
 )
 
+// Deprecated: Use explicit config passing instead. Will be removed in v2.0
 func SetMyConfig(cfg *Config) {
 	MyConfig = cfg
 }
 
+// Deprecated: Use explicit config passing instead. Will be removed in v2.0
 func GetMyConfig() *Config {
 	if MyConfig == nil {
 		cfg, err := LoadConfig()
@@ -96,22 +131,20 @@ func LoadConfig() (*Config, error) {
 	if err := viper.ReadInConfig(); err != nil {
 		errMsg := fmt.Sprintf("error reading config file for environment '%s': %v", env, err)
 		// log.Error(errMsg)
-		return nil, fmt.Errorf(errMsg)
+		return nil, errors.New(errMsg)
 	}
 
 	var config Config
 	if err := viper.Unmarshal(&config); err != nil {
 		errMsg := fmt.Sprintf("unable to decode config into struct for environment '%s': %v", env, err)
 		// log.Error(errMsg)
-		return nil, fmt.Errorf(errMsg)
+		return nil, errors.New(errMsg)
 	}
 	return &config, nil
 }
 
 // ValidateConfig validates the loaded configuration
 func ValidateConfig(cfg *Config) error {
-	// log := utils.Logger
-
 	if cfg.Nats.Client == "" {
 		return fmt.Errorf("nats client is required")
 	}
@@ -121,6 +154,14 @@ func ValidateConfig(cfg *Config) error {
 	if cfg.Subscription.Topic == "" {
 		return fmt.Errorf("subscription topic is required")
 	}
-	// fmt.Println("config validation passed")
+	if cfg.Database.Host == "" {
+		return fmt.Errorf("database host is required")
+	}
+	if cfg.Database.Database == "" {
+		return fmt.Errorf("database name is required")
+	}
+	if cfg.API.Port == 0 {
+		return fmt.Errorf("api port is required")
+	}
 	return nil
 }

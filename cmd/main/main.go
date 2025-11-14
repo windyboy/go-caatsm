@@ -1,25 +1,26 @@
 package main
 
 import (
-	"caatsm/internal/config"
-	"caatsm/internal/nats"
-	"caatsm/internal/repository"
-	"caatsm/pkg/utils"
-	"os"
-
+	"context"
 	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
+
+	"caatsm/internal/config"
+	"caatsm/internal/infrastructure/db"
+	natsinfra "caatsm/internal/infrastructure/nats"
+	"caatsm/internal/repository/postgres"
+	"caatsm/pkg/utils"
 
 	"github.com/urfave/cli/v2"
-)
-
-var (
-	cfg *config.Config
 )
 
 func main() {
 	app := setupApp()
 	if err := app.Run(os.Args); err != nil {
 		fmt.Printf("Error running application: %v\n", err)
+		os.Exit(1)
 	}
 }
 
@@ -28,7 +29,6 @@ func setupApp() *cli.App {
 		Name:  "telegram message process",
 		Usage: "A Civial Aviation Authority Telegram Message Processor",
 		Before: func(c *cli.Context) error {
-
 			return nil
 		},
 		Commands: []*cli.Command{
@@ -58,7 +58,7 @@ func setupApp() *cli.App {
 	return app
 }
 
-func overrideConfig(c *cli.Context) {
+func overrideConfig(c *cli.Context, cfg *config.Config) {
 	if c.IsSet("nats") {
 		cfg.Nats.URL = c.String("nats")
 		fmt.Printf("Overriding nats url to %s\n", cfg.Nats.URL)
@@ -72,21 +72,63 @@ func overrideConfig(c *cli.Context) {
 func executeListen(c *cli.Context) error {
 	cfg, err := config.LoadConfig()
 	if err != nil {
-		fmt.Printf("Error loading configuration: %v\n", err)
-		return err
+		return fmt.Errorf("error loading configuration: %w", err)
 	}
+
 	if err := config.ValidateConfig(cfg); err != nil {
-		fmt.Printf("Invalid configuration: %v\n", err)
-		return err
+		return fmt.Errorf("invalid configuration: %w", err)
 	}
-	overrideConfig(c)
+
+	overrideConfig(c, cfg)
 	fmt.Println("Loaded configuration successfully")
+
 	log := utils.GetLogger()
 	log.Info("Starting nats subscriber")
-	publisher := nats.NewPub(cfg)
-	repository := repository.NewHasura(cfg)
-	handler := nats.NewHandler(cfg, publisher, repository)
-	subscriber := nats.NewSub(cfg)
-	subscriber.Subscribe(cfg, handler)
-	return nil
+
+	js, err := natsinfra.NewJetStream(&cfg.Nats)
+	if err != nil {
+		return fmt.Errorf("failed to create JetStream context: %w", err)
+	}
+
+	if cfg.Nats.JetStream.AutoProvision {
+		streamConfig := natsinfra.CreateStreamConfig(&cfg.Nats)
+		if err := natsinfra.EnsureStream(js, streamConfig); err != nil {
+			return fmt.Errorf("failed to ensure stream: %w", err)
+		}
+	}
+
+	publisher, err := natsinfra.NewPublisher(js, cfg)
+	if err != nil {
+		return fmt.Errorf("failed to create publisher: %w", err)
+	}
+
+	pool, err := db.NewConnectionPool(&cfg.Database)
+	if err != nil {
+		return fmt.Errorf("failed to create database connection pool: %w", err)
+	}
+	defer pool.Close()
+
+	repository := postgres.NewTelegramRepository(pool)
+
+	handler := natsinfra.NewHandler(cfg, publisher, repository)
+
+	consumer, err := natsinfra.NewConsumer(js, cfg, handler)
+	if err != nil {
+		return fmt.Errorf("failed to create consumer: %w", err)
+	}
+	defer consumer.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		sig := <-sigChan
+		log.Infof("Received signal %v, shutting down gracefully...", sig)
+		cancel()
+	}()
+
+	return consumer.Subscribe(ctx)
 }

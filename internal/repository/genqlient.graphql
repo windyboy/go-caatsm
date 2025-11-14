@@ -1,6 +1,0 @@
-mutation newMessage($object: aviation_telegrams_insert_input!) {
-  insert_aviation_telegrams_one(object: $object) {
-    message_id
-    uuid
-  }
-}

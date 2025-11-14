@@ -29,19 +29,40 @@ client = "test-client"
 url = "nats://localhost:4222"
 cluster = "test-cluster"
 
+[nats.jetstream]
+enabled = true
+stream_name = "TEST_STREAM"
+subject = "Test.Subject"
+auto_provision = true
+
 [subscription]
 topic = "example-topic"
 queue_group = "example-group"
 
-[timeouts]
-server_timeout = "30s"
-reconnect_wait = "10s"
-close_timeout = "10s"
-ack_wait_timeout = "5s"
+[publisher]
+topic = "example-output"
 
-[hasura]
-endpoint = "http://localhost:8080/v1/graphql"
-secret  = "aviation-test"
+[database]
+host = "localhost"
+port = 5432
+user = "postgres"
+password = "postgres"
+database = "aviation"
+ssl_mode = "disable"
+max_conns = 10
+min_conns = 1
+max_conn_lifetime = "1h"
+
+[api]
+host = "0.0.0.0"
+port = 8080
+mode = "dev"
+
+[timeouts]
+server = "30s"
+reconnect_wait = "10s"
+close = "10s"
+ack_wait = "5s"
 `
 		tmpFile, err := os.CreateTemp("", "config.*.toml")
 		Expect(err).NotTo(HaveOccurred())
@@ -73,8 +94,9 @@ secret  = "aviation-test"
 			Expect(cfg.Nats.URL).To(Equal("nats://localhost:4222"))
 			Expect(cfg.Subscription.Topic).To(Equal("example-topic"))
 			Expect(cfg.Subscription.QueueGroup).To(Equal("example-group"))
-			Expect(cfg.Hasura.Endpoint).To(Equal("http://localhost:8080/v1/graphql"))
-			Expect(cfg.Hasura.Secret).To(Equal("aviation-test"))
+			Expect(cfg.Publisher.Topic).To(Equal("example-output"))
+			Expect(cfg.Database.Host).To(Equal("localhost"))
+			Expect(cfg.API.Port).To(Equal(8080))
 		})
 	})
 

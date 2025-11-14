@@ -3,19 +3,44 @@ url = "nats://localhost:4222"
 client = "serial-client"
 cluster = "tele-cluster"
 
+[nats.jetstream]
+enabled = true
+stream_name = "TELEGRAMS"
+subject = "Telegram.Serial"
+max_pending = 256
+auto_provision = true
+
 [subscription]
 topic = "Telegram.Serial"
-queue = "tele-queue"
+queue_group = "tele-queue"
 
 [publisher]
 topic = "Telegram.Json"
+
+[database]
+host = "localhost"
+port = 5432
+user = "postgres"
+password = "postgres"
+database = "aviation"
+ssl_mode = "disable"
+max_conns = 25
+min_conns = 5
+max_conn_lifetime = "1h"
+
+[redis]
+addr = "localhost:6379"
+password = ""
+db = 0
+enabled = false
+
+[api]
+host = "0.0.0.0"
+port = 8080
+mode = "dev"
 
 [timeouts]
 server = "5s"
 reconnect_wait = "5s"
 close = "10s"
 ack_wait = "5s"
-
-[hasura]
-endpoint = "http://localhost:8080/v1/graphql"
-secret  = "aviation-test"

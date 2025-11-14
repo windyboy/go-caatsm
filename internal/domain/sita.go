@@ -1,9 +1,10 @@
 package domain
 
 import (
-	"caatsm/pkg/utils"
-	"fmt"
+	"errors"
 	"time"
+
+	"caatsm/pkg/utils"
 )
 
 /*
@@ -101,7 +102,7 @@ func (h *SITAHeader) Validate() error {
 		err := "invalid send_time format"
 
 		log.Errorf("error validating send_time: %v", err)
-		return fmt.Errorf(err)
+		return errors.New(err)
 	}
 	return nil
 }

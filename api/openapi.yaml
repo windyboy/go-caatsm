@@ -1,0 +1,308 @@
+openapi: 3.0.0
+info:
+  title: Aviation Telegram API
+  description: REST API for querying aviation telegram messages
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@example.com
+
+servers:
+  - url: http://localhost:8080
+    description: Development server
+  - url: https://api.example.com
+    description: Production server
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      tags:
+        - Health
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  /health/ready:
+    get:
+      summary: Readiness check
+      tags:
+        - Health
+      responses:
+        '200':
+          description: Service is ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ready
+
+  /health/live:
+    get:
+      summary: Liveness check
+      tags:
+        - Health
+      responses:
+        '200':
+          description: Service is alive
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: alive
+
+  /metrics:
+    get:
+      summary: Prometheus metrics
+      tags:
+        - Metrics
+      responses:
+        '200':
+          description: Prometheus metrics in text format
+
+  /api/v1/telegrams:
+    get:
+      summary: List telegrams
+      description: Retrieve a list of telegrams with optional filters and pagination
+      tags:
+        - Telegrams
+      parameters:
+        - name: category
+          in: query
+          schema:
+            type: string
+          description: Filter by category
+        - name: messageId
+          in: query
+          schema:
+            type: string
+          description: Filter by message ID
+        - name: primaryAddress
+          in: query
+          schema:
+            type: string
+          description: Filter by primary address
+        - name: priorityIndicator
+          in: query
+          schema:
+            type: string
+          description: Filter by priority indicator
+        - name: startTime
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: Start time (RFC3339)
+        - name: endTime
+          in: query
+          schema:
+            type: string
+            format: date-time
+          description: End time (RFC3339)
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 1000
+            default: 100
+          description: Maximum number of results
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          description: Number of results to skip
+        - name: orderBy
+          in: query
+          schema:
+            type: string
+            default: received_at
+          description: Field to order by
+        - name: orderDirection
+          in: query
+          schema:
+            type: string
+            enum: [ASC, DESC]
+            default: DESC
+          description: Order direction
+      responses:
+        '200':
+          description: List of telegrams
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ListTelegramsResponse'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/telegrams/{id}:
+    get:
+      summary: Get telegram by ID
+      description: Retrieve a specific telegram by its UUID
+      tags:
+        - Telegrams
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: Telegram UUID
+      responses:
+        '200':
+          description: Telegram found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TelegramResponse'
+        '404':
+          description: Telegram not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /api/v1/telegrams/time-range:
+    get:
+      summary: Get telegrams by time range
+      description: Retrieve telegrams within a specific time range
+      tags:
+        - Telegrams
+      parameters:
+        - name: start
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+          description: Start time (RFC3339)
+        - name: end
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date-time
+          description: End time (RFC3339)
+      responses:
+        '200':
+          description: List of telegrams
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TelegramResponse'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+    TelegramResponse:
+      type: object
+      properties:
+        uuid:
+          type: string
+          format: uuid
+        messageId:
+          type: string
+        dateTime:
+          type: string
+        priorityIndicator:
+          type: string
+        primaryAddress:
+          type: string
+        secondaryAddresses:
+          type: string
+        originator:
+          type: string
+        originatorDateTime:
+          type: string
+        category:
+          type: string
+        content:
+          type: string
+        bodyData:
+          type: object
+        receivedAt:
+          type: string
+          format: date-time
+        parsedAt:
+          type: string
+          format: date-time
+          nullable: true
+        dispatchedAt:
+          type: string
+          format: date-time
+          nullable: true
+        needDispatch:
+          type: boolean
+        parsed:
+          type: boolean
+        comments:
+          type: string
+
+    ListTelegramsResponse:
+      type: object
+      properties:
+        telegrams:
+          type: array
+          items:
+            $ref: '#/components/schemas/TelegramResponse'
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+
+    Error:
+      type: object
+      properties:
+        message:
+          type: string
+        error:
+          type: string
+

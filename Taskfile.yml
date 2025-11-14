@@ -6,9 +6,6 @@ vars:
   config_dir: configs
   build_dir: build
   main_receiver: ./cmd/main/main.go
-  hasura_endpoint: http://localhost:8080/v1/graphql
-  schema_file: ./internal/repository/schema.graphql
-  hasura_secret: # Set your Hasura admin secret here
 
 tasks:
   all:
@@ -64,14 +61,15 @@ tasks:
     desc: Install ginkgo for testing
     cmds:
       - echo "Installing ginkgo..."
-      - go install github.com/onsi/ginkgo/v2/ginkgo
+      - go install github.com/onsi/ginkgo/v2/ginkgo@v2.25.1
+      - go get github.com/onsi/ginkgo/v2@v2.25.1
       - go get github.com/onsi/gomega/...
 
   test:
     desc: Test the application
     cmds:
       - echo "Running tests..."
-      - ginkgo -r -v
+      - go run github.com/onsi/ginkgo/v2/ginkgo@v2.25.1 -r -v
 
   coverage:
     desc: Generate test coverage report
@@ -104,26 +102,6 @@ tasks:
       - echo "Linting code..."
       - golangci-lint run
 
-  install-gq:
-    desc: Install hasura graphql engine introspection tool
-    cmds:
-      - echo "Installing gq..."
-      - pnpm add -g graphqurl
-
-  schema:
-    desc: Download the GraphQL schema from Hasura server
-    cmds:
-      - echo "Downloading GraphQL schema..."
-      - >
-        gq {{.hasura_endpoint}} -H 'X-Hasura-Admin-Secret:  {{.hasura_secret}}' --introspect > {{.schema_file}}
-
-  generate:
-    desc: Generate code using genqlient
-    cmds:
-      - echo "Generating code using genqlient..."
-      - go get github.com/Khan/genqlient/generate
-      - cd internal/repository && go run github.com/Khan/genqlient && cd ../..
-
   help:
     desc: Show this help message
     cmds:
@@ -140,8 +118,5 @@ tasks:
       - echo "  task fmt            - Format the code"
       - echo "  task deps           - Install dependencies"
       - echo "  task lint           - Lint the code"
-      - echo "  task install-gq     - Install hasura graphql engine introspection tool"
-      - echo "  task schema         - Download the GraphQL schema from Hasura server"
-      - echo "  task generate       - Generate code using genqlient"
       - echo "  task upgrade        - Upgrade go dependencies"
       - echo "  task help           - Show this help message"
