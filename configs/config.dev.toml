@@ -5,12 +5,25 @@ cluster = "tele-cluster"
 stream = "TELEGRAM"
 consumer = "telegram-consumer"
 
+[nats.stream_limits]
+max_msgs = 100000
+max_bytes = 67108864
+max_age = "24h"
+discard = "old"
+storage = "file"
+replicas = 1
+
+[nats.consumer]
+max_deliver = 5
+ack_wait = "30s"
+max_ack_pending = 1024
+
 [subscription]
-topic = "Telegram.Serial"
+topic = "telegram.serial"
 queue = "tele-queue"
 
 [publisher]
-topic = "Telegram.Json"
+topic = "telegram.json"
 
 [timeouts]
 server = "5s"
@@ -26,6 +39,7 @@ min_conns = 2
 [app]
 batch_size = 50
 batch_timeout = "2s"
+monitor_interval = "30s"
 
 [log]
 level = "info"

@@ -6,23 +6,25 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"go.uber.org/zap"
 	"github.com/nats-io/nats.go"
+	"go.uber.org/zap"
 	"time"
 )
 
 // Consumer handles NATS JetStream message consumption
 type Consumer struct {
-	js        nats.JetStreamContext
-	processor *app.MessageProcessor
-	cfg       *config.Config
-	logger    *zap.Logger
-	subject   string
+	conn         *nats.Conn
+	js           nats.JetStreamContext
+	processor    *app.MessageProcessor
+	cfg          *config.Config
+	logger       *zap.Logger
+	subject      string
 	consumerName string
 }
 
 // ProvideConsumer creates a NATS consumer
 func ProvideConsumer(
+	conn *nats.Conn,
 	js nats.JetStreamContext,
 	processor *app.MessageProcessor,
 	cfg *config.Config,
@@ -39,6 +41,7 @@ func ProvideConsumer(
 	}
 
 	consumer := &Consumer{
+		conn:         conn,
 		js:           js,
 		processor:    processor,
 		cfg:          cfg,
@@ -62,12 +65,21 @@ func (c *Consumer) ensureConsumer() error {
 		streamName = "TELEGRAM"
 	}
 
+	ackWait := c.cfg.NATS.ConsumerRules.AckWait
+	if ackWait == 0 {
+		ackWait = c.cfg.Timeouts.AckWait
+	}
+	if ackWait == 0 {
+		ackWait = 30 * time.Second
+	}
+
 	consumerConfig := &nats.ConsumerConfig{
 		Durable:       c.consumerName,
 		DeliverPolicy: nats.DeliverAllPolicy,
 		AckPolicy:     nats.AckExplicitPolicy,
-		AckWait:       c.cfg.Timeouts.AckWait,
-		MaxDeliver:    5, // Maximum number of delivery attempts
+		AckWait:       ackWait,
+		MaxDeliver:    c.cfg.NATS.ConsumerRules.MaxDeliver,
+		MaxAckPending: c.cfg.NATS.ConsumerRules.MaxAckPending,
 		FilterSubject: c.subject,
 	}
 
@@ -116,6 +128,17 @@ func (c *Consumer) Start(ctx context.Context) error {
 		batchTimeout = 2 * time.Second
 	}
 
+	c.logger.Info("Consumer pull configuration",
+		zap.Int("batch_size", batchSize),
+		zap.Duration("batch_timeout", batchTimeout),
+		zap.Int("max_deliver", c.cfg.NATS.ConsumerRules.MaxDeliver),
+		zap.Duration("ack_wait", c.cfg.NATS.ConsumerRules.AckWait),
+	)
+
+	statsCtx, statsCancel := context.WithCancel(ctx)
+	defer statsCancel()
+	go c.emitConsumerStats(statsCtx, streamName)
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -139,21 +162,94 @@ func (c *Consumer) Start(ctx context.Context) error {
 		// Process each message
 		for _, msg := range msgs {
 			if err := c.processMessage(ctx, msg); err != nil {
+				isPermanent := app.IsPermanent(err)
 				c.logger.Error("Failed to process message",
 					zap.String("subject", msg.Subject),
 					zap.Error(err),
+					zap.Bool("permanent", isPermanent),
 				)
-				// NAK the message to retry
+
+				if isPermanent {
+					if termErr := msg.Term(); termErr != nil {
+						c.logger.Error("Failed to TERM message", zap.Error(termErr))
+					}
+					continue
+				}
+
+				// Transient error: request redelivery
 				if nakErr := msg.Nak(); nakErr != nil {
 					c.logger.Error("Failed to NAK message", zap.Error(nakErr))
 				}
-			} else {
-				// ACK the message
-				if ackErr := msg.Ack(); ackErr != nil {
-					c.logger.Error("Failed to ACK message", zap.Error(ackErr))
-				}
+				continue
+			}
+
+			// ACK the message
+			if ackErr := msg.Ack(); ackErr != nil {
+				c.logger.Error("Failed to ACK message", zap.Error(ackErr))
 			}
 		}
+	}
+}
+
+func (c *Consumer) emitConsumerStats(ctx context.Context, streamName string) {
+	interval := c.cfg.App.MonitorInterval
+	if interval <= 0 {
+		interval = 30 * time.Second
+	}
+
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			info, err := c.js.ConsumerInfo(streamName, c.consumerName)
+			if err != nil {
+				c.logger.Warn("Failed to fetch consumer info", zap.Error(err))
+				continue
+			}
+
+			c.logger.Info("JetStream consumer metrics",
+				zap.String("stream", streamName),
+				zap.String("consumer", c.consumerName),
+				zap.Uint64("num_ack_pending", uint64(info.NumAckPending)),
+				zap.Uint64("num_redelivered", uint64(info.NumRedelivered)),
+				zap.Uint64("num_pending", uint64(info.NumPending)),
+				zap.Uint64("delivered_consumer_seq", uint64(info.Delivered.Consumer)),
+				zap.Uint64("delivered_stream_seq", uint64(info.Delivered.Stream)),
+			)
+		}
+	}
+}
+
+// Shutdown drains the underlying NATS connection gracefully.
+func (c *Consumer) Shutdown(ctx context.Context) error {
+	if c.conn == nil {
+		return nil
+	}
+
+	timeout := c.cfg.Timeouts.Close
+	if timeout <= 0 {
+		timeout = 10 * time.Second
+	}
+
+	closeCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- c.conn.Drain()
+	}()
+
+	select {
+	case err := <-errCh:
+		c.conn.Close()
+		return err
+	case <-closeCtx.Done():
+		c.conn.Close()
+		return fmt.Errorf("nats drain timeout: %w", closeCtx.Err())
 	}
 }
 

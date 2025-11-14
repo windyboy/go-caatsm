@@ -2,11 +2,13 @@ package nats
 
 import (
 	"caatsm/internal/adapter"
+	"caatsm/internal/domain"
 	"caatsm/internal/infra/config"
 	"encoding/json"
 	"fmt"
-	"go.uber.org/zap"
+	"github.com/google/uuid"
 	"github.com/nats-io/nats.go"
+	"go.uber.org/zap"
 )
 
 // Publisher publishes messages to NATS JetStream
@@ -42,8 +44,23 @@ func (p *Publisher) Publish(message interface{}) error {
 		return fmt.Errorf("failed to marshal message: %w", err)
 	}
 
+	// Build JetStream message to attach dedup headers
+	jsMsg := nats.NewMsg(topic)
+	jsMsg.Data = messageBytes
+
+	switch typed := message.(type) {
+	case *domain.ParsedMessage:
+		if typed != nil && typed.Uuid != "" {
+			jsMsg.Header.Set("Nats-Msg-Id", typed.Uuid)
+		} else {
+			jsMsg.Header.Set("Nats-Msg-Id", uuid.NewString())
+		}
+	default:
+		jsMsg.Header.Set("Nats-Msg-Id", uuid.NewString())
+	}
+
 	// Publish to JetStream
-	_, err = p.js.Publish(topic, messageBytes)
+	_, err = p.js.PublishMsg(jsMsg)
 	if err != nil {
 		return fmt.Errorf("failed to publish message: %w", err)
 	}

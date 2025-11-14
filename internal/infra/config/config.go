@@ -6,18 +6,18 @@ import (
 	"strings"
 	"time"
 
-	"github.com/knadh/koanf/v2"
 	"github.com/knadh/koanf/parsers/toml"
-	"github.com/knadh/koanf/providers/file"
 	envprovider "github.com/knadh/koanf/providers/env"
+	"github.com/knadh/koanf/providers/file"
+	"github.com/knadh/koanf/v2"
 )
 
 // Config holds all application configuration
 type Config struct {
-	NATS     NATSConfig     `koanf:"nats"`
-	Postgres PostgresConfig `koanf:"postgres"`
-	App      AppConfig      `koanf:"app"`
-	Log      LogConfig      `koanf:"log"`
+	NATS      NATSConfig      `koanf:"nats"`
+	Postgres  PostgresConfig  `koanf:"postgres"`
+	App       AppConfig       `koanf:"app"`
+	Log       LogConfig       `koanf:"log"`
 	Publisher PublisherConfig `koanf:"publisher"`
 	// Legacy fields for backward compatibility during migration
 	Subscription SubscriptionConfig `koanf:"subscription"`
@@ -26,12 +26,31 @@ type Config struct {
 
 // NATSConfig holds NATS/JetStream configuration
 type NATSConfig struct {
-	URL      string `koanf:"url"`
-	Stream   string `koanf:"stream"`
-	Consumer string `koanf:"consumer"`
+	URL           string              `koanf:"url"`
+	Stream        string              `koanf:"stream"`
+	Consumer      string              `koanf:"consumer"`
+	StreamLimits  StreamLimitsConfig  `koanf:"stream_limits"`
+	ConsumerRules ConsumerRulesConfig `koanf:"consumer"`
 	// Legacy fields
 	Client  string `koanf:"client"`
 	Cluster string `koanf:"cluster"`
+}
+
+// StreamLimitsConfig defines JetStream retention controls.
+type StreamLimitsConfig struct {
+	MaxMsgs  int64         `koanf:"max_msgs"`
+	MaxBytes int64         `koanf:"max_bytes"`
+	MaxAge   time.Duration `koanf:"max_age"`
+	Discard  string        `koanf:"discard"`
+	Storage  string        `koanf:"storage"`
+	Replicas int           `koanf:"replicas"`
+}
+
+// ConsumerRulesConfig captures consumer-level options.
+type ConsumerRulesConfig struct {
+	MaxDeliver    int           `koanf:"max_deliver"`
+	AckWait       time.Duration `koanf:"ack_wait"`
+	MaxAckPending int           `koanf:"max_ack_pending"`
 }
 
 // PostgresConfig holds PostgreSQL configuration
@@ -43,8 +62,9 @@ type PostgresConfig struct {
 
 // AppConfig holds application-level configuration
 type AppConfig struct {
-	BatchSize    int           `koanf:"batch_size"`
-	BatchTimeout time.Duration `koanf:"batch_timeout"`
+	BatchSize       int           `koanf:"batch_size"`
+	BatchTimeout    time.Duration `koanf:"batch_timeout"`
+	MonitorInterval time.Duration `koanf:"monitor_interval"`
 }
 
 // LogConfig holds logging configuration
@@ -112,6 +132,9 @@ func LoadConfig() (*Config, error) {
 	if cfg.App.BatchTimeout == 0 {
 		cfg.App.BatchTimeout = 2 * time.Second
 	}
+	if cfg.App.MonitorInterval == 0 {
+		cfg.App.MonitorInterval = 30 * time.Second
+	}
 	if cfg.Postgres.MaxConns == 0 {
 		cfg.Postgres.MaxConns = 10
 	}
@@ -129,6 +152,37 @@ func LoadConfig() (*Config, error) {
 	}
 	if cfg.NATS.Consumer == "" {
 		cfg.NATS.Consumer = "telegram-consumer"
+	}
+	if cfg.NATS.StreamLimits.MaxMsgs == 0 {
+		cfg.NATS.StreamLimits.MaxMsgs = 100000
+	}
+	if cfg.NATS.StreamLimits.MaxBytes == 0 {
+		cfg.NATS.StreamLimits.MaxBytes = 64 * 1024 * 1024
+	}
+	if cfg.NATS.StreamLimits.MaxAge == 0 {
+		cfg.NATS.StreamLimits.MaxAge = 24 * time.Hour
+	}
+	if cfg.NATS.StreamLimits.Discard == "" {
+		cfg.NATS.StreamLimits.Discard = "old"
+	}
+	if cfg.NATS.StreamLimits.Storage == "" {
+		cfg.NATS.StreamLimits.Storage = "file"
+	}
+	if cfg.NATS.StreamLimits.Replicas == 0 {
+		cfg.NATS.StreamLimits.Replicas = 1
+	}
+	if cfg.NATS.ConsumerRules.MaxDeliver == 0 {
+		cfg.NATS.ConsumerRules.MaxDeliver = 5
+	}
+	if cfg.NATS.ConsumerRules.AckWait == 0 {
+		if cfg.Timeouts.AckWait != 0 {
+			cfg.NATS.ConsumerRules.AckWait = cfg.Timeouts.AckWait
+		} else {
+			cfg.NATS.ConsumerRules.AckWait = 30 * time.Second
+		}
+	}
+	if cfg.NATS.ConsumerRules.MaxAckPending == 0 {
+		cfg.NATS.ConsumerRules.MaxAckPending = 1024
 	}
 
 	// Validate configuration
@@ -159,6 +213,30 @@ func (c *Config) Validate() error {
 	if c.App.BatchTimeout <= 0 {
 		return fmt.Errorf("app.batch_timeout must be greater than 0")
 	}
+	if c.App.MonitorInterval <= 0 {
+		return fmt.Errorf("app.monitor_interval must be greater than 0")
+	}
+	if c.NATS.StreamLimits.MaxMsgs < 0 {
+		return fmt.Errorf("nats.stream_limits.max_msgs must be >= 0")
+	}
+	if c.NATS.StreamLimits.MaxBytes < 0 {
+		return fmt.Errorf("nats.stream_limits.max_bytes must be >= 0")
+	}
+	if c.NATS.StreamLimits.MaxAge < 0 {
+		return fmt.Errorf("nats.stream_limits.max_age must be >= 0")
+	}
+	if c.NATS.StreamLimits.Replicas <= 0 {
+		return fmt.Errorf("nats.stream_limits.replicas must be greater than 0")
+	}
+	if c.NATS.ConsumerRules.MaxDeliver <= 0 {
+		return fmt.Errorf("nats.consumer.max_deliver must be greater than 0")
+	}
+	if c.NATS.ConsumerRules.AckWait <= 0 {
+		return fmt.Errorf("nats.consumer.ack_wait must be greater than 0")
+	}
+	if c.NATS.ConsumerRules.MaxAckPending < 0 {
+		return fmt.Errorf("nats.consumer.max_ack_pending must be >= 0")
+	}
 	return nil
 }
 
@@ -166,4 +244,3 @@ func (c *Config) Validate() error {
 func ProvideConfig() (*Config, error) {
 	return LoadConfig()
 }
-

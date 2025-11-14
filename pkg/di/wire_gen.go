@@ -32,7 +32,11 @@ func InitializeApp() (*app.MessageProcessor, *nats.Consumer, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	natsJetStreamContext, err := nats.ProvideJetStream(configConfig, zapLogger)
+	natsConn, err := nats.ProvideNATSConn(configConfig, zapLogger)
+	if err != nil {
+		return nil, nil, err
+	}
+	natsJetStreamContext, err := nats.ProvideJetStream(natsConn, configConfig, zapLogger)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -42,7 +46,7 @@ func InitializeApp() (*app.MessageProcessor, *nats.Consumer, error) {
 	}
 	parserParser := parser.ProvideParser()
 	appMessageProcessor := app.NewMessageProcessor(parserParser, adapterRepository, adapterPublisher, zapLogger)
-	natsConsumer, err := nats.ProvideConsumer(natsJetStreamContext, appMessageProcessor, configConfig, zapLogger)
+	natsConsumer, err := nats.ProvideConsumer(natsConn, natsJetStreamContext, appMessageProcessor, configConfig, zapLogger)
 	if err != nil {
 		return nil, nil, err
 	}

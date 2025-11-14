@@ -3,10 +3,12 @@ package main
 import (
 	"caatsm/pkg/di"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/urfave/cli/v2"
 )
@@ -39,7 +41,7 @@ func setupApp() *cli.App {
 						Name:    "topic",
 						Aliases: []string{"t"},
 						Usage:   "Nats topic to listen to",
-						Value:   "Telegram.Serial",
+						Value:   "telegram.serial",
 						EnvVars: []string{"NATS_SUBJECT"},
 					},
 				},
@@ -72,18 +74,38 @@ func executeListen(c *cli.Context) error {
 		}
 	}()
 
+	var runErr error
+
 	// Wait for signal or error
 	select {
 	case sig := <-sigChan:
 		fmt.Printf("Received signal: %v, shutting down...\n", sig)
 		cancel()
 	case err := <-errChan:
-		return err
+		cancel()
+		if err != nil && !errors.Is(err, context.Canceled) {
+			runErr = err
+		}
+	}
+
+	waitTimeout := 5 * time.Second
+	select {
+	case err := <-errChan:
+		if err != nil && !errors.Is(err, context.Canceled) {
+			runErr = err
+		}
+	case <-time.After(waitTimeout):
+		fmt.Printf("Timed out waiting for consumer shutdown after %s\n", waitTimeout)
+	}
+
+	if err := consumer.Shutdown(context.Background()); err != nil {
+		if runErr == nil {
+			runErr = fmt.Errorf("failed to drain NATS connection: %w", err)
+		}
 	}
 
 	// Note: processor is initialized but not directly used here
-	// It's used by the consumer internally
 	_ = processor
 
-	return nil
+	return runErr
 }

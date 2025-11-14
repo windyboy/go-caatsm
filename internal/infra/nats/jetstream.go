@@ -3,14 +3,14 @@ package nats
 import (
 	"caatsm/internal/infra/config"
 	"fmt"
-	"go.uber.org/zap"
+	"strings"
+
 	"github.com/nats-io/nats.go"
-	"time"
+	"go.uber.org/zap"
 )
 
-// ProvideJetStream creates a NATS JetStream connection
-func ProvideJetStream(cfg *config.Config, logger *zap.Logger) (nats.JetStreamContext, error) {
-	// Connect to NATS
+// ProvideNATSConn creates a reusable NATS connection.
+func ProvideNATSConn(cfg *config.Config, logger *zap.Logger) (*nats.Conn, error) {
 	nc, err := nats.Connect(
 		cfg.NATS.URL,
 		nats.RetryOnFailedConnect(true),
@@ -29,6 +29,11 @@ func ProvideJetStream(cfg *config.Config, logger *zap.Logger) (nats.JetStreamCon
 		return nil, fmt.Errorf("failed to connect to NATS: %w", err)
 	}
 
+	return nc, nil
+}
+
+// ProvideJetStream creates a NATS JetStream context using an existing connection.
+func ProvideJetStream(nc *nats.Conn, cfg *config.Config, logger *zap.Logger) (nats.JetStreamContext, error) {
 	// Get JetStream context
 	js, err := nc.JetStream()
 	if err != nil {
@@ -43,13 +48,30 @@ func ProvideJetStream(cfg *config.Config, logger *zap.Logger) (nats.JetStreamCon
 		subject = "telegram.>"
 	}
 
+	streamLimits := cfg.NATS.StreamLimits
+	storage := nats.FileStorage
+	switch strings.ToLower(streamLimits.Storage) {
+	case "memory":
+		storage = nats.MemoryStorage
+	case "file":
+		storage = nats.FileStorage
+	}
+
+	discard := nats.DiscardOld
+	if strings.EqualFold(streamLimits.Discard, "new") {
+		discard = nats.DiscardNew
+	}
+
 	streamConfig := &nats.StreamConfig{
 		Name:      streamName,
 		Subjects:  []string{subject},
 		Retention: nats.LimitsPolicy,
-		MaxAge:    24 * time.Hour,
-		Storage:   nats.FileStorage,
-		Replicas:  1,
+		MaxMsgs:   streamLimits.MaxMsgs,
+		MaxBytes:  streamLimits.MaxBytes,
+		MaxAge:    streamLimits.MaxAge,
+		Discard:   discard,
+		Storage:   storage,
+		Replicas:  streamLimits.Replicas,
 	}
 
 	_, err = js.AddStream(streamConfig)

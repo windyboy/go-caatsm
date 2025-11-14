@@ -1,9 +1,9 @@
 package app
 
 import (
-	"context"
 	"caatsm/internal/adapter"
 	"caatsm/internal/adapter/parser"
+	"context"
 	"fmt"
 	"go.uber.org/zap"
 )
@@ -34,13 +34,13 @@ func NewMessageProcessor(
 // Handle processes a message
 func (p *MessageProcessor) Handle(ctx context.Context, raw []byte, msgID string) error {
 	if raw == nil || len(raw) == 0 {
-		return fmt.Errorf("empty message")
+		return Permanent(fmt.Errorf("empty message"))
 	}
 
 	// Parse the message
 	parsed := p.parser.Parse(string(raw))
 	if parsed == nil {
-		return fmt.Errorf("parser returned nil")
+		return Permanent(fmt.Errorf("parser returned nil"))
 	}
 
 	// Set the message ID from NATS

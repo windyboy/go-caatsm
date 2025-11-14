@@ -78,11 +78,24 @@ url = "nats://localhost:4222"
 stream = "TELEGRAM"
 consumer = "telegram-consumer"
 
+[nats.stream_limits]
+max_msgs = 100000
+max_bytes = 67108864
+max_age = "24h"
+discard = "old"
+storage = "file"
+replicas = 1
+
+[nats.consumer]
+max_deliver = 5
+ack_wait = "30s"
+max_ack_pending = 1024
+
 [subscription]
-topic = "Telegram.Serial"
+topic = "telegram.serial"
 
 [publisher]
-topic = "Telegram.Json"
+topic = "telegram.json"
 
 [postgres]
 url = "postgres://user:password@localhost:5432/aviation?sslmode=disable"
@@ -92,6 +105,7 @@ min_conns = 2
 [app]
 batch_size = 50
 batch_timeout = "2s"
+monitor_interval = "30s"
 
 [log]
 level = "info"
@@ -147,7 +161,7 @@ task run-dev
 
 Flags:
   -n, --nats string      Nats server address (default: "nats://localhost:4222")
-  -t, --topic string     Nats topic to listen to (default: "Telegram.Serial")
+  -t, --topic string     Nats topic to listen to (default: "telegram.serial")
 ```
 
 ## Development

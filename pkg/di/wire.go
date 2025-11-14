@@ -19,27 +19,27 @@ func InitializeApp() (*app.MessageProcessor, *nats.Consumer, error) {
 	wire.Build(
 		// Config
 		config.ProvideConfig,
-		
+
 		// Logger
 		log.ProvideLogger,
-		
+
 		// Database
 		postgres.ProvideDB,
 		postgres.ProvideRepository,
-		
+
 		// NATS
+		nats.ProvideNATSConn,
 		nats.ProvideJetStream,
 		nats.ProvidePublisher,
-		
+
 		// Parser
 		parser.ProvideParser,
-		
+
 		// App
 		app.NewMessageProcessor,
-		
+
 		// Consumer
 		nats.ProvideConsumer,
 	)
 	return nil, nil, nil
 }
-
