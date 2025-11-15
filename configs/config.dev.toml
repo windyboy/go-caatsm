@@ -17,10 +17,15 @@ replicas = 1
 max_deliver = 5
 ack_wait = "30s"
 max_ack_pending = 1024
+deliver_policy = "all"
+replay_policy = "instant"
+backoff = ["5s", "30s", "2m"]
+start_sequence = 0
+start_time = ""
 
 [subscription]
 topic = "telegram.serial"
-queue = "tele-queue"
+queue_group = "tele-queue"
 
 [publisher]
 topic = "telegram.json"
@@ -45,6 +50,7 @@ monitor_interval = "30s"
 level = "info"
 format = "json"
 
-[hasura]
-endpoint = "http://localhost:8080/v1/graphql"
-secret  = "aviation-test"
+[telemetry]
+enabled = false
+endpoint = "http://otel-collector:4318"
+insecure = true

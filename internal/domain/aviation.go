@@ -85,6 +85,18 @@ NeedDispatch: false.
 */
 
 // ParsedMessage holds the parsed data from an aviation message
+type MessageStatus string
+
+const (
+	MessageStatusUnknown        MessageStatus = "unknown"
+	MessageStatusParsed         MessageStatus = "parsed"
+	MessageStatusHeaderError    MessageStatus = "header_error"
+	MessageStatusBodyError      MessageStatus = "body_error"
+	MessageStatusRepositoryFail MessageStatus = "repository_error"
+	MessageStatusPublishFail    MessageStatus = "publish_error"
+)
+
+// ParsedMessage holds the parsed data from an aviation message
 type ParsedMessage struct {
 	// StartIndicator     string      `json:"startIndicator"`               // 电报开始标识: The start of the message indicator (e.g., 'ZCZC').
 	Uuid               string      `json:"uuid"`
@@ -105,7 +117,8 @@ type ParsedMessage struct {
 	NeedDispatch       bool        `json:"needDispatch"`           // 需要分发: Indicates if the message needs to be dispatched.
 	Parsed             bool        `json:"parsed"`                 // 解析: Indicates if the message has been parsed.
 	Comments           string      `json:"comments,omitempty"`     // 备注: Additional comments.
-
+	Status             MessageStatus
+	ErrorReason        string `json:"errorReason,omitempty"`
 }
 
 // NewParsedMessage initializes a ParsedMessage with default values
@@ -113,6 +126,7 @@ func NewParsedMessage() *ParsedMessage {
 	return &ParsedMessage{
 		// SecondaryAddresses: []string{},
 		Parsed: false,
+		Status: MessageStatusUnknown,
 	}
 }
 

@@ -3,35 +3,38 @@ package config
 import (
 	"os"
 	"path/filepath"
-	"testing"
 	"time"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 )
 
-func TestLoadConfig_DefaultAckWait(t *testing.T) {
-	t.Setenv("GO_ENV", "testdefaults")
+var _ = Describe("LoadConfig", func() {
+	var (
+		originalWD string
+	)
 
-	wd, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("failed to get working dir: %v", err)
-	}
-	repoRoot := filepath.Clean(filepath.Join(wd, "..", "..", ".."))
-	if err := os.Chdir(repoRoot); err != nil {
-		t.Fatalf("failed to chdir to repo root: %v", err)
-	}
-	t.Cleanup(func() {
-		_ = os.Chdir(wd)
+	BeforeEach(func() {
+		Expect(os.Setenv("GO_ENV", "testdefaults")).To(Succeed())
+
+		var err error
+		originalWD, err = os.Getwd()
+		Expect(err).NotTo(HaveOccurred())
+
+		repoRoot := filepath.Clean(filepath.Join(originalWD, "..", "..", ".."))
+		Expect(os.Chdir(repoRoot)).To(Succeed())
 	})
 
-	cfg, err := LoadConfig()
-	if err != nil {
-		t.Fatalf("failed to load config: %v", err)
-	}
+	AfterEach(func() {
+		Expect(os.Chdir(originalWD)).To(Succeed())
+	})
 
-	want := 30 * time.Second
-	if cfg.Timeouts.AckWait != want {
-		t.Fatalf("expected timeouts.ack_wait to default to %v, got %v", want, cfg.Timeouts.AckWait)
-	}
-	if cfg.NATS.ConsumerRules.AckWait != want {
-		t.Fatalf("expected consumer ack_wait to default to %v, got %v", want, cfg.NATS.ConsumerRules.AckWait)
-	}
-}
+	It("defaults ack waits when not provided", func() {
+		cfg, err := LoadConfig()
+		Expect(err).NotTo(HaveOccurred())
+
+		want := 30 * time.Second
+		Expect(cfg.Timeouts.AckWait).To(Equal(want))
+		Expect(cfg.NATS.ConsumerRules.AckWait).To(Equal(want))
+	})
+})

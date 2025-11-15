@@ -2,32 +2,24 @@ package app
 
 import (
 	"errors"
-	"testing"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 )
 
-func TestPermanentWrapsError(t *testing.T) {
-	base := errors.New("boom")
-	perr := Permanent(base)
+var _ = Describe("Permanent errors", func() {
+	It("wraps errors and reports permanence", func() {
+		base := errors.New("boom")
+		perr := Permanent(base)
 
-	if perr == nil {
-		t.Fatalf("expected wrapped error, got nil")
-	}
-	if !IsPermanent(perr) {
-		t.Fatalf("expected IsPermanent to be true")
-	}
-	if !errors.Is(perr, base) {
-		t.Fatalf("expected wrapped error to unwrap to base")
-	}
-	if errors.Is(base, perr) {
-		t.Fatalf("expected base not to consider wrapper as same")
-	}
-}
+		Expect(perr).NotTo(BeNil())
+		Expect(IsPermanent(perr)).To(BeTrue())
+		Expect(errors.Is(perr, base)).To(BeTrue())
+		Expect(errors.Is(base, perr)).To(BeFalse())
+	})
 
-func TestPermanentNil(t *testing.T) {
-	if Permanent(nil) != nil {
-		t.Fatalf("Permanent(nil) should return nil")
-	}
-	if IsPermanent(nil) {
-		t.Fatalf("IsPermanent(nil) should be false")
-	}
-}
+	It("treats nil as non-permanent", func() {
+		Expect(Permanent(nil)).To(BeNil())
+		Expect(IsPermanent(nil)).To(BeFalse())
+	})
+})

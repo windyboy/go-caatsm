@@ -8,10 +8,21 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
 	"github.com/urfave/cli/v2"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+	"go.opentelemetry.io/otel/propagation"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+	"go.opentelemetry.io/otel/sdk/resource"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 )
 
 func main() {
@@ -32,18 +43,59 @@ func setupApp() *cli.App {
 				Usage: "Listen to nats messages",
 				Flags: []cli.Flag{
 					&cli.StringFlag{
-						Name:    "nats",
+						Name:    "nats-url",
 						Aliases: []string{"n"},
-						Usage:   "Nats server address",
-						Value:   "nats://localhost:4222",
+						Usage:   "NATS server address",
 						EnvVars: []string{"NATS_SERVER"},
 					},
 					&cli.StringFlag{
-						Name:    "topic",
+						Name:    "subject",
 						Aliases: []string{"t"},
-						Usage:   "Nats topic to listen to",
-						Value:   "telegram.serial",
+						Usage:   "NATS subject to listen to",
 						EnvVars: []string{"NATS_SUBJECT"},
+					},
+					&cli.StringFlag{
+						Name:  "stream",
+						Usage: "NATS JetStream stream name",
+					},
+					&cli.StringFlag{
+						Name:  "consumer",
+						Usage: "NATS JetStream durable consumer",
+					},
+					&cli.StringFlag{
+						Name:  "publisher-topic",
+						Usage: "Subject used by the publisher",
+					},
+					&cli.StringFlag{
+						Name:  "postgres-url",
+						Usage: "PostgreSQL connection URL",
+						EnvVars: []string{
+							"POSTGRES_URL",
+						},
+					},
+					&cli.StringFlag{
+						Name:  "log-level",
+						Usage: "Logger level (debug, info, warn, error)",
+					},
+					&cli.StringFlag{
+						Name:  "replay-from",
+						Usage: "Override deliver policy: all|new|last|seq:<n>|time:<RFC3339>",
+					},
+					&cli.DurationFlag{
+						Name:  "ack-wait",
+						Usage: "Override consumer ack wait duration",
+					},
+					&cli.BoolFlag{
+						Name:  "telemetry-enabled",
+						Usage: "Enable OpenTelemetry exporters",
+					},
+					&cli.StringFlag{
+						Name:  "telemetry-endpoint",
+						Usage: "OpenTelemetry collector OTLP endpoint",
+					},
+					&cli.BoolFlag{
+						Name:  "telemetry-insecure",
+						Usage: "Send OTLP data without TLS",
 					},
 				},
 				Action: executeListen,
@@ -58,12 +110,16 @@ func executeListen(c *cli.Context) error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	if flagURL := c.String("nats"); flagURL != "" {
-		cfg.NATS.URL = flagURL
-	}
+	applyCLIOverrides(cfg, c)
 
-	if flagTopic := c.String("topic"); flagTopic != "" {
-		cfg.Subscription.Topic = flagTopic
+	shutdownTelemetry := func(context.Context) error { return nil }
+	if cfg.Telemetry.Enabled {
+		var telErr error
+		shutdownTelemetry, telErr = initTelemetry(context.Background(), cfg)
+		if telErr != nil {
+			return fmt.Errorf("failed to initialize telemetry: %w", telErr)
+		}
+		defer shutdownTelemetry(context.Background())
 	}
 
 	// Initialize dependencies using Wire
@@ -122,4 +178,163 @@ func executeListen(c *cli.Context) error {
 	_ = processor
 
 	return runErr
+}
+
+func applyCLIOverrides(cfg *config.Config, c *cli.Context) {
+	if cfg == nil || c == nil {
+		return
+	}
+	if flagURL := c.String("nats-url"); flagURL != "" {
+		cfg.NATS.URL = flagURL
+	}
+	if flagTopic := c.String("subject"); flagTopic != "" {
+		cfg.Subscription.Topic = flagTopic
+	}
+	if stream := c.String("stream"); stream != "" {
+		cfg.NATS.Stream = stream
+	}
+	if consumer := c.String("consumer"); consumer != "" {
+		cfg.NATS.Consumer = consumer
+	}
+	if publisherTopic := c.String("publisher-topic"); publisherTopic != "" {
+		cfg.Publisher.Topic = publisherTopic
+	}
+	if pgURL := c.String("postgres-url"); pgURL != "" {
+		cfg.Postgres.URL = pgURL
+	}
+	if logLevel := c.String("log-level"); logLevel != "" {
+		cfg.Log.Level = logLevel
+	}
+	if replay := c.String("replay-from"); replay != "" {
+		applyReplayOverride(cfg, replay)
+	}
+	if c.IsSet("ack-wait") {
+		if ack := c.Duration("ack-wait"); ack > 0 {
+			cfg.Timeouts.AckWait = ack
+			cfg.NATS.ConsumerRules.AckWait = ack
+		}
+	}
+	if c.IsSet("telemetry-enabled") {
+		cfg.Telemetry.Enabled = c.Bool("telemetry-enabled")
+	}
+	if endpoint := c.String("telemetry-endpoint"); endpoint != "" {
+		cfg.Telemetry.Endpoint = endpoint
+	}
+	if c.IsSet("telemetry-insecure") {
+		cfg.Telemetry.Insecure = c.Bool("telemetry-insecure")
+	}
+}
+
+func applyReplayOverride(cfg *config.Config, value string) {
+	if cfg == nil {
+		return
+	}
+	lower := strings.ToLower(strings.TrimSpace(value))
+	switch {
+	case lower == "new":
+		cfg.NATS.ConsumerRules.DeliverPolicy = "new"
+		cfg.NATS.ConsumerRules.StartSequence = 0
+		cfg.NATS.ConsumerRules.StartTime = ""
+	case lower == "all":
+		cfg.NATS.ConsumerRules.DeliverPolicy = "all"
+		cfg.NATS.ConsumerRules.StartSequence = 0
+		cfg.NATS.ConsumerRules.StartTime = ""
+	case lower == "last":
+		cfg.NATS.ConsumerRules.DeliverPolicy = "last"
+		cfg.NATS.ConsumerRules.StartSequence = 0
+		cfg.NATS.ConsumerRules.StartTime = ""
+	case lower == "last_per_subject":
+		cfg.NATS.ConsumerRules.DeliverPolicy = "last_per_subject"
+		cfg.NATS.ConsumerRules.StartSequence = 0
+		cfg.NATS.ConsumerRules.StartTime = ""
+	case strings.HasPrefix(lower, "seq:"):
+		seqStr := strings.TrimPrefix(lower, "seq:")
+		if seq, err := strconv.ParseUint(seqStr, 10, 64); err == nil {
+			cfg.NATS.ConsumerRules.DeliverPolicy = "sequence"
+			cfg.NATS.ConsumerRules.StartSequence = seq
+			cfg.NATS.ConsumerRules.StartTime = ""
+		}
+	case strings.HasPrefix(lower, "time:"):
+		ts := strings.TrimSpace(value[5:])
+		if _, err := time.Parse(time.RFC3339, ts); err == nil {
+			cfg.NATS.ConsumerRules.DeliverPolicy = "time"
+			cfg.NATS.ConsumerRules.StartSequence = 0
+			cfg.NATS.ConsumerRules.StartTime = ts
+		}
+	}
+}
+
+func initTelemetry(ctx context.Context, cfg *config.Config) (func(context.Context) error, error) {
+	if cfg == nil || !cfg.Telemetry.Enabled {
+		return func(context.Context) error { return nil }, nil
+	}
+	if cfg.Telemetry.Endpoint == "" {
+		return nil, fmt.Errorf("telemetry endpoint is required when telemetry.enabled=true")
+	}
+
+	traceOpts := []otlptracehttp.Option{
+		otlptracehttp.WithEndpoint(cfg.Telemetry.Endpoint),
+		otlptracehttp.WithURLPath("/v1/traces"),
+	}
+	metricOpts := []otlpmetrichttp.Option{
+		otlpmetrichttp.WithEndpoint(cfg.Telemetry.Endpoint),
+		otlpmetrichttp.WithURLPath("/v1/metrics"),
+	}
+	if cfg.Telemetry.Insecure {
+		traceOpts = append(traceOpts, otlptracehttp.WithInsecure())
+		metricOpts = append(metricOpts, otlpmetrichttp.WithInsecure())
+	}
+
+	traceExporter, err := otlptracehttp.New(ctx, traceOpts...)
+	if err != nil {
+		return nil, fmt.Errorf("init trace exporter: %w", err)
+	}
+	metricExporter, err := otlpmetrichttp.New(ctx, metricOpts...)
+	if err != nil {
+		return nil, fmt.Errorf("init metric exporter: %w", err)
+	}
+
+	env := os.Getenv("GO_ENV")
+	if env == "" {
+		env = "dev"
+	}
+	res, err := resource.New(ctx,
+		resource.WithFromEnv(),
+		resource.WithProcess(),
+		resource.WithOS(),
+		resource.WithHost(),
+		resource.WithAttributes(
+			semconv.ServiceName("caatsm"),
+			attribute.String("deployment.environment", env),
+		),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("build telemetry resource: %w", err)
+	}
+
+	tp := sdktrace.NewTracerProvider(
+		sdktrace.WithBatcher(traceExporter),
+		sdktrace.WithResource(res),
+	)
+	mp := sdkmetric.NewMeterProvider(
+		sdkmetric.WithResource(res),
+		sdkmetric.WithReader(sdkmetric.NewPeriodicReader(metricExporter)),
+	)
+
+	otel.SetTracerProvider(tp)
+	otel.SetMeterProvider(mp)
+	otel.SetTextMapPropagator(propagation.TraceContext{})
+
+	shutdown := func(ctx context.Context) error {
+		errs := []error{}
+		if err := mp.Shutdown(ctx); err != nil {
+			errs = append(errs, err)
+		}
+		if err := tp.Shutdown(ctx); err != nil {
+			errs = append(errs, err)
+		}
+		return errors.Join(errs...)
+	}
+
+	return shutdown, nil
 }

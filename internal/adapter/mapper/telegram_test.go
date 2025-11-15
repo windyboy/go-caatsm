@@ -1,71 +1,68 @@
 package mapper
 
 import (
-	"testing"
 	"time"
 
 	"caatsm/internal/domain"
 
 	"github.com/google/uuid"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 )
 
-func TestTelegramMapper_ToDBRow_GeneratesUUIDWhenEmpty(t *testing.T) {
-	mapper := NewTelegramMapper()
-	msg := &domain.ParsedMessage{}
+var _ = Describe("TelegramMapper", func() {
+	var mapper *TelegramMapper
 
-	row, err := mapper.ToDBRow(msg)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	BeforeEach(func() {
+		mapper = NewTelegramMapper()
+	})
 
-	value, ok := row[0].(uuid.UUID)
-	if !ok {
-		t.Fatalf("expected first column to be uuid.UUID, got %T", row[0])
-	}
-	if value == uuid.Nil {
-		t.Fatalf("expected generated uuid to be non-nil")
-	}
-}
+	Describe("ToDBRow", func() {
+		It("generates a UUID when missing", func() {
+			msg := &domain.ParsedMessage{}
 
-func TestTelegramMapper_FromDBRow_RoundTrip(t *testing.T) {
-	mapper := NewTelegramMapper()
-	now := time.Now().UTC()
+			row, err := mapper.ToDBRow(msg)
+			Expect(err).NotTo(HaveOccurred())
 
-	original := &domain.ParsedMessage{
-		Uuid:               uuid.NewString(),
-		MessageID:          "TMQ1324",
-		DateTime:           "150631",
-		PriorityIndicator:  "FF",
-		PrimaryAddress:     "ZBTJZPZX",
-		SecondaryAddresses: "150630 ZBACZQZX",
-		Originator:         "ORIGIN",
-		OriginatorDateTime: "150630",
-		Category:           "FPL",
-		Content:            "raw telegram",
-		BodyData:           map[string]string{"key": "value"},
-		ReceivedAt:         now,
-		ParsedAt:           now,
-		DispatchedAt:       now,
-		NeedDispatch:       true,
-	}
+			value, ok := row[0].(uuid.UUID)
+			Expect(ok).To(BeTrue())
+			Expect(value).NotTo(Equal(uuid.Nil))
+		})
+	})
 
-	row, err := mapper.ToDBRow(original)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	Describe("FromDBRow", func() {
+		It("round-trips telegram data", func() {
+			now := time.Now().UTC()
+			original := &domain.ParsedMessage{
+				Uuid:               uuid.NewString(),
+				MessageID:          "TMQ1324",
+				DateTime:           "150631",
+				PriorityIndicator:  "FF",
+				PrimaryAddress:     "ZBTJZPZX",
+				SecondaryAddresses: "150630 ZBACZQZX",
+				Originator:         "ORIGIN",
+				OriginatorDateTime: "150630",
+				Category:           "FPL",
+				Content:            "raw telegram",
+				BodyData:           map[string]string{"key": "value"},
+				ReceivedAt:         now,
+				ParsedAt:           now,
+				DispatchedAt:       now,
+				NeedDispatch:       true,
+				Status:             domain.MessageStatusParsed,
+			}
 
-	roundTrip, err := mapper.FromDBRow(row)
-	if err != nil {
-		t.Fatalf("unexpected error reading row: %v", err)
-	}
+			row, err := mapper.ToDBRow(original)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(row).To(HaveLen(17))
 
-	if roundTrip.Uuid != original.Uuid {
-		t.Fatalf("expected uuid %s, got %s", original.Uuid, roundTrip.Uuid)
-	}
-	if roundTrip.MessageID != original.MessageID {
-		t.Fatalf("expected message_id %s, got %s", original.MessageID, roundTrip.MessageID)
-	}
-	if roundTrip.NeedDispatch != original.NeedDispatch {
-		t.Fatalf("expected need_dispatch %v, got %v", original.NeedDispatch, roundTrip.NeedDispatch)
-	}
-}
+			roundTrip, err := mapper.FromDBRow(row)
+			Expect(err).NotTo(HaveOccurred())
+
+			Expect(roundTrip.Uuid).To(Equal(original.Uuid))
+			Expect(roundTrip.MessageID).To(Equal(original.MessageID))
+			Expect(roundTrip.NeedDispatch).To(Equal(original.NeedDispatch))
+			Expect(roundTrip.Status).To(Equal(original.Status))
+		})
+	})
+})

@@ -80,6 +80,8 @@ Configuration is loaded from TOML files and environment variables. The configura
 url = "nats://localhost:4222"
 stream = "TELEGRAM"
 consumer = "telegram-consumer"
+client = "serial-client"
+cluster = "tele-cluster"
 
 [nats.stream_limits]
 max_msgs = 100000
@@ -93,10 +95,16 @@ replicas = 1
 max_deliver = 5
 ack_wait = "30s"
 max_ack_pending = 1024
+deliver_policy = "all"        # all,new,last,last_per_subject,sequence,time
+replay_policy = "instant"     # instant or original
+backoff = ["5s", "30s", "2m"] # optional JetStream redelivery delays
+start_sequence = 0
+start_time = ""
 
 [subscription]
 # Optional. Defaults to "telegram.>" when omitted.
 topic = "telegram.serial"
+queue_group = "tele-queue"
 
 [publisher]
 topic = "telegram.json"
@@ -114,6 +122,11 @@ monitor_interval = "30s"
 [log]
 level = "info"
 format = "json"
+
+[telemetry]
+enabled = false
+endpoint = "http://otel-collector:4318"
+insecure = true
 
 ### Timeouts and Ack Wait
 
@@ -168,9 +181,47 @@ task run-dev
 ./bin/receiver listen --help
 
 Flags:
-  -n, --nats string      Nats server address (default: "nats://localhost:4222")
-  -t, --topic string     Nats topic to listen to (default: "telegram.serial")
+  -n, --nats-url string          NATS server address
+  -t, --subject string           NATS subject to listen to
+      --stream string            JetStream stream name
+      --consumer string          JetStream durable consumer
+      --publisher-topic string   Subject used by the publisher
+      --postgres-url string      PostgreSQL connection URL
+      --log-level string         Logger level (debug|info|warn|error)
+      --replay-from string       Deliver policy override (all|new|last|seq:<n>|time:<RFC3339>)
+      --ack-wait duration        Ack wait override (e.g. 45s)
+      --telemetry-enabled        Enable OpenTelemetry exporters
+      --telemetry-endpoint string
+                                 OTLP collector endpoint
+      --telemetry-insecure       Send OTLP traffic without TLS
 ```
+
+Critical overrides stay available through CLI flags; advanced tuning such as stream retention, consumer backoff, and copy counts are configured via the TOML file or `CAATSM_` environment variables.
+
+| CLI flag            | Config key             | Purpose                                |
+|---------------------|------------------------|----------------------------------------|
+| `--nats-url`        | `nats.url`             | Point to a different NATS cluster      |
+| `--subject`         | `subscription.topic`   | Change the subscribed subject filter   |
+| `--stream`          | `nats.stream`          | Bind to another JetStream stream       |
+| `--consumer`        | `nats.consumer`        | Override the durable consumer name     |
+| `--publisher-topic` | `publisher.topic`      | Publish parsed output to a new subject |
+| `--postgres-url`    | `postgres.url`         | Redirect persistence to another DB     |
+| `--log-level`       | `log.level`            | Adjust runtime logging verbosity       |
+| `--telemetry-*`     | `telemetry.*`          | Toggle tracing/metrics exporters       |
+
+#### Replay & Backoff
+
+- `--replay-from seq:12345` replays from a specific JetStream sequence, while `--replay-from time:2024-11-15T08:00:00Z` starts at a timestamp.
+- Configure server-side retry delays with `[nats.consumer].backoff = ["5s", "30s", "2m"]`; each duration becomes the delay before the next delivery attempt.
+- Combine `backoff` with `--ack-wait` to increase acknowledgement windows (e.g., `--ack-wait 2m`).
+
+### Telemetry
+
+- Enable tracing/metrics via `[telemetry] enabled = true` and set `endpoint` to your OTLP/HTTP collector (e.g., `http://otel-collector:4318`).
+- CLI overrides:
+  - `--telemetry-enabled` flips the feature on/off.
+  - `--telemetry-endpoint` and `--telemetry-insecure` adjust the OTLP HTTP endpoint and TLS behavior.
+- When enabled the app emits OpenTelemetry traces (parser/repository/publisher spans) and JetStream metrics (ack pending, deliveries) for dashboards and alerts.
 
 ## Development
 
@@ -196,6 +247,8 @@ Dependencies are managed using Google Wire. To add a new dependency:
 2. Add it to `pkg/di/wire.go`
 3. Run `wire ./pkg/di` to regenerate `wire_gen.go`
 
+> If the `wire` binary is missing, install it with `go install github.com/google/wire/cmd/wire@v0.7.0` and ensure `$GOPATH/bin` is on your `PATH` (or run it directly via the absolute path).
+
 ### Testing
 
 ```bash
@@ -204,6 +257,9 @@ go test ./...
 
 # Run tests with coverage
 task coverage
+
+# Run all Ginkgo suites (requires go install github.com/onsi/ginkgo/v2/ginkgo@latest)
+ginkgo -r
 ```
 
 ## Message Flow
@@ -215,6 +271,19 @@ task coverage
    - Publishes the parsed message to the output topic via Publisher
 3. **ACK/NAK** is sent based on processing success/failure
 4. **Retry Logic** handles transient failures automatically
+
+### Failure Buckets
+
+Messages that cannot be parsed or fail to publish are written to `aviation.telegrams_raw` with a status:
+
+| Status                | Description                                      |
+|-----------------------|--------------------------------------------------|
+| `parsed`              | Successfully parsed and stored                   |
+| `header_error`        | Header invalid (missing start indicator, etc.)   |
+| `body_error`          | Body pattern did not match any known format      |
+| `publish_error`       | Downstream publisher returned an error           |
+
+Each entry stores the raw payload, received timestamp, and metadata to aid replay or manual inspection.
 
 ## Message Parsing
 

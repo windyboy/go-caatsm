@@ -6,9 +6,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/nats-io/nats.go"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 )
 
@@ -21,6 +26,11 @@ type Consumer struct {
 	logger       *zap.Logger
 	subject      string
 	consumerName string
+	meter        metric.Meter
+	ackPending   metric.Int64Histogram
+	redelivered  metric.Int64Histogram
+	pending      metric.Int64Histogram
+	delivered    metric.Int64Histogram
 }
 
 // ProvideConsumer creates a NATS consumer
@@ -47,6 +57,7 @@ func ProvideConsumer(
 		subject:      subject,
 		consumerName: consumerName,
 	}
+	consumer.initMetrics()
 
 	// Create consumer if it doesn't exist
 	if err := consumer.ensureConsumer(); err != nil {
@@ -74,12 +85,28 @@ func (c *Consumer) ensureConsumer() error {
 
 	consumerConfig := &nats.ConsumerConfig{
 		Durable:       c.consumerName,
-		DeliverPolicy: nats.DeliverAllPolicy,
+		DeliverPolicy: mapDeliverPolicy(c.cfg.NATS.ConsumerRules.DeliverPolicy),
 		AckPolicy:     nats.AckExplicitPolicy,
 		AckWait:       ackWait,
+		ReplayPolicy:  mapReplayPolicy(c.cfg.NATS.ConsumerRules.ReplayPolicy),
 		MaxDeliver:    c.cfg.NATS.ConsumerRules.MaxDeliver,
 		MaxAckPending: c.cfg.NATS.ConsumerRules.MaxAckPending,
 		FilterSubject: c.subject,
+		BackOff:       c.cfg.NATS.ConsumerRules.Backoff,
+	}
+	if consumerConfig.DeliverPolicy == nats.DeliverByStartSequencePolicy && c.cfg.NATS.ConsumerRules.StartSequence > 0 {
+		consumerConfig.OptStartSeq = c.cfg.NATS.ConsumerRules.StartSequence
+	}
+	if consumerConfig.DeliverPolicy == nats.DeliverByStartTimePolicy && strings.TrimSpace(c.cfg.NATS.ConsumerRules.StartTime) != "" {
+		startTime, err := time.Parse(time.RFC3339, c.cfg.NATS.ConsumerRules.StartTime)
+		if err != nil {
+			c.logger.Warn("Invalid start time, falling back to deliver policy defaults",
+				zap.String("start_time", c.cfg.NATS.ConsumerRules.StartTime),
+				zap.Error(err),
+			)
+		} else {
+			consumerConfig.OptStartTime = &startTime
+		}
 	}
 
 	_, err := c.js.AddConsumer(streamName, consumerConfig)
@@ -93,6 +120,8 @@ func (c *Consumer) ensureConsumer() error {
 			zap.String("stream", streamName),
 			zap.String("subject", c.subject),
 			zap.Duration("ack_wait", ackWait),
+			zap.String("deliver_policy", c.cfg.NATS.ConsumerRules.DeliverPolicy),
+			zap.String("replay_policy", c.cfg.NATS.ConsumerRules.ReplayPolicy),
 		)
 	}
 
@@ -133,6 +162,9 @@ func (c *Consumer) Start(ctx context.Context) error {
 		zap.Duration("batch_timeout", batchTimeout),
 		zap.Int("max_deliver", c.cfg.NATS.ConsumerRules.MaxDeliver),
 		zap.Duration("ack_wait", c.cfg.NATS.ConsumerRules.AckWait),
+		zap.String("deliver_policy", c.cfg.NATS.ConsumerRules.DeliverPolicy),
+		zap.String("replay_policy", c.cfg.NATS.ConsumerRules.ReplayPolicy),
+		zap.Int("backoff_steps", len(c.cfg.NATS.ConsumerRules.Backoff)),
 	)
 
 	statsCtx, statsCancel := context.WithCancel(ctx)
@@ -177,8 +209,8 @@ func (c *Consumer) Start(ctx context.Context) error {
 					continue
 				}
 
-				// Transient error: request redelivery
-				if nakErr := msg.Nak(); nakErr != nil {
+				// Transient error: request redelivery with optional delay
+				if nakErr := c.nakWithStrategy(msg); nakErr != nil {
 					c.logger.Error("Failed to NAK message", zap.Error(nakErr))
 				}
 				continue
@@ -221,6 +253,7 @@ func (c *Consumer) emitConsumerStats(ctx context.Context, streamName string) {
 				zap.Uint64("delivered_consumer_seq", uint64(info.Delivered.Consumer)),
 				zap.Uint64("delivered_stream_seq", uint64(info.Delivered.Stream)),
 			)
+			c.recordConsumerMetrics(ctx, info)
 		}
 	}
 }
@@ -254,10 +287,80 @@ func (c *Consumer) Shutdown(ctx context.Context) error {
 	}
 }
 
+func (c *Consumer) initMetrics() {
+	meter := otel.Meter("caatsm/nats")
+	c.meter = meter
+
+	if hist, err := meter.Int64Histogram("nats.consumer.ack_pending"); err == nil {
+		c.ackPending = hist
+	}
+	if hist, err := meter.Int64Histogram("nats.consumer.redelivered"); err == nil {
+		c.redelivered = hist
+	}
+	if hist, err := meter.Int64Histogram("nats.consumer.pending"); err == nil {
+		c.pending = hist
+	}
+	if hist, err := meter.Int64Histogram("nats.consumer.delivered"); err == nil {
+		c.delivered = hist
+	}
+}
+
+func (c *Consumer) recordConsumerMetrics(ctx context.Context, info *nats.ConsumerInfo) {
+	if info == nil {
+		return
+	}
+	if c.ackPending != nil {
+		c.ackPending.Record(ctx, int64(info.NumAckPending))
+	}
+	if c.redelivered != nil {
+		c.redelivered.Record(ctx, int64(info.NumRedelivered))
+	}
+	if c.pending != nil {
+		c.pending.Record(ctx, int64(info.NumPending))
+	}
+	if c.delivered != nil {
+		c.delivered.Record(ctx, int64(info.Delivered.Stream))
+	}
+}
+
+func (c *Consumer) nakWithStrategy(msg *nats.Msg) error {
+	backoff := c.cfg.NATS.ConsumerRules.Backoff
+	if len(backoff) == 0 {
+		return msg.Nak()
+	}
+
+	meta, err := msg.Metadata()
+	if err != nil {
+		c.logger.Warn("Failed to read metadata for backoff strategy", zap.Error(err))
+		return msg.Nak()
+	}
+
+	attempt := int(meta.NumDelivered)
+	index := attempt - 1
+	if index < 0 {
+		index = 0
+	}
+	if index >= len(backoff) {
+		index = len(backoff) - 1
+	}
+	delay := backoff[index]
+	if delay <= 0 {
+		return msg.Nak()
+	}
+
+	return msg.NakWithDelay(delay)
+}
+
 // processMessage processes a single message
 func (c *Consumer) processMessage(ctx context.Context, msg *nats.Msg) error {
+	ctx, span := otel.Tracer("caatsm/nats").Start(ctx, "Consumer.processMessage")
+	defer span.End()
+	span.SetAttributes(attribute.String("nats.subject", msg.Subject))
+
 	msgID, source, err := c.resolveMsgID(msg)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("unable to resolve message id: %w", err)
 	}
 	if source != "header" {
@@ -276,9 +379,12 @@ func (c *Consumer) processMessage(ctx context.Context, msg *nats.Msg) error {
 
 	// Call processor
 	if err := c.processor.Handle(ctx, msg.Data, msgID); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("processor error: %w", err)
 	}
 
+	span.SetAttributes(attribute.String("telegram.msg_id", msgID))
 	return nil
 }
 
@@ -293,4 +399,30 @@ func (c *Consumer) resolveMsgID(msg *nats.Msg) (string, string, error) {
 	}
 
 	return fmt.Sprintf("js-%d", meta.Sequence.Stream), "metadata", nil
+}
+
+func mapDeliverPolicy(value string) nats.DeliverPolicy {
+	switch strings.ToLower(value) {
+	case "new":
+		return nats.DeliverNewPolicy
+	case "last":
+		return nats.DeliverLastPolicy
+	case "last_per_subject":
+		return nats.DeliverLastPerSubjectPolicy
+	case "sequence":
+		return nats.DeliverByStartSequencePolicy
+	case "time":
+		return nats.DeliverByStartTimePolicy
+	default:
+		return nats.DeliverAllPolicy
+	}
+}
+
+func mapReplayPolicy(value string) nats.ReplayPolicy {
+	switch strings.ToLower(value) {
+	case "original":
+		return nats.ReplayOriginalPolicy
+	default:
+		return nats.ReplayInstantPolicy
+	}
 }

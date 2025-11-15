@@ -282,7 +282,8 @@ FF ZBTJZPZX
 NNNN
 `
 			It("should parse the whole message correctly", func() {
-				parsedMessage := Parse(message)
+				parsedMessage, err := Parse(message)
+				Expect(err).ToNot(HaveOccurred())
 				Expect(parsedMessage).ToNot(BeNil())
 				Expect(parsedMessage.Parsed).To(BeTrue())
 				Expect(parsedMessage.MessageID).To(Equal("TMQ2526"))
@@ -333,7 +334,8 @@ GG ZBTJZPZX
 NNNN
 `
 			It("should parse the whole message correctly", func() {
-				parsedMessage := Parse(message)
+				parsedMessage, err := Parse(message)
+				Expect(err).ToNot(HaveOccurred())
 				Expect(parsedMessage).ToNot(BeNil())
 				Expect(parsedMessage.Parsed).To(BeTrue())
 				Expect(parsedMessage.MessageID).To(Equal("TMQ2617"))

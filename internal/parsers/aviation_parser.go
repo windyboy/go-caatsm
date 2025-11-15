@@ -3,6 +3,7 @@ package parsers
 import (
 	"caatsm/internal/domain"
 	"caatsm/pkg/utils"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -51,6 +52,10 @@ var (
 		performancePattern,
 		regPattern,
 		reroutePattern}
+	// ErrHeaderParse indicates an invalid header section.
+	ErrHeaderParse = errors.New("invalid telegram header")
+	// ErrBodyParse indicates a failure matching the telegram body.
+	ErrBodyParse = errors.New("invalid telegram body")
 )
 
 type BodyParser struct {
@@ -194,27 +199,33 @@ func (parser *BodyParser) createBodyData(data map[string]string) (string, interf
 	}
 }
 
-func Parse(rawText string) *domain.ParsedMessage {
+func Parse(rawText string) (*domain.ParsedMessage, error) {
 	message, err := ParseHeader(rawText)
 	if err != nil {
 		msg := domain.NewParsedMessage()
 		msg.Content = rawText
-		return msg
+		msg.Comments = err.Error()
+		msg.ErrorReason = err.Error()
+		msg.Status = domain.MessageStatusHeaderError
+		return msg, fmt.Errorf("%w: %w", ErrHeaderParse, err)
 	}
 
 	bodyParser := NewBodyParser(message.Body)
-	category, bodyData, err := bodyParser.Parse()
+	category, bodyData, bodyErr := bodyParser.Parse()
 	message.Category = category
 	message.ParsedAt = time.Now()
 
-	if err != nil {
-		message.Comments = err.Error()
-		return &message
+	if bodyErr != nil {
+		message.Comments = bodyErr.Error()
+		message.ErrorReason = bodyErr.Error()
+		message.Status = domain.MessageStatusBodyError
+		return &message, fmt.Errorf("%w: %w", ErrBodyParse, bodyErr)
 	}
 	message.Parsed = true
+	message.Status = domain.MessageStatusParsed
 	message.BodyData = bodyData
 	message.Uuid = uuid.New().String()
-	return &message
+	return &message, nil
 }
 
 func cleanMessage(text string) string {

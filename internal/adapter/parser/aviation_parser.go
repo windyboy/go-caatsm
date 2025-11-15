@@ -14,8 +14,7 @@ func NewAviationParser() *AviationParser {
 }
 
 // Parse parses a raw message string and returns a ParsedMessage
-func (p *AviationParser) Parse(rawText string) *domain.ParsedMessage {
+func (p *AviationParser) Parse(rawText string) (*domain.ParsedMessage, error) {
 	// Use the existing Parse function from internal/parsers
 	return parsers.Parse(rawText)
 }
-

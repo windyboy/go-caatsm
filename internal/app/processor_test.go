@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"strings"
-	"testing"
 	"time"
 
 	"caatsm/internal/adapter"
@@ -12,166 +11,137 @@ import (
 	"caatsm/internal/domain"
 
 	"github.com/google/uuid"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"
 )
 
-func TestHandleEmptyMessageIsPermanent(t *testing.T) {
-	proc := newTestProcessor(&stubParser{}, &stubRepository{}, &stubPublisher{})
-	err := proc.Handle(context.Background(), nil, "id-1")
-	if err == nil || !IsPermanent(err) {
-		t.Fatalf("expected permanent error for empty message, got %v", err)
-	}
-}
+var _ = Describe("MessageProcessor", func() {
+	var (
+		repo       *stubRepository
+		pub        *stubPublisher
+		proc       *MessageProcessor
+		ctx        context.Context
+		parserStub *stubParser
+	)
 
-func TestHandleNilParserResultIsPermanent(t *testing.T) {
-	proc := newTestProcessor(&stubParser{value: nil}, &stubRepository{}, &stubPublisher{})
-	err := proc.Handle(context.Background(), []byte("payload"), "id-2")
-	if err == nil || !IsPermanent(err) {
-		t.Fatalf("expected permanent error for nil parser result, got %v", err)
-	}
-}
+	BeforeEach(func() {
+		repo = &stubRepository{}
+		pub = &stubPublisher{}
+		parserStub = &stubParser{}
+		proc = newTestProcessor(parserStub, repo, pub)
+		ctx = context.Background()
+	})
 
-func TestHandleSuccessDoesNotOverwriteUuid(t *testing.T) {
-	originalUUID := uuid.NewString()
-	parsed := &domain.ParsedMessage{Uuid: originalUUID, Parsed: true}
+	Describe("Handle", func() {
+		It("returns a permanent error when payload is empty", func() {
+			err := proc.Handle(ctx, nil, "id-1")
+			Expect(err).To(HaveOccurred())
+			Expect(IsPermanent(err)).To(BeTrue())
+		})
 
-	repo := &stubRepository{}
-	pub := &stubPublisher{}
-	proc := newTestProcessor(&stubParser{value: parsed}, repo, pub)
+		It("records raw messages when parser returns nil", func() {
+			parserStub.value = nil
+			err := proc.Handle(ctx, []byte("payload"), "id-2")
+			Expect(err).To(HaveOccurred())
+			Expect(IsPermanent(err)).To(BeTrue())
+			Expect(repo.rawCount()).To(Equal(1))
+		})
 
-	const msgID = "msg-123"
-	if err := proc.Handle(context.Background(), []byte("payload"), msgID); err != nil {
-		t.Fatalf("expected success, got %v", err)
-	}
+		It("preserves UUIDs and appends nats message id comment", func() {
+			originalUUID := uuid.NewString()
+			parserStub.value = &domain.ParsedMessage{Uuid: originalUUID, Parsed: true, Status: domain.MessageStatusParsed}
 
-	if repo.last() == nil {
-		t.Fatalf("expected message to be inserted")
-	}
-	if repo.last().Uuid != originalUUID {
-		t.Fatalf("expected uuid to remain %s, got %s", originalUUID, repo.last().Uuid)
-	}
-	if !strings.Contains(repo.last().Comments, "nats_msg_id=msg-123") {
-		t.Fatalf("expected comments to contain msg id, got %q", repo.last().Comments)
-	}
-	if pub.last == nil {
-		t.Fatalf("expected publisher to receive message")
-	}
-}
+			Expect(proc.Handle(ctx, []byte("payload"), "msg-123")).To(Succeed())
 
-func TestHandlePublisherErrorIsPermanent(t *testing.T) {
-	parsed := &domain.ParsedMessage{Parsed: true}
+			Expect(repo.last()).NotTo(BeNil())
+			Expect(repo.last().Uuid).To(Equal(originalUUID))
+			Expect(repo.last().Comments).To(ContainSubstring("nats_msg_id=msg-123"))
+			Expect(pub.last).NotTo(BeNil())
+		})
 
-	repo := &stubRepository{}
-	pub := &stubPublisher{err: errors.New("publish failed")}
-	proc := newTestProcessor(&stubParser{value: parsed}, repo, pub)
+		It("treats publisher failures as permanent and stores raw entries", func() {
+			parserStub.value = &domain.ParsedMessage{Parsed: true, Status: domain.MessageStatusParsed}
+			pub.err = errors.New("publish failed")
 
-	err := proc.Handle(context.Background(), []byte("payload"), "id-3")
-	if err == nil {
-		t.Fatalf("expected error when publisher fails")
-	}
-	if !IsPermanent(err) {
-		t.Fatalf("publisher failure should be permanent")
-	}
-	if repo.last() == nil {
-		t.Fatalf("expected message to insert before publish failure")
-	}
-}
+			err := proc.Handle(ctx, []byte("payload"), "id-3")
+			Expect(err).To(HaveOccurred())
+			Expect(IsPermanent(err)).To(BeTrue())
+			Expect(repo.last()).NotTo(BeNil())
+			Expect(repo.rawCount()).To(Equal(1))
+			Expect(repo.lastRaw().Status).To(Equal(domain.MessageStatusPublishFail))
+		})
 
-func TestMessageProcessor_Handle_SetsReceivedAndParsedAtWhenZero(t *testing.T) {
-	parsed := &domain.ParsedMessage{
-		Uuid:   uuid.NewString(),
-		Parsed: true,
-	}
-	repo := &stubRepository{}
-	publisher := &stubPublisher{}
-	logger := zap.NewNop()
-	processor := NewMessageProcessor(&stubParser{value: parsed}, repo, publisher, logger)
+		It("sets timestamps when missing", func() {
+			parserStub.value = &domain.ParsedMessage{
+				Uuid:   uuid.NewString(),
+				Parsed: true,
+				Status: domain.MessageStatusParsed,
+			}
+			pub.err = nil
 
-	start := time.Now()
-	if err := processor.Handle(context.Background(), []byte("raw"), "msg-4"); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	saved := repo.last()
-	if saved == nil {
-		t.Fatal("expected repository to receive a message")
-	}
-	if saved.ReceivedAt.IsZero() || saved.ParsedAt.IsZero() {
-		t.Fatalf("expected timestamps to be set, got received=%v parsed=%v", saved.ReceivedAt, saved.ParsedAt)
-	}
-	if saved.ReceivedAt.Before(start.Add(-time.Second)) || saved.ParsedAt.Before(start.Add(-time.Second)) {
-		t.Fatalf("timestamps look stale: received=%v parsed=%v", saved.ReceivedAt, saved.ParsedAt)
-	}
-}
+			start := time.Now()
+			Expect(proc.Handle(ctx, []byte("payload"), "msg-4")).To(Succeed())
 
-func TestMessageProcessor_Handle_DoesNotOverrideExistingTimestamps(t *testing.T) {
-	received := time.Now().Add(-2 * time.Minute)
-	parsedAt := time.Now().Add(-time.Minute)
+			saved := repo.last()
+			Expect(saved).NotTo(BeNil())
+			Expect(saved.ReceivedAt).NotTo(BeZero())
+			Expect(saved.ParsedAt).NotTo(BeZero())
+			Expect(saved.ReceivedAt.After(start.Add(-time.Second))).To(BeTrue())
+			Expect(saved.ParsedAt.After(start.Add(-time.Second))).To(BeTrue())
+		})
 
-	parsed := &domain.ParsedMessage{
-		Uuid:       uuid.NewString(),
-		Parsed:     true,
-		ReceivedAt: received,
-		ParsedAt:   parsedAt,
-	}
-	repo := &stubRepository{}
-	publisher := &stubPublisher{}
-	logger := zap.NewNop()
-	processor := NewMessageProcessor(&stubParser{value: parsed}, repo, publisher, logger)
+		It("does not override provided timestamps", func() {
+			received := time.Now().Add(-2 * time.Minute)
+			parsedAt := time.Now().Add(-1 * time.Minute)
+			parserStub.value = &domain.ParsedMessage{
+				Uuid:       uuid.NewString(),
+				Parsed:     true,
+				Status:     domain.MessageStatusParsed,
+				ReceivedAt: received,
+				ParsedAt:   parsedAt,
+			}
 
-	if err := processor.Handle(context.Background(), []byte("raw"), "msg-5"); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	saved := repo.last()
-	if saved.ReceivedAt != received {
-		t.Fatalf("expected received_at to remain %v, got %v", received, saved.ReceivedAt)
-	}
-	if saved.ParsedAt != parsedAt {
-		t.Fatalf("expected parsed_at to remain %v, got %v", parsedAt, saved.ParsedAt)
-	}
-}
+			Expect(proc.Handle(ctx, []byte("payload"), "msg-5")).To(Succeed())
+			Expect(repo.last().ReceivedAt).To(Equal(received))
+			Expect(repo.last().ParsedAt).To(Equal(parsedAt))
+		})
 
-func TestContentPreview_TruncatesLongContent(t *testing.T) {
-	longContent := strings.Repeat("a", 1024)
-	preview := truncateContent(longContent, 256)
-	if len(preview) != 256 {
-		t.Fatalf("expected preview length 256, got %d", len(preview))
-	}
-	if !strings.HasSuffix(preview, "...") {
-		t.Fatalf("expected preview to end with ellipsis, got %q", preview[len(preview)-10:])
-	}
-}
+		It("logs truncated previews when parsing fails", func() {
+			core, logs := observer.New(zap.WarnLevel)
+			logger := zap.New(core)
+			parserStub = &stubParser{
+				value: &domain.ParsedMessage{
+					Content:     strings.Repeat("x", 1024),
+					Parsed:      false,
+					Status:      domain.MessageStatusBodyError,
+					ErrorReason: "parse failure",
+				},
+				err: errors.New("parse failure"),
+			}
+			proc = NewMessageProcessor(parserStub, repo, pub, logger)
 
-func TestMessageProcessor_Handle_NotParsedLogsPreviewOnly(t *testing.T) {
-	core, logs := observer.New(zap.WarnLevel)
-	logger := zap.New(core)
+			err := proc.Handle(ctx, []byte("raw"), "msg-6")
+			Expect(err).To(HaveOccurred())
+			Expect(IsPermanent(err)).To(BeTrue())
 
-	parser := &stubParser{
-		value: &domain.ParsedMessage{
-			Content: strings.Repeat("x", 1024),
-			Parsed:  false,
-		},
-	}
-	repo := &stubRepository{}
-	publisher := &stubPublisher{}
-	processor := NewMessageProcessor(parser, repo, publisher, logger)
+			entries := logs.FilterMessage("Message failed to parse").All()
+			Expect(entries).NotTo(BeEmpty())
+			preview, ok := entries[0].ContextMap()["content_preview"].(string)
+			Expect(ok).To(BeTrue())
+			Expect(len(preview)).To(BeNumerically("<=", 256))
+		})
+	})
 
-	if err := processor.Handle(context.Background(), []byte("raw"), "msg-6"); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	entries := logs.FilterMessage("Message not parsed").All()
-	if len(entries) == 0 {
-		t.Fatal("expected a warning log for unparsed message")
-	}
-	preview, ok := entries[0].ContextMap()["content_preview"].(string)
-	if !ok {
-		t.Fatal("expected content_preview field in log")
-	}
-	if len(preview) > 256 {
-		t.Fatalf("expected preview <= 256 chars, got %d", len(preview))
-	}
-}
+	Describe("truncateContent", func() {
+		It("keeps length at limit with ellipsis", func() {
+			longContent := strings.Repeat("a", 1024)
+			Expect(truncateContent(longContent, 256)).To(HaveLen(256))
+			Expect(truncateContent(longContent, 256)).To(HaveSuffix("..."))
+		})
+	})
+})
 
 func newTestProcessor(p parser.Parser, repo adapter.Repository, pub adapter.Publisher) *MessageProcessor {
 	return NewMessageProcessor(p, repo, pub, zap.NewNop())
@@ -179,15 +149,18 @@ func newTestProcessor(p parser.Parser, repo adapter.Repository, pub adapter.Publ
 
 type stubParser struct {
 	value *domain.ParsedMessage
+	err   error
 }
 
-func (s *stubParser) Parse(rawText string) *domain.ParsedMessage {
-	return s.value
+func (s *stubParser) Parse(rawText string) (*domain.ParsedMessage, error) {
+	return s.value, s.err
 }
 
 type stubRepository struct {
 	inserted []*domain.ParsedMessage
+	raw      []*domain.ParsedMessage
 	err      error
+	rawErr   error
 }
 
 func (s *stubRepository) InsertOne(ctx context.Context, msg *domain.ParsedMessage) error {
@@ -202,11 +175,30 @@ func (s *stubRepository) InsertBatch(ctx context.Context, msgs []*domain.ParsedM
 	return errors.New("not implemented")
 }
 
+func (s *stubRepository) InsertRaw(ctx context.Context, msg *domain.ParsedMessage) error {
+	if s.rawErr != nil {
+		return s.rawErr
+	}
+	s.raw = append(s.raw, msg)
+	return nil
+}
+
 func (s *stubRepository) last() *domain.ParsedMessage {
 	if len(s.inserted) == 0 {
 		return nil
 	}
 	return s.inserted[len(s.inserted)-1]
+}
+
+func (s *stubRepository) lastRaw() *domain.ParsedMessage {
+	if len(s.raw) == 0 {
+		return nil
+	}
+	return s.raw[len(s.raw)-1]
+}
+
+func (s *stubRepository) rawCount() int {
+	return len(s.raw)
 }
 
 type stubPublisher struct {

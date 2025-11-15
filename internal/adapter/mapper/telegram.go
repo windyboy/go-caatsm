@@ -43,6 +43,11 @@ func (m *TelegramMapper) ToDBRow(msg *domain.ParsedMessage) ([]interface{}, erro
 	// SecondaryAddresses is already a string, so we can use it directly
 	secondaryAddresses := msg.SecondaryAddresses
 
+	status := msg.Status
+	if status == "" {
+		status = domain.MessageStatusUnknown
+	}
+
 	return []interface{}{
 		msgUUID,                // uuid
 		msg.MessageID,          // message_id
@@ -55,6 +60,8 @@ func (m *TelegramMapper) ToDBRow(msg *domain.ParsedMessage) ([]interface{}, erro
 		msg.Category,           // category
 		msg.Content,            // content (TEXT, original message)
 		bodyDataJSON,           // body_data (JSONB)
+		string(status),         // status
+		msg.ErrorReason,        // error_reason
 		msg.ReceivedAt,         // received_at
 		msg.ParsedAt,           // parsed_at
 		msg.DispatchedAt,       // dispatched_at
@@ -64,7 +71,7 @@ func (m *TelegramMapper) ToDBRow(msg *domain.ParsedMessage) ([]interface{}, erro
 
 // FromDBRow converts a database row to a domain.ParsedMessage
 func (m *TelegramMapper) FromDBRow(row []interface{}) (*domain.ParsedMessage, error) {
-	const expectedColumns = 15
+	const expectedColumns = 17
 	if len(row) < expectedColumns {
 		return nil, fmt.Errorf("expected %d columns, got %d", expectedColumns, len(row))
 	}
@@ -94,6 +101,19 @@ func (m *TelegramMapper) FromDBRow(row []interface{}) (*domain.ParsedMessage, er
 		return time.Time{}
 	}
 
+	toBool := func(v interface{}) bool {
+		switch val := v.(type) {
+		case bool:
+			return val
+		case *bool:
+			return val != nil && *val
+		case int64:
+			return val != 0
+		default:
+			return false
+		}
+	}
+
 	var bodyData interface{}
 	if raw := row[10]; raw != nil {
 		switch val := raw.(type) {
@@ -108,7 +128,10 @@ func (m *TelegramMapper) FromDBRow(row []interface{}) (*domain.ParsedMessage, er
 		}
 	}
 
-	needDispatch, _ := row[14].(bool)
+	status := domain.MessageStatusUnknown
+	if rawStatus := toString(row[11]); rawStatus != "" {
+		status = domain.MessageStatus(rawStatus)
+	}
 
 	return &domain.ParsedMessage{
 		Uuid:               msgUUID.String(),
@@ -122,9 +145,11 @@ func (m *TelegramMapper) FromDBRow(row []interface{}) (*domain.ParsedMessage, er
 		Category:           toString(row[8]),
 		Content:            toString(row[9]),
 		BodyData:           bodyData,
-		ReceivedAt:         parseTime(row[11]),
-		ParsedAt:           parseTime(row[12]),
-		DispatchedAt:       parseTime(row[13]),
-		NeedDispatch:       needDispatch,
+		Status:             status,
+		ErrorReason:        toString(row[12]),
+		ReceivedAt:         parseTime(row[13]),
+		ParsedAt:           parseTime(row[14]),
+		DispatchedAt:       parseTime(row[15]),
+		NeedDispatch:       toBool(row[16]),
 	}, nil
 }

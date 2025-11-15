@@ -1,8 +1,8 @@
 package iface
 
 import (
-	"caatsm/internal/config"
 	"caatsm/internal/domain"
+	"caatsm/internal/infra/config"
 )
 
 type MessageHandler interface {

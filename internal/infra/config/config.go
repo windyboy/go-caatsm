@@ -19,6 +19,7 @@ type Config struct {
 	App       AppConfig       `koanf:"app"`
 	Log       LogConfig       `koanf:"log"`
 	Publisher PublisherConfig `koanf:"publisher"`
+	Telemetry TelemetryConfig `koanf:"telemetry"`
 	// Legacy fields for backward compatibility during migration
 	Subscription SubscriptionConfig `koanf:"subscription"`
 	Timeouts     TimeoutsConfig     `koanf:"timeouts"`
@@ -51,6 +52,11 @@ type ConsumerRulesConfig struct {
 	MaxDeliver    int           `koanf:"max_deliver"`
 	AckWait       time.Duration `koanf:"ack_wait"`
 	MaxAckPending int           `koanf:"max_ack_pending"`
+	DeliverPolicy string        `koanf:"deliver_policy"`
+	ReplayPolicy  string        `koanf:"replay_policy"`
+	Backoff       []time.Duration `koanf:"backoff"`
+	StartSequence uint64        `koanf:"start_sequence"`
+	StartTime     string        `koanf:"start_time"`
 }
 
 // PostgresConfig holds PostgreSQL configuration
@@ -76,6 +82,13 @@ type LogConfig struct {
 // PublisherConfig holds publisher configuration
 type PublisherConfig struct {
 	Topic string `koanf:"topic"`
+}
+
+// TelemetryConfig controls tracing/metrics exporters.
+type TelemetryConfig struct {
+	Enabled  bool   `koanf:"enabled"`
+	Endpoint string `koanf:"endpoint"`
+	Insecure bool   `koanf:"insecure"`
 }
 
 // SubscriptionConfig holds subscription configuration (legacy)
@@ -183,6 +196,15 @@ func LoadConfig() (*Config, error) {
 	if cfg.NATS.ConsumerRules.MaxAckPending == 0 {
 		cfg.NATS.ConsumerRules.MaxAckPending = 1024
 	}
+	if cfg.NATS.ConsumerRules.DeliverPolicy == "" {
+		cfg.NATS.ConsumerRules.DeliverPolicy = "all"
+	}
+	if cfg.NATS.ConsumerRules.ReplayPolicy == "" {
+		cfg.NATS.ConsumerRules.ReplayPolicy = "instant"
+	}
+	if cfg.Telemetry.Endpoint == "" {
+		cfg.Telemetry.Endpoint = ""
+	}
 
 	// Validate configuration
 	if err := cfg.Validate(); err != nil {
@@ -235,6 +257,29 @@ func (c *Config) Validate() error {
 	}
 	if c.NATS.ConsumerRules.MaxAckPending < 0 {
 		return fmt.Errorf("nats.consumer.max_ack_pending must be >= 0")
+	}
+	switch strings.ToLower(c.NATS.ConsumerRules.DeliverPolicy) {
+	case "", "all", "new", "last", "last_per_subject", "sequence", "time":
+	default:
+		return fmt.Errorf("nats.consumer.deliver_policy must be one of all,new,last,last_per_subject,sequence,time")
+	}
+	switch strings.ToLower(c.NATS.ConsumerRules.ReplayPolicy) {
+	case "", "instant", "original":
+	default:
+		return fmt.Errorf("nats.consumer.replay_policy must be instant or original")
+	}
+	if c.NATS.ConsumerRules.StartTime != "" {
+		if _, err := time.Parse(time.RFC3339, c.NATS.ConsumerRules.StartTime); err != nil {
+			return fmt.Errorf("nats.consumer.start_time must be RFC3339: %w", err)
+		}
+	}
+	for _, d := range c.NATS.ConsumerRules.Backoff {
+		if d < 0 {
+			return fmt.Errorf("nats.consumer.backoff durations must be >= 0")
+		}
+	}
+	if c.Telemetry.Endpoint == "" && c.Telemetry.Enabled {
+		return fmt.Errorf("telemetry.endpoint is required when telemetry.enabled=true")
 	}
 	return nil
 }
