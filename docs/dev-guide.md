@@ -15,6 +15,7 @@ docker compose -f docker-compose.dev.yml up -d postgres nats nats-box
 - `postgres` seeds the `aviation` schema using `internal/repository/telegrams.ddl` and exposes port `5432`.
 - `nats` enables JetStream with client port `4222` and monitoring/UI on `8222`.
 - `nats-box` provides a toolbox container (`docker compose exec nats-box sh`) for publishing test messages or inspecting JetStream.
+- `nats-exporter` scrapes the monitoring endpoints (`/varz`, `/connz`, `/routez`, `/subz`) and exposes them as Prometheus metrics on port `7777` for the Grafana dashboards.
 
 Prefer to run the Go application on your host for quick iteration while keeping infra in Docker:
 
@@ -34,7 +35,7 @@ docker compose -f docker-compose.dev.yml down -v
 
 The `Taskfile.yml` includes helper targets that wrap the commands above:
 
-- `task up` – starts PostgreSQL, NATS, and the observability stack (OpenTelemetry Collector, Jaeger, Prometheus, Grafana) using Docker Compose.
+- `task up` – starts PostgreSQL, NATS (JetStream, toolbox, and Prometheus exporter), and the observability stack (OpenTelemetry Collector, Jaeger, Prometheus, Grafana) using Docker Compose.
 - `task dev-run` – ensures `task up` has run, exports the necessary `CAATSM_*` environment variables (including `CAATSM_NATS_MODE=jetstream`), and executes `go run ./cmd/main listen` with telemetry enabled.
 - `task down` – stops the entire stack and removes containers/volumes.
 
@@ -114,10 +115,11 @@ Services:
 - `jaeger`
   - Receives OTLP traffic forwarded from the collector on `14250` gRPC and serves the UI at <http://localhost:16686>
 - `prometheus`
-  - Uses `configs/prometheus.dev.yml` to scrape the collector and NATS monitoring endpoint; UI available at <http://localhost:9090>
+  - Uses `configs/prometheus.dev.yml` to scrape the collector, `nats-exporter` (`http://nats-exporter:7777/metrics`), and application OTLP metrics forwarded via the collector; UI available at <http://localhost:9090>
 - `grafana`
   - Persists data in `grafana-data`, provisions datasources via `configs/grafana-datasources.dev.yml`, and listens on <http://localhost:3000> (login `admin` / `admin`)
   - Automatically loads dashboards from `configs/grafana-dashboards.dev/`, including OpenTelemetry Collector and NATS/JetStream overviews (find them under the **Dev Observability** folder)
+  - The OpenTelemetry dashboard also charts the CAATSM-specific metrics `caatsm_messages_processed_total`, `caatsm_publish_failures_total`, and `caatsm_parse_duration_ms` (percentiles) so you can track throughput and parsing latency.
 
 ### Customizing Collections & Dashboards
 

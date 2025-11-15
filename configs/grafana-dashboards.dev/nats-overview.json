@@ -82,7 +82,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(nats_varz_total_connections)"
+          "expr": "sum(gnatsd_varz_connections{job=\"nats-exporter\"})"
         }
       ]
     },
@@ -136,7 +136,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(nats_varz_slow_consumers)"
+          "expr": "sum(gnatsd_varz_slow_consumers{job=\"nats-exporter\"})"
         }
       ]
     },
@@ -202,7 +202,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "max(nats_varz_jetstream)"
+          "expr": "max(gnatsd_varz_jetstream_stats_accounts{job=\"nats-exporter\"})"
         }
       ]
     },
@@ -255,12 +255,12 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(nats_varz_in_msgs[1m]))",
+          "expr": "sum(rate(gnatsd_varz_in_msgs{job=\"nats-exporter\"}[1m]))",
           "legendFormat": "in"
         },
         {
           "refId": "B",
-          "expr": "sum(rate(nats_varz_out_msgs[1m]))",
+          "expr": "sum(rate(gnatsd_varz_out_msgs{job=\"nats-exporter\"}[1m]))",
           "legendFormat": "out"
         }
       ]
@@ -315,12 +315,12 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(rate(nats_varz_in_bytes[1m]))",
+          "expr": "sum(rate(gnatsd_varz_in_bytes{job=\"nats-exporter\"}[1m]))",
           "legendFormat": "in"
         },
         {
           "refId": "B",
-          "expr": "sum(rate(nats_varz_out_bytes[1m]))",
+          "expr": "sum(rate(gnatsd_varz_out_bytes{job=\"nats-exporter\"}[1m]))",
           "legendFormat": "out"
         }
       ]
@@ -379,7 +379,193 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum(nats_varz_jetstream_bytes)"
+          "expr": "sum(gnatsd_varz_jetstream_stats_storage{job=\"nats-exporter\"})"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "Total Subscriptions",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-dev"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1000
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 0,
+        "y": 20
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(gnatsd_varz_subscriptions{job=\"nats-exporter\"})"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "JetStream API Calls / Errors",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-dev"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {},
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 0
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 6,
+        "y": 20
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(gnatsd_varz_jetstream_stats_api_total{job=\"nats-exporter\"}[1m]))",
+          "legendFormat": "api total"
+        },
+        {
+          "refId": "B",
+          "expr": "sum(rate(gnatsd_varz_jetstream_stats_api_errors{job=\"nats-exporter\"}[1m]))",
+          "legendFormat": "api errors"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Server CPU / Memory",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-dev"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {},
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 0
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Memory (bytes)"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "bytes"
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 18,
+        "y": 20
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "avg(gnatsd_varz_cpu{job=\"nats-exporter\"})",
+          "legendFormat": "CPU (%)"
+        },
+        {
+          "refId": "B",
+          "expr": "sum(gnatsd_varz_mem{job=\"nats-exporter\"})",
+          "legendFormat": "Memory (bytes)"
         }
       ]
     }

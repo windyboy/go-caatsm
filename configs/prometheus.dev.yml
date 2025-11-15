@@ -7,10 +7,8 @@ scrape_configs:
     static_configs:
       - targets:
           - "otel-collector:8888"
-  - job_name: "nats"
-    metrics_path: /varz
-    scheme: http
+  - job_name: "nats-exporter"
     static_configs:
       - targets:
-          - "nats:8222"
+          - "nats-exporter:7777"
 

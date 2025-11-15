@@ -221,7 +221,11 @@ Critical overrides stay available through CLI flags; advanced tuning such as str
 - CLI overrides:
   - `--telemetry-enabled` flips the feature on/off.
   - `--telemetry-endpoint` and `--telemetry-insecure` adjust the OTLP HTTP endpoint and TLS behavior.
-- When enabled the app emits OpenTelemetry traces (parser/repository/publisher spans) and JetStream metrics (ack pending, deliveries) for dashboards and alerts.
+- When enabled the app emits OpenTelemetry traces (parser/repository/publisher spans) and metrics. Custom OTLP metrics include:
+  - `caatsm_messages_processed_total` (counter, broken down by `message_status` / `message_category`)
+  - `caatsm_publish_failures_total` (counter)
+  - `caatsm_parse_duration_ms` (histogram)
+  These flow through the collector → Prometheus → Grafana dashboards in the dev stack.
 
 ## Development
 

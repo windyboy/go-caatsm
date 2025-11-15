@@ -12,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 )
@@ -22,6 +23,32 @@ type MessageProcessor struct {
 	repository adapter.Repository
 	publisher  adapter.Publisher
 	logger     *zap.Logger
+}
+
+var (
+	appMeter               = otel.Meter("caatsm/app")
+	messageStatusAttrKey   = attribute.Key("message.status")
+	messageCategoryAttrKey = attribute.Key("message.category")
+
+	messageProcessedCounter   = mustInt64Counter("caatsm_messages_processed_total", "Total number of telegrams processed by the CAATSM processor.")
+	messagePublishFailCounter = mustInt64Counter("caatsm_publish_failures_total", "Total number of telegram publish failures.")
+	parseLatencyHistogram     = mustFloat64Histogram("caatsm_parse_duration_ms", "Latency of parsing a telegram, in milliseconds.", metric.WithUnit("ms"))
+)
+
+func mustInt64Counter(name, description string, opts ...metric.Int64CounterOption) metric.Int64Counter {
+	counter, err := appMeter.Int64Counter(name, append([]metric.Int64CounterOption{metric.WithDescription(description)}, opts...)...)
+	if err != nil {
+		panic(fmt.Sprintf("failed to create counter %s: %v", name, err))
+	}
+	return counter
+}
+
+func mustFloat64Histogram(name, description string, opts ...metric.Float64HistogramOption) metric.Float64Histogram {
+	hist, err := appMeter.Float64Histogram(name, append([]metric.Float64HistogramOption{metric.WithDescription(description)}, opts...)...)
+	if err != nil {
+		panic(fmt.Sprintf("failed to create histogram %s: %v", name, err))
+	}
+	return hist
 }
 
 // NewMessageProcessor creates a new message processor
@@ -95,6 +122,13 @@ func (p *MessageProcessor) Handle(ctx context.Context, raw []byte, msgID string)
 			zap.String("content_preview", truncateContent(parsed.Content, 256)),
 			zap.Error(parseErr),
 		)
+		parseLatencyHistogram.Record(ctx, float64(parsed.ParsedAt.Sub(receivedAt).Milliseconds()),
+			metric.WithAttributes(
+				messageStatusAttrKey.String(string(parsed.Status)),
+				messageCategoryAttrKey.String(parsed.Category),
+			),
+		)
+		recordProcessedMetric(ctx, parsed)
 		return Permanent(fmt.Errorf("parser error: %w", parseErr))
 	}
 	parsed.ErrorReason = ""
@@ -118,6 +152,14 @@ func (p *MessageProcessor) Handle(ctx context.Context, raw []byte, msgID string)
 	if err := p.repository.InsertOne(ctx, parsed); err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
+		parsed.Status = domain.MessageStatusRepositoryFail
+		parseLatencyHistogram.Record(ctx, float64(parsed.ParsedAt.Sub(receivedAt).Milliseconds()),
+			metric.WithAttributes(
+				messageStatusAttrKey.String(string(parsed.Status)),
+				messageCategoryAttrKey.String(parsed.Category),
+			),
+		)
+		recordProcessedMetric(ctx, parsed)
 		return fmt.Errorf("failed to insert message: %w", err)
 	}
 
@@ -133,12 +175,32 @@ func (p *MessageProcessor) Handle(ctx context.Context, raw []byte, msgID string)
 		pubSpan.SetStatus(codes.Error, err.Error())
 		parsed.Status = domain.MessageStatusPublishFail
 		parsed.ErrorReason = err.Error()
+		messagePublishFailCounter.Add(ctx, 1,
+			metric.WithAttributes(
+				messageCategoryAttrKey.String(parsed.Category),
+			),
+		)
+		parseLatencyHistogram.Record(ctx, float64(parsed.ParsedAt.Sub(receivedAt).Milliseconds()),
+			metric.WithAttributes(
+				messageStatusAttrKey.String(string(parsed.Status)),
+				messageCategoryAttrKey.String(parsed.Category),
+			),
+		)
+		recordProcessedMetric(ctx, parsed)
 		p.persistRaw(ctx, parsed)
 		// Mark as permanent so the consumer will ack instead of retrying
 		pubSpan.End()
 		return Permanent(fmt.Errorf("failed to publish message: %w", err))
 	}
 	pubSpan.End()
+
+	parseLatencyHistogram.Record(ctx, float64(parsed.ParsedAt.Sub(receivedAt).Milliseconds()),
+		metric.WithAttributes(
+			messageStatusAttrKey.String(string(parsed.Status)),
+			messageCategoryAttrKey.String(parsed.Category),
+		),
+	)
+	recordProcessedMetric(ctx, parsed)
 
 	return nil
 }
@@ -178,4 +240,16 @@ func truncateContent(content string, limit int) string {
 		return content[:limit]
 	}
 	return content[:limit-3] + "..."
+}
+
+func recordProcessedMetric(ctx context.Context, msg *domain.ParsedMessage) {
+	if msg == nil {
+		return
+	}
+	messageProcessedCounter.Add(ctx, 1,
+		metric.WithAttributes(
+			messageStatusAttrKey.String(string(msg.Status)),
+			messageCategoryAttrKey.String(msg.Category),
+		),
+	)
 }

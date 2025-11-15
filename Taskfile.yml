@@ -108,7 +108,7 @@ tasks:
     desc: Start TimescaleDB + NATS dev stack (docker compose)
     cmds:
       - echo "Starting dev infrastructure..."
-      - docker compose -f docker-compose.dev.yml up -d postgres nats nats-box
+      - docker compose -f docker-compose.dev.yml up -d postgres nats nats-box nats-exporter
       - docker compose -f docker-compose.dev.yml up -d otel-collector jaeger prometheus grafana
 
   down:
