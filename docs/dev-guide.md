@@ -117,6 +117,7 @@ Services:
   - Uses `configs/prometheus.dev.yml` to scrape the collector and NATS monitoring endpoint; UI available at <http://localhost:9090>
 - `grafana`
   - Persists data in `grafana-data`, provisions datasources via `configs/grafana-datasources.dev.yml`, and listens on <http://localhost:3000> (login `admin` / `admin`)
+  - Automatically loads dashboards from `configs/grafana-dashboards.dev/`, including OpenTelemetry Collector and NATS/JetStream overviews (find them under the **Dev Observability** folder)
 
 ### Customizing Collections & Dashboards
 

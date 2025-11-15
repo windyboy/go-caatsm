@@ -141,6 +141,8 @@ services:
     volumes:
       - grafana-data:/var/lib/grafana
       - ./configs/grafana-datasources.dev.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+      - ./configs/grafana-dashboards.dev.yml:/etc/grafana/provisioning/dashboards/dashboards.yml:ro
+      - ./configs/grafana-dashboards.dev:/etc/grafana/provisioning/dashboards/dev:ro
     depends_on:
       - prometheus
       - jaeger
