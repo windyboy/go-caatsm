@@ -2,8 +2,12 @@ package utils
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
 
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
@@ -12,7 +16,7 @@ import (
 
 const (
 	TestConfigFileName        = "./configs/logger.test.json"
-	ProdConfigFileName        = ".configs/logger.json"
+	ProdConfigFileName        = "./configs/logger.json"
 	DevelopmentConfigFileName = "./configs/logger.dev.json"
 	EnvTest                   = "test"
 	EnvProd                   = "prod"
@@ -33,9 +37,19 @@ type LumberjackConfig struct {
 }
 
 var (
-	sugar *zap.SugaredLogger
-	log   *zap.Logger
+	sugar   *zap.SugaredLogger
+	log     *zap.Logger
+	rootDir = detectRootDir()
 )
+
+func detectRootDir() string {
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		return "."
+	}
+	// pkg/utils/log.go -> project root
+	return filepath.Clean(filepath.Join(filepath.Dir(file), "..", ".."))
+}
 
 func load() {
 	if log == nil {
@@ -103,7 +117,7 @@ func getConfigFile(env string) string {
 }
 
 func loadConfig(configFile string) (LoggerConfig, error) {
-	file, err := os.Open(configFile)
+	file, err := openConfigFile(configFile)
 	if err != nil {
 		return LoggerConfig{}, fmt.Errorf("error opening file: %v", err)
 	}
@@ -121,6 +135,24 @@ func GetLogger() *zap.SugaredLogger {
 		load()
 	}
 	return sugar
+}
+
+func openConfigFile(configFile string) (*os.File, error) {
+	candidates := []string{
+		configFile,
+		filepath.Join(rootDir, strings.TrimPrefix(configFile, "./")),
+	}
+	for _, candidate := range candidates {
+		if candidate == "" {
+			continue
+		}
+		if f, err := os.Open(candidate); err == nil {
+			return f, nil
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return nil, err
+		}
+	}
+	return nil, fmt.Errorf("error opening file: %v", configFile)
 }
 
 func parseLogLevel(level string) zapcore.Level {

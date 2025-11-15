@@ -14,6 +14,7 @@ import (
 	"caatsm/internal/app"
 	"caatsm/internal/domain"
 	"caatsm/internal/infra/config"
+	loginfra "caatsm/internal/infra/log"
 	natsinfra "caatsm/internal/infra/nats"
 	postgresinfra "caatsm/internal/infra/postgres"
 
@@ -21,7 +22,6 @@ import (
 	"github.com/nats-io/nats.go"
 	tc "github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
-	"go.uber.org/zap"
 )
 
 func TestJetStreamToTimescaleFlow(t *testing.T) {
@@ -43,7 +43,11 @@ func TestJetStreamToTimescaleFlow(t *testing.T) {
 	}()
 
 	cfg := buildTestConfig(natsURL, pgURL)
-	logger := zap.NewNop()
+	logger, err := loginfra.ProvideLogger(cfg)
+	if err != nil {
+		t.Fatalf("failed to init logger: %v", err)
+	}
+	defer logger.Sync()
 
 	pool, err := postgresinfra.ProvideDB(cfg)
 	if err != nil {
@@ -99,10 +103,10 @@ func TestJetStreamToTimescaleFlow(t *testing.T) {
 	}()
 
 	// Publish a message to the input subject.
-	payload := []byte(`ZCZC ARR1234 150631
+	payload := []byte(`ZCZC TMQ2526 141605
 FF ZBTJZPZX
-150630 ZBACZQZX
-(ARR-CCA1234-A1234-ZBTJ1500-ZGGG0135)
+141604 ZBACZQZX
+(ARR-JAE7433/A0132-RKSI-ZBTJ1604)
 NNNN`)
 
 	msg := nats.NewMsg(cfg.EffectiveSubscriptionTopic())
@@ -125,9 +129,12 @@ NNNN`)
 		var status string
 		err := pool.QueryRow(ctx, `
 			SELECT status FROM aviation.telegrams WHERE message_id = $1 LIMIT 1
-		`, "ARR1234").Scan(&status)
-		if err == nil && status == string(domain.MessageStatusParsed) {
-			return
+		`, "TMQ2526").Scan(&status)
+		if err == nil {
+			if status == string(domain.MessageStatusParsed) {
+				return
+			}
+			t.Logf("message persisted with status=%s, waiting for parsed", status)
 		}
 
 		time.Sleep(500 * time.Millisecond)
@@ -237,7 +244,7 @@ func buildTestConfig(natsURL, pgURL string) *config.Config {
 			MonitorInterval: time.Second,
 		},
 		Log: config.LogConfig{
-			Level:  "error",
+			Level:  "debug",
 			Format: "json",
 		},
 		Publisher: config.PublisherConfig{

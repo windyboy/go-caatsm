@@ -1,4 +1,37 @@
 {
+  "zapConfig": {
+    "level": "info",
+    "development": true,
+    "encoding": "json",
+    "encoderConfig": {
+      "messageKey": "msg",
+      "levelKey": "level",
+      "timeKey": "ts",
+      "nameKey": "logger",
+      "callerKey": "caller",
+      "stacktraceKey": "stacktrace",
+      "lineEnding": "",
+      "levelEncoder": "lowercase",
+      "timeEncoder": "iso8601",
+      "durationEncoder": "string",
+      "callerEncoder": "short"
+    },
+    "outputPaths": [
+      "stdout"
+    ],
+    "errorOutputPaths": [
+      "stderr"
+    ]
+  },
+  "lumberjackConfig": {
+    "filename": "./logs/caatsm-dev.log",
+    "maxSize": 50,
+    "maxBackups": 5,
+    "maxAge": 14,
+    "compress": false
+  }
+}
+{
     "zapConfig": {
       "level": "debug",
       "encoding": "json",
