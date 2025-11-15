@@ -45,7 +45,14 @@ func ProvideJetStream(nc *nats.Conn, cfg *config.Config, logger *zap.Logger) (na
 
 	// Create stream if it doesn't exist
 	streamName := cfg.NATS.Stream
-	subject := cfg.EffectiveSubscriptionTopic()
+	consumerSubject := cfg.EffectiveSubscriptionTopic()
+	publisherSubject := strings.TrimSpace(cfg.Publisher.Topic)
+
+	streamSubjects := dedupeSubjects([]string{consumerSubject, publisherSubject})
+	if len(streamSubjects) == 0 {
+		nc.Close()
+		return nil, fmt.Errorf("no subjects configured for JetStream stream %s", streamName)
+	}
 
 	streamLimits := cfg.NATS.StreamLimits
 	storage := nats.FileStorage
@@ -63,7 +70,7 @@ func ProvideJetStream(nc *nats.Conn, cfg *config.Config, logger *zap.Logger) (na
 
 	streamConfig := &nats.StreamConfig{
 		Name:      streamName,
-		Subjects:  []string{subject},
+		Subjects:  streamSubjects,
 		Retention: nats.LimitsPolicy,
 		MaxMsgs:   streamLimits.MaxMsgs,
 		MaxBytes:  streamLimits.MaxBytes,
@@ -81,7 +88,10 @@ func ProvideJetStream(nc *nats.Conn, cfg *config.Config, logger *zap.Logger) (na
 					nc.Close()
 					return nil, fmt.Errorf("failed to create stream: %w", err)
 				}
-				logger.Info("Created JetStream", zap.String("stream", streamName), zap.String("subject", subject))
+				logger.Info("Created JetStream",
+					zap.String("stream", streamName),
+					zap.Strings("subjects", streamSubjects),
+				)
 			} else {
 				nc.Close()
 				return nil, fmt.Errorf("stream %s not found and auto-creation disabled", streamName)
@@ -91,7 +101,7 @@ func ProvideJetStream(nc *nats.Conn, cfg *config.Config, logger *zap.Logger) (na
 			return nil, fmt.Errorf("failed to fetch stream info: %w", err)
 		}
 	} else {
-		validateStreamConfig(info, subject, logger)
+		validateStreamConfig(info, streamSubjects, logger)
 	}
 
 	return js, nil
@@ -106,25 +116,56 @@ func shouldBootstrapStream() bool {
 	}
 }
 
-func validateStreamConfig(info *nats.StreamInfo, expectedSubject string, logger *zap.Logger) {
+func validateStreamConfig(info *nats.StreamInfo, expectedSubjects []string, logger *zap.Logger) {
 	if info == nil {
 		return
 	}
+	defer func() {
+		if len(expectedSubjects) == 0 {
+			expectedSubjects = []string{"<none>"}
+		}
+	}()
 
-	if !subjectListContains(info.Config.Subjects, expectedSubject) {
-		logger.Warn("JetStream stream subjects do not match config",
+	missing := make([]string, 0)
+	for _, subj := range expectedSubjects {
+		if subj == "" {
+			continue
+		}
+		if !containsSubject(info.Config.Subjects, subj) {
+			missing = append(missing, subj)
+		}
+	}
+	if len(missing) > 0 {
+		logger.Warn("JetStream stream subjects missing expected entries",
 			zap.String("stream", info.Config.Name),
 			zap.Strings("stream_subjects", info.Config.Subjects),
-			zap.String("configured_subject", expectedSubject),
+			zap.Strings("missing_subjects", missing),
 		)
 	}
 }
 
-func subjectListContains(subjects []string, target string) bool {
+func containsSubject(subjects []string, target string) bool {
 	for _, s := range subjects {
 		if s == target {
 			return true
 		}
 	}
 	return false
+}
+
+func dedupeSubjects(subjects []string) []string {
+	seen := make(map[string]struct{})
+	result := make([]string, 0, len(subjects))
+	for _, subj := range subjects {
+		subj = strings.TrimSpace(subj)
+		if subj == "" {
+			continue
+		}
+		if _, ok := seen[subj]; ok {
+			continue
+		}
+		seen[subj] = struct{}{}
+		result = append(result, subj)
+	}
+	return result
 }

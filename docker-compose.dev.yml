@@ -19,6 +19,23 @@ services:
     networks:
       - devnet
 
+  postgres-init:
+    image: timescale/timescaledb:2.15.2-pg16
+    depends_on:
+      - postgres
+    environment:
+      PGPASSWORD: caatsm
+    command: >
+      bash -c "
+        until pg_isready -h postgres -U caatsm; do sleep 1; done;
+        psql --host=postgres --username=caatsm --dbname=aviation --file=/tmp/telegrams.ddl
+      "
+    volumes:
+      - ./internal/repository/telegrams.ddl:/tmp/telegrams.ddl:ro
+    restart: "no"
+    networks:
+      - devnet
+
   nats:
     image: nats:2.10-alpine
     command: ["-js", "--http_port=8222", "-DV"]
@@ -30,9 +47,35 @@ services:
 
   nats-box:
     image: synadia/nats-box:latest
-    entrypoint: ["/bin/sh", "-c", "sleep infinity"]
+    entrypoint: ["sleep", "infinity"]
     depends_on:
       - nats
+    restart: unless-stopped
+    networks:
+      - devnet
+
+  nats-init:
+    image: synadia/nats-box:latest
+    depends_on:
+      - nats
+    command: >
+      /bin/sh -c "
+        echo 'waiting for NATS...' ;
+        until nats --server nats://nats:4222 server ping >/dev/null 2>&1; do sleep 1; done;
+        echo 'initializing JetStream...' ;
+        nats --server nats://nats:4222 stream add TELEGRAM \
+          --subjects 'telegram.serial,telegram.json' \
+          --storage file \
+          --retention limits \
+          --replicas 1 \
+          --max-msgs -1 \
+          --max-bytes -1 \
+          --if-not-exists \
+          --defaults
+        echo 'JetStream init done.';
+        sleep 2;
+      "
+    restart: "no"
     networks:
       - devnet
     environment:
@@ -60,8 +103,8 @@ services:
       - "16686:16686"
       - "14250:14250"
     environment:
-      - COLLECTOR_OTLP_ENABLED=true
-      - LOG_LEVEL=debug
+      COLLECTOR_OTLP_ENABLED: "true"
+      LOG_LEVEL: debug
     networks:
       - devnet
 
@@ -103,4 +146,3 @@ volumes:
 networks:
   devnet:
     driver: bridge
-

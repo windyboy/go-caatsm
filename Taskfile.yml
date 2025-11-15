@@ -108,19 +108,17 @@ tasks:
     desc: Start TimescaleDB + NATS dev stack (docker compose)
     cmds:
       - echo "Starting dev infrastructure..."
-      - podman compose -f docker-compose.dev.yml up -d postgres nats nats-box
-      - podman compose -f docker-compose.dev.yml up -d otel-collector jaeger prometheus grafana
+      - docker compose -f docker-compose.dev.yml up -d postgres nats nats-box
+      - docker compose -f docker-compose.dev.yml up -d otel-collector jaeger prometheus grafana
 
   down:
     desc: Stop dev compose stack and remove containers
     cmds:
       - echo "Stopping dev infrastructure..."
-      - podman compose -f docker-compose.dev.yml down -v
+      - docker compose -f docker-compose.dev.yml down -v
 
   dev-run:
     desc: Run receiver locally against dev stack
-    deps:
-      - up
     env:
       CAATSM_NATS_URL: nats://localhost:4222
       CAATSM_NATS_MODE: jetstream

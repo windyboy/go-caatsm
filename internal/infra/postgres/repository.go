@@ -56,7 +56,7 @@ func (r *Repository) InsertOne(ctx context.Context, msg *domain.ParsedMessage) e
 		) VALUES (
 			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17
 		)
-		ON CONFLICT (uuid) DO NOTHING
+		ON CONFLICT (uuid, received_at) DO NOTHING
 	`
 
 	tag, err := r.pool.Exec(ctx, query,
@@ -167,11 +167,10 @@ func (r *Repository) InsertRaw(ctx context.Context, msg *domain.ParsedMessage) e
 		) VALUES (
 			$1, $2, $3, $4, $5, $6
 		)
-		ON CONFLICT (uuid) DO UPDATE
+		ON CONFLICT (uuid, received_at) DO UPDATE
 		SET status = EXCLUDED.status,
 		    error_reason = EXCLUDED.error_reason,
 			content = EXCLUDED.content,
-			received_at = EXCLUDED.received_at,
 			metadata = EXCLUDED.metadata
 	`
 
