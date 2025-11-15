@@ -52,6 +52,6 @@ level = "info"
 format = "json"
 
 [telemetry]
-enabled = false
-endpoint = "otel-collector:4318"
+enabled = true
+endpoint = "localhost:4318"
 insecure = true

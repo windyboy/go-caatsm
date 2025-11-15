@@ -82,6 +82,8 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
 
   otel-collector:
+    # Receives OTLP HTTP(4318)/gRPC(4317) traffic from the host dev app.
+    # Forwarding of traces/metrics is defined in configs/otel-collector.dev.yaml.
     image: otel/opentelemetry-collector-contrib:0.99.0
     command:
       - "--config=/etc/otelcol/config.yaml"
@@ -105,6 +107,12 @@ services:
     environment:
       COLLECTOR_OTLP_ENABLED: "true"
       LOG_LEVEL: debug
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:16686 2>/dev/null | grep -q Jaeger"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 5s
     networks:
       - devnet
 

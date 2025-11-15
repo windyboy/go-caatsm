@@ -119,6 +119,8 @@ tasks:
 
   dev-run:
     desc: Run receiver locally against dev stack
+    deps:
+      - up
     env:
       CAATSM_NATS_URL: nats://localhost:4222
       CAATSM_NATS_MODE: jetstream
@@ -129,6 +131,8 @@ tasks:
       GO_ENV: dev
     cmds:
       - |
+        echo "Ensuring observability stack is healthy (Jaeger @ http://localhost:16686)"
+        docker compose -f docker-compose.dev.yml ps jaeger otel-collector >/dev/null
         echo "Running receiver with telemetry (mode=${CAATSM_NATS_MODE:-core})"
         CAATSM_NATS_MODE=${CAATSM_NATS_MODE:-core} \
         go run ./cmd/main listen
