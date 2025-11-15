@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/nats-io/nats.go"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -26,6 +27,7 @@ type Consumer struct {
 	logger       *zap.Logger
 	subject      string
 	consumerName string
+	mode         string
 	meter        metric.Meter
 	ackPending   metric.Int64Histogram
 	redelivered  metric.Int64Histogram
@@ -48,6 +50,11 @@ func ProvideConsumer(
 		consumerName = "telegram-consumer"
 	}
 
+	mode := strings.ToLower(cfg.NATS.Mode)
+	if mode == "" {
+		mode = "jetstream"
+	}
+
 	consumer := &Consumer{
 		conn:         conn,
 		js:           js,
@@ -56,12 +63,20 @@ func ProvideConsumer(
 		logger:       logger,
 		subject:      subject,
 		consumerName: consumerName,
+		mode:         mode,
 	}
 	consumer.initMetrics()
 
-	// Create consumer if it doesn't exist
-	if err := consumer.ensureConsumer(); err != nil {
-		return nil, fmt.Errorf("failed to ensure consumer: %w", err)
+	if consumer.mode == "jetstream" {
+		// Create consumer if it doesn't exist
+		if err := consumer.ensureConsumer(); err != nil {
+			return nil, fmt.Errorf("failed to ensure consumer: %w", err)
+		}
+	} else {
+		logger.Info("Running consumer in core NATS mode",
+			zap.String("subject", subject),
+			zap.String("queue_group", cfg.Subscription.QueueGroup),
+		)
 	}
 
 	return consumer, nil
@@ -130,6 +145,14 @@ func (c *Consumer) ensureConsumer() error {
 
 // Start starts consuming messages
 func (c *Consumer) Start(ctx context.Context) error {
+	if c.mode == "core" {
+		return c.startCore(ctx)
+	}
+
+	return c.startJetStream(ctx)
+}
+
+func (c *Consumer) startJetStream(ctx context.Context) error {
 	streamName := c.cfg.NATS.Stream
 	if streamName == "" {
 		streamName = "TELEGRAM"
@@ -222,6 +245,46 @@ func (c *Consumer) Start(ctx context.Context) error {
 			}
 		}
 	}
+}
+
+func (c *Consumer) startCore(ctx context.Context) error {
+	queueGroup := c.cfg.Subscription.QueueGroup
+	if queueGroup == "" {
+		queueGroup = c.consumerName
+	}
+
+	handler := func(msg *nats.Msg) {
+		if err := c.processMessage(ctx, msg); err != nil {
+			isPermanent := app.IsPermanent(err)
+			c.logger.Error("Failed to process message (core mode)",
+				zap.String("subject", msg.Subject),
+				zap.Error(err),
+				zap.Bool("permanent", isPermanent),
+			)
+		}
+	}
+
+	sub, err := c.conn.QueueSubscribe(c.subject, queueGroup, handler)
+	if err != nil {
+		return fmt.Errorf("failed to subscribe to %s: %w", c.subject, err)
+	}
+	if err := c.conn.Flush(); err != nil {
+		return fmt.Errorf("failed to flush NATS connection: %w", err)
+	}
+
+	c.logger.Info("Started core NATS subscription",
+		zap.String("subject", c.subject),
+		zap.String("queue_group", queueGroup),
+	)
+
+	<-ctx.Done()
+	c.logger.Info("Stopping core NATS consumer", zap.Error(ctx.Err()))
+
+	if err := sub.Drain(); err != nil && !errors.Is(err, nats.ErrConnectionClosed) {
+		return fmt.Errorf("failed to drain core subscription: %w", err)
+	}
+
+	return ctx.Err()
 }
 
 func (c *Consumer) emitConsumerStats(ctx context.Context, streamName string) {
@@ -391,6 +454,10 @@ func (c *Consumer) processMessage(ctx context.Context, msg *nats.Msg) error {
 func (c *Consumer) resolveMsgID(msg *nats.Msg) (string, string, error) {
 	if id := msg.Header.Get("Nats-Msg-Id"); id != "" {
 		return id, "header", nil
+	}
+
+	if c.mode == "core" {
+		return uuid.NewString(), "generated", nil
 	}
 
 	meta, err := msg.Metadata()

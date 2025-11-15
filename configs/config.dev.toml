@@ -1,5 +1,6 @@
 [nats]
 url = "nats://localhost:4222"
+mode = "core"
 client = "serial-client"
 cluster = "tele-cluster"
 stream = "TELEGRAM"

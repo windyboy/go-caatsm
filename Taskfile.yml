@@ -32,13 +32,6 @@ tasks:
     cmds:
       - task: run-dev
 
-  run-dev:
-    desc: Run the receiver in development mode
-    cmds:
-      - task: build-receiver
-      - echo "Running receiver in development mode..."
-      - GO_ENV=dev {{.build_dir}}/receiver listen
-
   run-prod:
     desc: Run the receiver in production mode
     cmds:
@@ -104,32 +97,68 @@ tasks:
       - echo "Linting code..."
       - golangci-lint run
 
+  run-dev:
+    desc: Run the receiver in development mode (binary)
+    cmds:
+      - task: build-receiver
+      - echo "Running receiver in development mode..."
+      - GO_ENV=dev {{.build_dir}}/receiver listen
+
   up:
-    desc: Start TimescaleDB + NATS dev stack
+    desc: Start TimescaleDB + NATS dev stack (docker compose)
     cmds:
       - echo "Starting dev infrastructure..."
-      - podman compose -f docker-compose.dev.yml up -d
+      - podman compose -f docker-compose.dev.yml up -d postgres nats nats-box
+      - podman compose -f docker-compose.dev.yml up -d otel-collector jaeger prometheus grafana
 
   down:
     desc: Stop dev compose stack and remove containers
     cmds:
       - echo "Stopping dev infrastructure..."
-      - podman compose -f docker-compose.dev.yml down
+      - podman compose -f docker-compose.dev.yml down -v
 
   dev-run:
     desc: Run receiver locally against dev stack
     deps:
       - up
+    env:
+      CAATSM_NATS_URL: nats://localhost:4222
+      CAATSM_NATS_MODE: jetstream
+      CAATSM_POSTGRES_URL: postgres://caatsm:caatsm@localhost:5432/aviation?sslmode=disable
+      CAATSM_TELEMETRY_ENABLED: "true"
+      CAATSM_TELEMETRY_ENDPOINT: localhost:4318
+      CAATSM_TELEMETRY_INSECURE: "true"
+      GO_ENV: dev
     cmds:
-      - >
-        CAATSM_NATS_URL=nats://localhost:4222
-        CAATSM_POSTGRES_URL=postgres://caatsm:caatsm@localhost:5432/aviation?sslmode=disable
-        CAATSM_TELEMETRY_ENABLED=true
-        CAATSM_TELEMETRY_ENDPOINT=localhost:4318
-        GO_ENV=dev
+      - |
+        echo "Running receiver with telemetry (mode=${CAATSM_NATS_MODE:-core})"
+        CAATSM_NATS_MODE=${CAATSM_NATS_MODE:-core} \
         go run ./cmd/main listen
 
-
+  seed:
+    desc: Generate sample telegrams (publish to NATS)
+    cmds:
+      - |
+        GO_ENV=dev \
+        NATS_URL=${CAATSM_NATS_URL:-nats://localhost:4222} \
+        SUBJECT=${CAATSM_NATS_SUBJECT:-telegram.serial} \
+        COUNT=${COUNT:-10} \
+        CATEGORY=${CATEGORY:-mixed} \
+        STATUS=${STATUS:-random} \
+        bash -c '
+          set -euo pipefail
+          cmd=(go run ./cmd/seed-telegrams)
+          if [ -n "$NATS_URL" ]; then
+            cmd+=("--nats-url" "$NATS_URL")
+          fi
+          cmd+=(
+            --subject "$SUBJECT"
+            --count "$COUNT"
+            --category "$CATEGORY"
+            --status "$STATUS"
+          )
+          exec "${cmd[@]}"
+        '
   help:
     desc: Show this help message
     cmds:

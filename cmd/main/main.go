@@ -59,6 +59,10 @@ func setupApp() *cli.App {
 						Usage: "NATS JetStream stream name",
 					},
 					&cli.StringFlag{
+						Name:  "nats-mode",
+						Usage: "NATS mode: jetstream or core",
+					},
+					&cli.StringFlag{
 						Name:  "consumer",
 						Usage: "NATS JetStream durable consumer",
 					},
@@ -192,6 +196,9 @@ func applyCLIOverrides(cfg *config.Config, c *cli.Context) {
 	}
 	if stream := c.String("stream"); stream != "" {
 		cfg.NATS.Stream = stream
+	}
+	if mode := c.String("nats-mode"); mode != "" {
+		cfg.NATS.Mode = strings.ToLower(mode)
 	}
 	if consumer := c.String("consumer"); consumer != "" {
 		cfg.NATS.Consumer = consumer

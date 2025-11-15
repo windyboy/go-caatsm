@@ -225,27 +225,28 @@ Critical overrides stay available through CLI flags; advanced tuning such as str
 
 ## Development
 
-### Docker Compose Dev Stack
+See `docs/dev-guide.md` for the full development workflow, including Docker Compose instructions, observability tooling, and troubleshooting tips.
 
-For a local stack running TimescaleDB + NATS (matching `config.dev.toml`), use `docker-compose.dev.yml`:
-
-```bash
-docker compose -f docker-compose.dev.yml up -d postgres nats
-docker compose -f docker-compose.dev.yml up app
-```
-
-- `postgres` uses TimescaleDB, seeding the `aviation` schema via `internal/repository/telegrams.ddl` (extension + hypertable).
-- `app` mounts the repo so code changes are picked up by `go run ./cmd/main listen`.
-- `nats` exposes 4222 (client) and 8222 (monitoring); `nats-box` is available for JetStream inspection (`docker compose exec nats-box sh`).
-
-Prefer to run the Go binary on your host for quicker iteration:
+Quick start:
 
 ```bash
-docker compose -f docker-compose.dev.yml up -d postgres nats
-GO_ENV=dev CAATSM_POSTGRES_URL=postgres://caatsm:caatsm@localhost:5432/aviation?sslmode=disable go run ./cmd/main listen
+# Start database + messaging
+docker compose -f docker-compose.dev.yml up -d postgres nats nats-box
+
+# Start observability stack (optional)
+docker compose -f docker-compose.dev.yml up -d otel-collector jaeger prometheus grafana
 ```
 
-Bring everything down with `docker compose -f docker-compose.dev.yml down -v` when finished.
+Run the processor locally while the infra runs in Docker (dev config defaults to `nats.mode = "core"` so the consumer reads from plain NATS subjects):
+
+```bash
+GO_ENV=dev \
+CAATSM_NATS_MODE=core \
+CAATSM_POSTGRES_URL=postgres://caatsm:caatsm@localhost:5432/aviation?sslmode=disable \
+  go run ./cmd/main listen
+```
+
+Tear everything down with `docker compose -f docker-compose.dev.yml down -v`.
 
 ### Project Structure
 
@@ -286,7 +287,7 @@ ginkgo -r
 
 ## Message Flow
 
-1. **NATS Consumer** receives raw telegram messages from JetStream
+1. **NATS Consumer** receives raw telegram messages from NATS (JetStream durable pull in production; plain `nc.Subscribe` in dev when `nats.mode=core`)
 2. **MessageProcessor** orchestrates the processing:
    - Parses the message using the Parser adapter
    - Stores the parsed message in PostgreSQL via Repository

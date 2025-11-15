@@ -28,6 +28,7 @@ type Config struct {
 // NATSConfig holds NATS/JetStream configuration
 type NATSConfig struct {
 	URL           string              `koanf:"url"`
+	Mode          string              `koanf:"mode"`
 	Stream        string              `koanf:"stream"`
 	Consumer      string              `koanf:"consumer"`
 	StreamLimits  StreamLimitsConfig  `koanf:"stream_limits"`
@@ -49,14 +50,14 @@ type StreamLimitsConfig struct {
 
 // ConsumerRulesConfig captures consumer-level options.
 type ConsumerRulesConfig struct {
-	MaxDeliver    int           `koanf:"max_deliver"`
-	AckWait       time.Duration `koanf:"ack_wait"`
-	MaxAckPending int           `koanf:"max_ack_pending"`
-	DeliverPolicy string        `koanf:"deliver_policy"`
-	ReplayPolicy  string        `koanf:"replay_policy"`
+	MaxDeliver    int             `koanf:"max_deliver"`
+	AckWait       time.Duration   `koanf:"ack_wait"`
+	MaxAckPending int             `koanf:"max_ack_pending"`
+	DeliverPolicy string          `koanf:"deliver_policy"`
+	ReplayPolicy  string          `koanf:"replay_policy"`
 	Backoff       []time.Duration `koanf:"backoff"`
-	StartSequence uint64        `koanf:"start_sequence"`
-	StartTime     string        `koanf:"start_time"`
+	StartSequence uint64          `koanf:"start_sequence"`
+	StartTime     string          `koanf:"start_time"`
 }
 
 // PostgresConfig holds PostgreSQL configuration
@@ -160,6 +161,11 @@ func LoadConfig() (*Config, error) {
 	if cfg.Log.Format == "" {
 		cfg.Log.Format = "json"
 	}
+	if cfg.NATS.Mode == "" {
+		cfg.NATS.Mode = "jetstream"
+	} else {
+		cfg.NATS.Mode = strings.ToLower(cfg.NATS.Mode)
+	}
 	if cfg.NATS.Stream == "" {
 		cfg.NATS.Stream = "TELEGRAM"
 	}
@@ -218,6 +224,11 @@ func LoadConfig() (*Config, error) {
 func (c *Config) Validate() error {
 	if c.NATS.URL == "" {
 		return fmt.Errorf("nats.url is required")
+	}
+	switch strings.ToLower(c.NATS.Mode) {
+	case "", "jetstream", "core":
+	default:
+		return fmt.Errorf("nats.mode must be 'jetstream' or 'core'")
 	}
 	if c.NATS.Stream == "" {
 		return fmt.Errorf("nats.stream is required")

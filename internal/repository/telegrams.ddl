@@ -20,7 +20,8 @@ CREATE TABLE aviation.telegrams (
     parsed_at TIMESTAMPTZ,
     dispatched_at TIMESTAMPTZ,
     need_dispatch BOOLEAN,
-    PRIMARY KEY (uuid, received_at)
+    PRIMARY KEY (uuid, received_at),
+    CONSTRAINT telegrams_uuid_unique UNIQUE (uuid)
 );
 
 SELECT create_hypertable('aviation.telegrams', 'received_at', if_not_exists => TRUE);
@@ -40,5 +41,6 @@ CREATE TABLE IF NOT EXISTS aviation.telegrams_raw (
     content TEXT NOT NULL,
     received_at TIMESTAMPTZ NOT NULL,
     metadata JSONB,
-    PRIMARY KEY (uuid, received_at)
+    PRIMARY KEY (uuid, received_at),
+    CONSTRAINT telegrams_raw_uuid_unique UNIQUE (uuid)
 );
