@@ -20,19 +20,24 @@ import (
 
 // Consumer handles NATS JetStream message consumption
 type Consumer struct {
-	conn         *nats.Conn
-	js           nats.JetStreamContext
-	processor    *app.MessageProcessor
-	cfg          *config.Config
-	logger       *zap.Logger
-	subject      string
-	consumerName string
-	mode         string
-	meter        metric.Meter
-	ackPending   metric.Int64Histogram
-	redelivered  metric.Int64Histogram
-	pending      metric.Int64Histogram
-	delivered    metric.Int64Histogram
+	conn            *nats.Conn
+	js              nats.JetStreamContext
+	processor       *app.MessageProcessor
+	cfg             *config.Config
+	logger          *zap.Logger
+	subject         string
+	consumerName    string
+	mode            string
+	streamName      string
+	ackWait         time.Duration
+	batchSize       int
+	batchTimeout    time.Duration
+	monitorInterval time.Duration
+	meter           metric.Meter
+	ackPending      metric.Int64Histogram
+	redelivered     metric.Int64Histogram
+	pending         metric.Int64Histogram
+	delivered       metric.Int64Histogram
 }
 
 // ProvideConsumer creates a NATS consumer
@@ -55,15 +60,48 @@ func ProvideConsumer(
 		mode = "jetstream"
 	}
 
+	streamName := cfg.NATS.Stream
+	if streamName == "" {
+		streamName = "TELEGRAM"
+	}
+
+	ackWait := cfg.NATS.ConsumerRules.AckWait
+	if ackWait == 0 {
+		ackWait = cfg.Timeouts.AckWait
+	}
+	if ackWait == 0 {
+		ackWait = 30 * time.Second
+	}
+
+	batchSize := cfg.App.BatchSize
+	if batchSize == 0 {
+		batchSize = 50
+	}
+
+	batchTimeout := cfg.App.BatchTimeout
+	if batchTimeout == 0 {
+		batchTimeout = 2 * time.Second
+	}
+
+	monitorInterval := cfg.App.MonitorInterval
+	if monitorInterval <= 0 {
+		monitorInterval = 30 * time.Second
+	}
+
 	consumer := &Consumer{
-		conn:         conn,
-		js:           js,
-		processor:    processor,
-		cfg:          cfg,
-		logger:       logger,
-		subject:      subject,
-		consumerName: consumerName,
-		mode:         mode,
+		conn:            conn,
+		js:              js,
+		processor:       processor,
+		cfg:             cfg,
+		logger:          logger,
+		subject:         subject,
+		consumerName:    consumerName,
+		mode:            mode,
+		streamName:      streamName,
+		ackWait:         ackWait,
+		batchSize:       batchSize,
+		batchTimeout:    batchTimeout,
+		monitorInterval: monitorInterval,
 	}
 	consumer.initMetrics()
 
@@ -84,25 +122,11 @@ func ProvideConsumer(
 
 // ensureConsumer creates the consumer if it doesn't exist
 func (c *Consumer) ensureConsumer() error {
-	streamName := c.cfg.NATS.Stream
-	if streamName == "" {
-		streamName = "TELEGRAM"
-	}
-
-	ackWait := c.cfg.NATS.ConsumerRules.AckWait
-	if ackWait == 0 {
-		ackWait = c.cfg.Timeouts.AckWait
-	}
-	if ackWait == 0 {
-		ackWait = 30 * time.Second
-	}
-	c.cfg.NATS.ConsumerRules.AckWait = ackWait
-
 	consumerConfig := &nats.ConsumerConfig{
 		Durable:       c.consumerName,
 		DeliverPolicy: mapDeliverPolicy(c.cfg.NATS.ConsumerRules.DeliverPolicy),
 		AckPolicy:     nats.AckExplicitPolicy,
-		AckWait:       ackWait,
+		AckWait:       c.ackWait,
 		ReplayPolicy:  mapReplayPolicy(c.cfg.NATS.ConsumerRules.ReplayPolicy),
 		MaxDeliver:    c.cfg.NATS.ConsumerRules.MaxDeliver,
 		MaxAckPending: c.cfg.NATS.ConsumerRules.MaxAckPending,
@@ -124,7 +148,7 @@ func (c *Consumer) ensureConsumer() error {
 		}
 	}
 
-	_, err := c.js.AddConsumer(streamName, consumerConfig)
+	_, err := c.js.AddConsumer(c.streamName, consumerConfig)
 	if err != nil && err != nats.ErrConsumerNameAlreadyInUse {
 		return fmt.Errorf("failed to create consumer: %w", err)
 	}
@@ -132,9 +156,9 @@ func (c *Consumer) ensureConsumer() error {
 	if err == nil {
 		c.logger.Info("Created JetStream consumer",
 			zap.String("consumer", c.consumerName),
-			zap.String("stream", streamName),
+			zap.String("stream", c.streamName),
 			zap.String("subject", c.subject),
-			zap.Duration("ack_wait", ackWait),
+			zap.Duration("ack_wait", c.ackWait),
 			zap.String("deliver_policy", c.cfg.NATS.ConsumerRules.DeliverPolicy),
 			zap.String("replay_policy", c.cfg.NATS.ConsumerRules.ReplayPolicy),
 		)
@@ -153,13 +177,8 @@ func (c *Consumer) Start(ctx context.Context) error {
 }
 
 func (c *Consumer) startJetStream(ctx context.Context) error {
-	streamName := c.cfg.NATS.Stream
-	if streamName == "" {
-		streamName = "TELEGRAM"
-	}
-
 	// Create pull subscription
-	sub, err := c.js.PullSubscribe(c.subject, c.consumerName, nats.Bind(streamName, c.consumerName))
+	sub, err := c.js.PullSubscribe(c.subject, c.consumerName, nats.Bind(c.streamName, c.consumerName))
 	if err != nil {
 		return fmt.Errorf("failed to create pull subscription: %w", err)
 	}
@@ -168,23 +187,14 @@ func (c *Consumer) startJetStream(ctx context.Context) error {
 	c.logger.Info("Started consuming messages",
 		zap.String("subject", c.subject),
 		zap.String("consumer", c.consumerName),
-		zap.String("stream", streamName),
+		zap.String("stream", c.streamName),
 	)
 
-	batchSize := c.cfg.App.BatchSize
-	if batchSize == 0 {
-		batchSize = 50
-	}
-	batchTimeout := c.cfg.App.BatchTimeout
-	if batchTimeout == 0 {
-		batchTimeout = 2 * time.Second
-	}
-
 	c.logger.Info("Consumer pull configuration",
-		zap.Int("batch_size", batchSize),
-		zap.Duration("batch_timeout", batchTimeout),
+		zap.Int("batch_size", c.batchSize),
+		zap.Duration("batch_timeout", c.batchTimeout),
 		zap.Int("max_deliver", c.cfg.NATS.ConsumerRules.MaxDeliver),
-		zap.Duration("ack_wait", c.cfg.NATS.ConsumerRules.AckWait),
+		zap.Duration("ack_wait", c.ackWait),
 		zap.String("deliver_policy", c.cfg.NATS.ConsumerRules.DeliverPolicy),
 		zap.String("replay_policy", c.cfg.NATS.ConsumerRules.ReplayPolicy),
 		zap.Int("backoff_steps", len(c.cfg.NATS.ConsumerRules.Backoff)),
@@ -192,7 +202,7 @@ func (c *Consumer) startJetStream(ctx context.Context) error {
 
 	statsCtx, statsCancel := context.WithCancel(ctx)
 	defer statsCancel()
-	go c.emitConsumerStats(statsCtx, streamName)
+	go c.emitConsumerStats(statsCtx)
 
 	for {
 		select {
@@ -203,7 +213,7 @@ func (c *Consumer) startJetStream(ctx context.Context) error {
 		}
 
 		// Fetch messages in batch
-		msgs, err := sub.Fetch(batchSize, nats.MaxWait(batchTimeout))
+		msgs, err := sub.Fetch(c.batchSize, nats.MaxWait(c.batchTimeout))
 		if err != nil {
 			if errors.Is(err, nats.ErrTimeout) {
 				// Timeout is expected when no messages are available
@@ -287,13 +297,8 @@ func (c *Consumer) startCore(ctx context.Context) error {
 	return ctx.Err()
 }
 
-func (c *Consumer) emitConsumerStats(ctx context.Context, streamName string) {
-	interval := c.cfg.App.MonitorInterval
-	if interval <= 0 {
-		interval = 30 * time.Second
-	}
-
-	ticker := time.NewTicker(interval)
+func (c *Consumer) emitConsumerStats(ctx context.Context) {
+	ticker := time.NewTicker(c.monitorInterval)
 	defer ticker.Stop()
 
 	for {
@@ -301,14 +306,14 @@ func (c *Consumer) emitConsumerStats(ctx context.Context, streamName string) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			info, err := c.js.ConsumerInfo(streamName, c.consumerName)
+			info, err := c.js.ConsumerInfo(c.streamName, c.consumerName)
 			if err != nil {
 				c.logger.Warn("Failed to fetch consumer info", zap.Error(err))
 				continue
 			}
 
 			c.logger.Info("JetStream consumer metrics",
-				zap.String("stream", streamName),
+				zap.String("stream", c.streamName),
 				zap.String("consumer", c.consumerName),
 				zap.Uint64("num_ack_pending", uint64(info.NumAckPending)),
 				zap.Uint64("num_redelivered", uint64(info.NumRedelivered)),
