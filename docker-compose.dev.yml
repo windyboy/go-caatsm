@@ -1,0 +1,59 @@
+services:
+
+  postgres:
+    image: timescale/timescaledb:2.15.2-pg16
+    environment:
+      POSTGRES_USER: caatsm
+      POSTGRES_PASSWORD: caatsm
+      POSTGRES_DB: aviation
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./internal/repository/telegrams.ddl:/docker-entrypoint-initdb.d/01-telegrams.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - devnet
+
+  nats:
+    image: nats:2.10-alpine
+    command: ["-js", "--http_port=8222", "-DV"]
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    networks:
+      - devnet
+
+  nats-box:
+    image: synadia/nats-box:latest
+    entrypoint: ["/bin/sh", "-c", "sleep infinity"]
+    depends_on:
+      - nats
+    networks:
+      - devnet
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.99.0
+    command:
+      - "--config=/etc/otelcol/config.yaml"
+    volumes:
+      - ./configs/otel-collector.dev.yaml:/etc/otelcol/config.yaml:ro
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+    networks:
+      - devnet
+
+volumes:
+  postgres-data:
+
+networks:
+  devnet:
+    driver: bridge
+

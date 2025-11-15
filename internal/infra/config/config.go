@@ -31,7 +31,7 @@ type NATSConfig struct {
 	Stream        string              `koanf:"stream"`
 	Consumer      string              `koanf:"consumer"`
 	StreamLimits  StreamLimitsConfig  `koanf:"stream_limits"`
-	ConsumerRules ConsumerRulesConfig `koanf:"consumer"`
+	ConsumerRules ConsumerRulesConfig `koanf:"consumer_rules"`
 	// Legacy fields
 	Client  string `koanf:"client"`
 	Cluster string `koanf:"cluster"`

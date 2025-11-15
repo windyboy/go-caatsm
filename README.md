@@ -32,7 +32,7 @@ This project follows Clean Architecture principles with clear separation of conc
 
 - **Clean Architecture**: Clear separation between domain, application, and infrastructure layers
 - **NATS JetStream**: Reliable message streaming with automatic retries and dead-letter queues
-- **PostgreSQL**: High-performance data persistence using pgx with batch operations
+- **TimescaleDB (PostgreSQL)**: High-performance persistence using pgx with batch operations and hypertables
 - **Dependency Injection**: Google Wire for compile-time dependency injection
 - **Configuration Management**: Koanf for flexible configuration loading (file + environment variables)
 - **Structured Logging**: Zap logger with configurable levels and formats
@@ -91,7 +91,7 @@ discard = "old"
 storage = "file"
 replicas = 1
 
-[nats.consumer]
+[nats.consumer_rules]
 max_deliver = 5
 ack_wait = "30s"
 max_ack_pending = 1024
@@ -224,6 +224,28 @@ Critical overrides stay available through CLI flags; advanced tuning such as str
 - When enabled the app emits OpenTelemetry traces (parser/repository/publisher spans) and JetStream metrics (ack pending, deliveries) for dashboards and alerts.
 
 ## Development
+
+### Docker Compose Dev Stack
+
+For a local stack running TimescaleDB + NATS (matching `config.dev.toml`), use `docker-compose.dev.yml`:
+
+```bash
+docker compose -f docker-compose.dev.yml up -d postgres nats
+docker compose -f docker-compose.dev.yml up app
+```
+
+- `postgres` uses TimescaleDB, seeding the `aviation` schema via `internal/repository/telegrams.ddl` (extension + hypertable).
+- `app` mounts the repo so code changes are picked up by `go run ./cmd/main listen`.
+- `nats` exposes 4222 (client) and 8222 (monitoring); `nats-box` is available for JetStream inspection (`docker compose exec nats-box sh`).
+
+Prefer to run the Go binary on your host for quicker iteration:
+
+```bash
+docker compose -f docker-compose.dev.yml up -d postgres nats
+GO_ENV=dev CAATSM_POSTGRES_URL=postgres://caatsm:caatsm@localhost:5432/aviation?sslmode=disable go run ./cmd/main listen
+```
+
+Bring everything down with `docker compose -f docker-compose.dev.yml down -v` when finished.
 
 ### Project Structure
 

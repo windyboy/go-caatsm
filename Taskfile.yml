@@ -104,6 +104,31 @@ tasks:
       - echo "Linting code..."
       - golangci-lint run
 
+  up:
+    desc: Start TimescaleDB + NATS dev stack
+    cmds:
+      - echo "Starting dev infrastructure..."
+      - podman compose -f docker-compose.dev.yml up -d
+
+  down:
+    desc: Stop dev compose stack and remove containers
+    cmds:
+      - echo "Stopping dev infrastructure..."
+      - podman compose -f docker-compose.dev.yml down
+
+  dev-run:
+    desc: Run receiver locally against dev stack
+    deps:
+      - up
+    cmds:
+      - >
+        CAATSM_NATS_URL=nats://localhost:4222
+        CAATSM_POSTGRES_URL=postgres://caatsm:caatsm@localhost:5432/aviation?sslmode=disable
+        CAATSM_TELEMETRY_ENABLED=true
+        CAATSM_TELEMETRY_ENDPOINT=localhost:4318
+        GO_ENV=dev
+        go run ./cmd/main listen
+
 
   help:
     desc: Show this help message

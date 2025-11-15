@@ -13,7 +13,7 @@ discard = "old"
 storage = "file"
 replicas = 1
 
-[nats.consumer]
+[nats.consumer_rules]
 max_deliver = 5
 ack_wait = "30s"
 max_ack_pending = 1024
@@ -52,5 +52,5 @@ format = "json"
 
 [telemetry]
 enabled = false
-endpoint = "http://otel-collector:4318"
+endpoint = "otel-collector:4318"
 insecure = true
