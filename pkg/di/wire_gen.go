@@ -11,6 +11,7 @@ import (
 	"caatsm/internal/app"
 	"caatsm/internal/infra/config"
 	"caatsm/internal/infra/log"
+	"caatsm/internal/infra/monitoring"
 	"caatsm/internal/infra/nats"
 	"caatsm/internal/infra/postgres"
 	"github.com/google/wire"
@@ -53,9 +54,14 @@ func buildAppComponents() (*appComponents, error) {
 	if err != nil {
 		return nil, err
 	}
+	server, err := monitoring.ProvideServer(configConfig, logger, pool, conn)
+	if err != nil {
+		return nil, err
+	}
 	diAppComponents := &appComponents{
-		Processor: messageProcessor,
-		Consumer:  consumer,
+		Processor:  messageProcessor,
+		Consumer:   consumer,
+		Monitoring: server,
 	}
 	return diAppComponents, nil
 }
@@ -91,9 +97,14 @@ func buildAppComponentsWithConfig(cfg *config.Config) (*appComponents, error) {
 	if err != nil {
 		return nil, err
 	}
+	server, err := monitoring.ProvideServer(cfg, logger, pool, conn)
+	if err != nil {
+		return nil, err
+	}
 	diAppComponents := &appComponents{
-		Processor: messageProcessor,
-		Consumer:  consumer,
+		Processor:  messageProcessor,
+		Consumer:   consumer,
+		Monitoring: server,
 	}
 	return diAppComponents, nil
 }
@@ -101,26 +112,27 @@ func buildAppComponentsWithConfig(cfg *config.Config) (*appComponents, error) {
 // wire.go:
 
 // InitializeApp initializes the application with all dependencies
-func InitializeApp() (*app.MessageProcessor, *nats.Consumer, error) {
+func InitializeApp() (*app.MessageProcessor, *nats.Consumer, *monitoring.Server, error) {
 	comps, err := buildAppComponents()
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	return comps.Processor, comps.Consumer, nil
+	return comps.Processor, comps.Consumer, comps.Monitoring, nil
 }
 
 // InitializeAppWithConfig wires dependencies using a pre-loaded configuration.
-func InitializeAppWithConfig(cfg *config.Config) (*app.MessageProcessor, *nats.Consumer, error) {
+func InitializeAppWithConfig(cfg *config.Config) (*app.MessageProcessor, *nats.Consumer, *monitoring.Server, error) {
 	comps, err := buildAppComponentsWithConfig(cfg)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	return comps.Processor, comps.Consumer, nil
+	return comps.Processor, comps.Consumer, comps.Monitoring, nil
 }
 
-var runtimeSet = wire.NewSet(log.ProvideLogger, postgres.ProvideDB, postgres.ProvideRepository, nats.ProvideNATSConn, nats.ProvideJetStream, nats.ProvidePublisher, parser.ProvideParser, app.NewMessageProcessor, nats.ProvideConsumer)
+var runtimeSet = wire.NewSet(log.ProvideLogger, postgres.ProvideDB, postgres.ProvideRepository, nats.ProvideNATSConn, nats.ProvideJetStream, nats.ProvidePublisher, parser.ProvideParser, app.NewMessageProcessor, nats.ProvideConsumer, monitoring.ProvideServer)
 
 type appComponents struct {
-	Processor *app.MessageProcessor
-	Consumer  *nats.Consumer
+	Processor  *app.MessageProcessor
+	Consumer   *nats.Consumer
+	Monitoring *monitoring.Server
 }

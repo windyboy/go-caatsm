@@ -55,3 +55,11 @@ format = "json"
 enabled = true
 endpoint = "localhost:4318"
 insecure = true
+
+[monitoring]
+addr = ":2112"
+enable_metrics = true
+enable_health = true
+read_timeout = "5s"
+write_timeout = "5s"
+health_timeout = "2s"

@@ -1,0 +1,278 @@
+//go:build integration
+
+package integration
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+
+	"caatsm/internal/adapter/parser"
+	"caatsm/internal/app"
+	"caatsm/internal/domain"
+	"caatsm/internal/infra/config"
+	natsinfra "caatsm/internal/infra/nats"
+	postgresinfra "caatsm/internal/infra/postgres"
+
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/nats-io/nats.go"
+	tc "github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/wait"
+	"go.uber.org/zap"
+)
+
+func TestJetStreamToTimescaleFlow(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	pgContainer, pgURL := startPostgres(ctx, t)
+	defer func() {
+		_ = pgContainer.Terminate(context.Background())
+	}()
+
+	natsContainer, natsURL := startNATS(ctx, t)
+	defer func() {
+		_ = natsContainer.Terminate(context.Background())
+	}()
+
+	cfg := buildTestConfig(natsURL, pgURL)
+	logger := zap.NewNop()
+
+	pool, err := postgresinfra.ProvideDB(cfg)
+	if err != nil {
+		t.Fatalf("failed to init postgres: %v", err)
+	}
+	defer pool.Close()
+
+	if err := applyDDL(ctx, pool); err != nil {
+		t.Fatalf("failed to apply schema: %v", err)
+	}
+
+	repo, err := postgresinfra.ProvideRepository(pool, logger)
+	if err != nil {
+		t.Fatalf("failed to init repository: %v", err)
+	}
+
+	conn, err := natsinfra.ProvideNATSConn(cfg, logger)
+	if err != nil {
+		t.Fatalf("failed to connect nats: %v", err)
+	}
+	defer conn.Drain()
+
+	js, err := natsinfra.ProvideJetStream(conn, cfg, logger)
+	if err != nil {
+		t.Fatalf("failed to init jetstream: %v", err)
+	}
+
+	publisher, err := natsinfra.ProvidePublisher(js, cfg, logger)
+	if err != nil {
+		t.Fatalf("failed to init publisher: %v", err)
+	}
+
+	proc := app.NewMessageProcessor(parser.ProvideParser(), repo, publisher, logger)
+	consumer, err := natsinfra.ProvideConsumer(conn, js, proc, cfg, logger)
+	if err != nil {
+		t.Fatalf("failed to init consumer: %v", err)
+	}
+
+	runCtx, runCancel := context.WithCancel(ctx)
+	defer runCancel()
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- consumer.Start(runCtx)
+	}()
+	defer func() {
+		runCancel()
+		select {
+		case <-errCh:
+		case <-time.After(2 * time.Second):
+		}
+		_ = consumer.Shutdown(context.Background())
+	}()
+
+	// Publish a message to the input subject.
+	payload := []byte(`ZCZC ARR1234 150631
+FF ZBTJZPZX
+150630 ZBACZQZX
+(ARR-CCA1234-A1234-ZBTJ1500-ZGGG0135)
+NNNN`)
+
+	msg := nats.NewMsg(cfg.EffectiveSubscriptionTopic())
+	msg.Data = payload
+	msg.Header.Set("Nats-Msg-Id", "integration-1")
+	if _, err := js.PublishMsg(msg); err != nil {
+		t.Fatalf("failed to publish test telegram: %v", err)
+	}
+
+	waitCtx, waitCancel := context.WithTimeout(ctx, 20*time.Second)
+	defer waitCancel()
+
+	for {
+		select {
+		case <-waitCtx.Done():
+			t.Fatalf("telegrams row not persisted: %v", waitCtx.Err())
+		default:
+		}
+
+		var status string
+		err := pool.QueryRow(ctx, `
+			SELECT status FROM aviation.telegrams WHERE message_id = $1 LIMIT 1
+		`, "ARR1234").Scan(&status)
+		if err == nil && status == string(domain.MessageStatusParsed) {
+			return
+		}
+
+		time.Sleep(500 * time.Millisecond)
+	}
+}
+
+func startPostgres(ctx context.Context, t *testing.T) (tc.Container, string) {
+	t.Helper()
+	req := tc.ContainerRequest{
+		Image:        "timescale/timescaledb:2.15.2-pg16",
+		ExposedPorts: []string{"5432/tcp"},
+		Env: map[string]string{
+			"POSTGRES_USER":     "postgres",
+			"POSTGRES_PASSWORD": "postgres",
+			"POSTGRES_DB":       "aviation",
+		},
+		WaitingFor: wait.ForAll(
+			wait.ForListeningPort("5432/tcp"),
+			wait.ForLog("database system is ready to accept connections"),
+		).WithDeadline(2 * time.Minute),
+	}
+
+	container, err := tc.GenericContainer(ctx, tc.GenericContainerRequest{
+		ContainerRequest: req,
+		Started:          true,
+	})
+	if err != nil {
+		t.Fatalf("failed to start postgres container: %v", err)
+	}
+
+	host, err := container.Host(ctx)
+	if err != nil {
+		t.Fatalf("failed to resolve postgres host: %v", err)
+	}
+	port, err := container.MappedPort(ctx, "5432")
+	if err != nil {
+		t.Fatalf("failed to resolve postgres port: %v", err)
+	}
+
+	url := fmt.Sprintf("postgres://postgres:postgres@%s:%s/aviation?sslmode=disable", host, port.Port())
+	return container, url
+}
+
+func startNATS(ctx context.Context, t *testing.T) (tc.Container, string) {
+	t.Helper()
+	req := tc.ContainerRequest{
+		Image:        "nats:2.10-alpine",
+		ExposedPorts: []string{"4222/tcp"},
+		Cmd:          []string{"-js", "--server_name=integration"},
+		WaitingFor: wait.ForAll(
+			wait.ForListeningPort("4222/tcp"),
+			wait.ForLog("Server is ready"),
+		).WithDeadline(2 * time.Minute),
+	}
+
+	container, err := tc.GenericContainer(ctx, tc.GenericContainerRequest{
+		ContainerRequest: req,
+		Started:          true,
+	})
+	if err != nil {
+		t.Fatalf("failed to start nats container: %v", err)
+	}
+
+	host, err := container.Host(ctx)
+	if err != nil {
+		t.Fatalf("failed to resolve nats host: %v", err)
+	}
+	port, err := container.MappedPort(ctx, "4222")
+	if err != nil {
+		t.Fatalf("failed to resolve nats port: %v", err)
+	}
+
+	return container, fmt.Sprintf("nats://%s:%s", host, port.Port())
+}
+
+func buildTestConfig(natsURL, pgURL string) *config.Config {
+	cfg := &config.Config{
+		NATS: config.NATSConfig{
+			URL:      natsURL,
+			Mode:     "jetstream",
+			Stream:   "INTEGRATION_TELEGRAM",
+			Consumer: "integration-consumer",
+			StreamLimits: config.StreamLimitsConfig{
+				MaxMsgs:  1000,
+				MaxBytes: 67108864,
+				MaxAge:   time.Hour,
+				Discard:  "old",
+				Storage:  "file",
+				Replicas: 1,
+			},
+			ConsumerRules: config.ConsumerRulesConfig{
+				MaxDeliver:    3,
+				AckWait:       15 * time.Second,
+				MaxAckPending: 128,
+				DeliverPolicy: "all",
+				ReplayPolicy:  "instant",
+			},
+		},
+		Postgres: config.PostgresConfig{
+			URL:      pgURL,
+			MaxConns: 4,
+			MinConns: 1,
+		},
+		App: config.AppConfig{
+			BatchSize:       1,
+			BatchTimeout:    time.Second,
+			MonitorInterval: time.Second,
+		},
+		Log: config.LogConfig{
+			Level:  "error",
+			Format: "json",
+		},
+		Publisher: config.PublisherConfig{
+			Topic: "integration.telegram.json",
+		},
+		Subscription: config.SubscriptionConfig{
+			Topic: "integration.telegram.serial",
+		},
+		Telemetry: config.TelemetryConfig{
+			Enabled: false,
+		},
+		Timeouts: config.TimeoutsConfig{
+			Server:        5 * time.Second,
+			ReconnectWait: 2 * time.Second,
+			Close:         5 * time.Second,
+			AckWait:       15 * time.Second,
+		},
+	}
+
+	// Monitoring server disabled for tests.
+	cfg.Monitoring.Disabled = true
+
+	if err := cfg.Validate(); err != nil {
+		panic(fmt.Sprintf("invalid integration config: %v", err))
+	}
+
+	return cfg
+}
+
+func applyDDL(ctx context.Context, pool *pgxpool.Pool) error {
+	ddlPath := filepath.Join("..", "..", "internal", "repository", "telegrams.ddl")
+	bytes, err := os.ReadFile(ddlPath)
+	if err != nil {
+		return fmt.Errorf("read ddl: %w", err)
+	}
+	_, err = pool.Exec(ctx, string(bytes))
+	return err
+}

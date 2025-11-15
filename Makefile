@@ -1,84 +1,86 @@
-# Variables
-APP_NAME = tele-proc
-GO_FILES = $(shell find . -name '*.go' -type f)
-CONFIG_DIR = configs
-BUILD_DIR = build
-MAIN_RECEIVER = ./cmd/main/main.go
+# Build variables
+BUILD_DIR ?= bin
+BINARY := $(BUILD_DIR)/receiver
+CMD := ./cmd/main
+GO_ENV ?= dev
 
 # Default target
 .PHONY: all
-all: build
+all: build ## Build the application
 
-# Build the receiver application
 .PHONY: build
-build: build-receiver
-
-.PHONY: build-receiver
-build-receiver:
+build: ## Build the receiver binary
+	@mkdir -p $(BUILD_DIR)
 	@echo "Building receiver..."
-	@go build -o $(BUILD_DIR)/receiver $(MAIN_RECEIVER)
+	@go build -o $(BINARY) $(CMD)
 
-# Run the receiver application with different configurations
 .PHONY: run
-run: run-dev
+run: run-dev ## Alias for run-dev
 
 .PHONY: run-dev
-run-dev:
+run-dev: build ## Run the receiver in development mode
 	@echo "Running receiver in development mode..."
-	@GO_ENV=development $(BUILD_DIR)/receiver &
+	@GO_ENV=dev $(BINARY) listen
 
 .PHONY: run-prod
-run-prod:
+run-prod: build ## Run the receiver in production mode
 	@echo "Running receiver in production mode..."
-	@GO_ENV=production $(BUILD_DIR)/receiver &
+	@GO_ENV=prod $(BINARY) listen
 
 .PHONY: run-test
-run-test:
+run-test: build ## Run the receiver in test mode
 	@echo "Running receiver in test mode..."
-	@GO_ENV=test $(BUILD_DIR)/receiver &
+	@GO_ENV=test $(BINARY) listen
 
-# Test the application
+.PHONY: run-local
+run-local: ## Run receiver directly via go run
+	@echo "Running receiver via go run..."
+	@GO_ENV=$(GO_ENV) go run $(CMD) listen
+
 .PHONY: test
-test:
-	@echo "Running tests..."
-	@ginkgo  -r -v
+test: ## Run unit tests
+	@echo "Running go test..."
+	@go test ./...
 
-# Clean build artifacts
-.PHONY: clean
-clean:
-	@echo "Cleaning build artifacts..."
-	@rm -rf $(BUILD_DIR)
+.PHONY: test-int
+test-int: ## Run integration tests (requires Docker)
+	@echo "Running integration tests..."
+	@GO_ENV=$(GO_ENV) go test -tags=integration ./test/integration/...
 
-# Format the code
+.PHONY: test-ginkgo
+test-ginkgo: ## Run ginkgo test suites
+	@command -v ginkgo >/dev/null || (echo "Please install ginkgo (go install github.com/onsi/ginkgo/v2/ginkgo@latest)"; exit 1)
+	@ginkgo -r -v
+
+.PHONY: coverage
+coverage: ## Run coverage and generate report
+	@mkdir -p coverage
+	@echo "Generating coverage report..."
+	@go test ./... -coverprofile=coverage/coverage.out
+	@go tool cover -html=coverage/coverage.out -o coverage/coverage.html
+
 .PHONY: fmt
-fmt:
+fmt: ## Format Go code
 	@echo "Formatting code..."
 	@go fmt ./...
 
-# Install dependencies
 .PHONY: deps
-deps:
-	@echo "Installing dependencies..."
+deps: ## Sync go.mod / go.sum
+	@echo "Tidying go modules..."
 	@go mod tidy
 
-# Lint the code
 .PHONY: lint
-lint:
+lint: ## Run golangci-lint
+	@command -v golangci-lint >/dev/null || (echo "Please install golangci-lint (https://golangci-lint.run/)"; exit 1)
 	@echo "Linting code..."
-	@golangci-lint run
+	@golangci-lint run ./...
 
-# Help
+.PHONY: clean
+clean: ## Clean build artifacts and coverage files
+	@echo "Cleaning build artifacts..."
+	@rm -rf $(BUILD_DIR) coverage
+
 .PHONY: help
-help:
-	@echo "Makefile usage:"
-	@echo "  make build          - Build the application"
-	@echo "  make run            - Run the receiver in development mode"
-	@echo "  make run-dev        - Run the receiver in development mode"
-	@echo "  make run-prod       - Run the receiver in production mode"
-	@echo "  make run-test       - Run the receiver in test mode"
-	@echo "  make test           - Run tests"
-	@echo "  make clean          - Clean build artifacts"
-	@echo "  make fmt            - Format the code"
-	@echo "  make deps           - Install dependencies"
-	@echo "  make lint           - Lint the code"
-	@echo "  make help           - Show this help message"
+help: ## Show this help
+	@printf "Makefile targets:\n"
+	@grep -E '^[a-zA-Z0-9_-]+:.*##' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*##"} {printf "  %-15s %s\n", $$1, $$2}'

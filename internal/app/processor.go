@@ -4,6 +4,7 @@ import (
 	"caatsm/internal/adapter"
 	"caatsm/internal/adapter/parser"
 	"caatsm/internal/domain"
+	obsmetrics "caatsm/internal/observability/metrics"
 	"context"
 	"fmt"
 	"strings"
@@ -122,13 +123,15 @@ func (p *MessageProcessor) Handle(ctx context.Context, raw []byte, msgID string)
 			zap.String("content_preview", truncateContent(parsed.Content, 256)),
 			zap.Error(parseErr),
 		)
-		parseLatencyHistogram.Record(ctx, float64(parsed.ParsedAt.Sub(receivedAt).Milliseconds()),
+		latency := parsed.ParsedAt.Sub(receivedAt)
+		parseLatencyHistogram.Record(ctx, float64(latency.Milliseconds()),
 			metric.WithAttributes(
 				messageStatusAttrKey.String(string(parsed.Status)),
 				messageCategoryAttrKey.String(parsed.Category),
 			),
 		)
-		recordProcessedMetric(ctx, parsed)
+		obsmetrics.RecordFailure("parser")
+		recordProcessedMetric(ctx, parsed, latency)
 		return Permanent(fmt.Errorf("parser error: %w", parseErr))
 	}
 	parsed.ErrorReason = ""
@@ -153,13 +156,15 @@ func (p *MessageProcessor) Handle(ctx context.Context, raw []byte, msgID string)
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 		parsed.Status = domain.MessageStatusRepositoryFail
-		parseLatencyHistogram.Record(ctx, float64(parsed.ParsedAt.Sub(receivedAt).Milliseconds()),
+		latency := parsed.ParsedAt.Sub(receivedAt)
+		parseLatencyHistogram.Record(ctx, float64(latency.Milliseconds()),
 			metric.WithAttributes(
 				messageStatusAttrKey.String(string(parsed.Status)),
 				messageCategoryAttrKey.String(parsed.Category),
 			),
 		)
-		recordProcessedMetric(ctx, parsed)
+		obsmetrics.RecordFailure("repository")
+		recordProcessedMetric(ctx, parsed, latency)
 		return fmt.Errorf("failed to insert message: %w", err)
 	}
 
@@ -180,13 +185,15 @@ func (p *MessageProcessor) Handle(ctx context.Context, raw []byte, msgID string)
 				messageCategoryAttrKey.String(parsed.Category),
 			),
 		)
-		parseLatencyHistogram.Record(ctx, float64(parsed.ParsedAt.Sub(receivedAt).Milliseconds()),
+		latency := parsed.ParsedAt.Sub(receivedAt)
+		parseLatencyHistogram.Record(ctx, float64(latency.Milliseconds()),
 			metric.WithAttributes(
 				messageStatusAttrKey.String(string(parsed.Status)),
 				messageCategoryAttrKey.String(parsed.Category),
 			),
 		)
-		recordProcessedMetric(ctx, parsed)
+		obsmetrics.RecordFailure("publisher")
+		recordProcessedMetric(ctx, parsed, latency)
 		p.persistRaw(ctx, parsed)
 		// Mark as permanent so the consumer will ack instead of retrying
 		pubSpan.End()
@@ -194,13 +201,14 @@ func (p *MessageProcessor) Handle(ctx context.Context, raw []byte, msgID string)
 	}
 	pubSpan.End()
 
-	parseLatencyHistogram.Record(ctx, float64(parsed.ParsedAt.Sub(receivedAt).Milliseconds()),
+	latency := parsed.ParsedAt.Sub(receivedAt)
+	parseLatencyHistogram.Record(ctx, float64(latency.Milliseconds()),
 		metric.WithAttributes(
 			messageStatusAttrKey.String(string(parsed.Status)),
 			messageCategoryAttrKey.String(parsed.Category),
 		),
 	)
-	recordProcessedMetric(ctx, parsed)
+	recordProcessedMetric(ctx, parsed, latency)
 
 	return nil
 }
@@ -242,7 +250,7 @@ func truncateContent(content string, limit int) string {
 	return content[:limit-3] + "..."
 }
 
-func recordProcessedMetric(ctx context.Context, msg *domain.ParsedMessage) {
+func recordProcessedMetric(ctx context.Context, msg *domain.ParsedMessage, elapsed time.Duration) {
 	if msg == nil {
 		return
 	}
@@ -252,4 +260,8 @@ func recordProcessedMetric(ctx context.Context, msg *domain.ParsedMessage) {
 			messageCategoryAttrKey.String(msg.Category),
 		),
 	)
+	if elapsed < 0 {
+		elapsed = 0
+	}
+	obsmetrics.RecordProcessed(string(msg.Status), msg.Category, elapsed)
 }

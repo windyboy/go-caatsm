@@ -14,12 +14,13 @@ import (
 
 // Config holds all application configuration
 type Config struct {
-	NATS      NATSConfig      `koanf:"nats"`
-	Postgres  PostgresConfig  `koanf:"postgres"`
-	App       AppConfig       `koanf:"app"`
-	Log       LogConfig       `koanf:"log"`
-	Publisher PublisherConfig `koanf:"publisher"`
-	Telemetry TelemetryConfig `koanf:"telemetry"`
+	NATS       NATSConfig       `koanf:"nats"`
+	Postgres   PostgresConfig   `koanf:"postgres"`
+	App        AppConfig        `koanf:"app"`
+	Log        LogConfig        `koanf:"log"`
+	Publisher  PublisherConfig  `koanf:"publisher"`
+	Telemetry  TelemetryConfig  `koanf:"telemetry"`
+	Monitoring MonitoringConfig `koanf:"monitoring"`
 	// Legacy fields for backward compatibility during migration
 	Subscription SubscriptionConfig `koanf:"subscription"`
 	Timeouts     TimeoutsConfig     `koanf:"timeouts"`
@@ -90,6 +91,17 @@ type TelemetryConfig struct {
 	Enabled  bool   `koanf:"enabled"`
 	Endpoint string `koanf:"endpoint"`
 	Insecure bool   `koanf:"insecure"`
+}
+
+// MonitoringConfig controls the lightweight HTTP server that exposes health and metrics endpoints.
+type MonitoringConfig struct {
+	Disabled      bool          `koanf:"disabled"`
+	Addr          string        `koanf:"addr"`
+	EnableMetrics bool          `koanf:"enable_metrics"`
+	EnableHealth  bool          `koanf:"enable_health"`
+	ReadTimeout   time.Duration `koanf:"read_timeout"`
+	WriteTimeout  time.Duration `koanf:"write_timeout"`
+	HealthTimeout time.Duration `koanf:"health_timeout"`
 }
 
 // SubscriptionConfig holds subscription configuration (legacy)
@@ -212,6 +224,21 @@ func LoadConfig() (*Config, error) {
 		cfg.Telemetry.Endpoint = ""
 	}
 
+	if !cfg.Monitoring.Disabled && cfg.Monitoring.Addr == "" && !cfg.Monitoring.EnableHealth && !cfg.Monitoring.EnableMetrics {
+		cfg.Monitoring.Addr = ":2112"
+		cfg.Monitoring.EnableHealth = true
+		cfg.Monitoring.EnableMetrics = true
+	}
+	if cfg.Monitoring.ReadTimeout == 0 {
+		cfg.Monitoring.ReadTimeout = 5 * time.Second
+	}
+	if cfg.Monitoring.WriteTimeout == 0 {
+		cfg.Monitoring.WriteTimeout = 5 * time.Second
+	}
+	if cfg.Monitoring.HealthTimeout == 0 {
+		cfg.Monitoring.HealthTimeout = 2 * time.Second
+	}
+
 	// Validate configuration
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("config validation failed: %w", err)
@@ -291,6 +318,15 @@ func (c *Config) Validate() error {
 	}
 	if c.Telemetry.Endpoint == "" && c.Telemetry.Enabled {
 		return fmt.Errorf("telemetry.endpoint is required when telemetry.enabled=true")
+	}
+	if c.Monitoring.ReadTimeout < 0 {
+		return fmt.Errorf("monitoring.read_timeout must be >= 0")
+	}
+	if c.Monitoring.WriteTimeout < 0 {
+		return fmt.Errorf("monitoring.write_timeout must be >= 0")
+	}
+	if c.Monitoring.HealthTimeout < 0 {
+		return fmt.Errorf("monitoring.health_timeout must be >= 0")
 	}
 	return nil
 }

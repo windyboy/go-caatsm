@@ -8,6 +8,7 @@ import (
 	"caatsm/internal/app"
 	"caatsm/internal/infra/config"
 	"caatsm/internal/infra/log"
+	"caatsm/internal/infra/monitoring"
 	"caatsm/internal/infra/nats"
 	"caatsm/internal/infra/postgres"
 
@@ -15,21 +16,21 @@ import (
 )
 
 // InitializeApp initializes the application with all dependencies
-func InitializeApp() (*app.MessageProcessor, *nats.Consumer, error) {
+func InitializeApp() (*app.MessageProcessor, *nats.Consumer, *monitoring.Server, error) {
 	comps, err := buildAppComponents()
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	return comps.Processor, comps.Consumer, nil
+	return comps.Processor, comps.Consumer, comps.Monitoring, nil
 }
 
 // InitializeAppWithConfig wires dependencies using a pre-loaded configuration.
-func InitializeAppWithConfig(cfg *config.Config) (*app.MessageProcessor, *nats.Consumer, error) {
+func InitializeAppWithConfig(cfg *config.Config) (*app.MessageProcessor, *nats.Consumer, *monitoring.Server, error) {
 	comps, err := buildAppComponentsWithConfig(cfg)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	return comps.Processor, comps.Consumer, nil
+	return comps.Processor, comps.Consumer, comps.Monitoring, nil
 }
 
 var runtimeSet = wire.NewSet(
@@ -53,6 +54,9 @@ var runtimeSet = wire.NewSet(
 
 	// Consumer
 	nats.ProvideConsumer,
+
+	// Monitoring HTTP server
+	monitoring.ProvideServer,
 )
 
 func buildAppComponents() (*appComponents, error) {
@@ -75,4 +79,5 @@ func buildAppComponentsWithConfig(cfg *config.Config) (*appComponents, error) {
 type appComponents struct {
 	Processor *app.MessageProcessor
 	Consumer  *nats.Consumer
+	Monitoring *monitoring.Server
 }

@@ -1,14 +1,9 @@
 version: '3'
+
 vars:
-  app_name: tele-proc
-  go_files:
-    sh: find . -name '*.go' -type f
-  config_dir: configs
-  build_dir: build
-  main_receiver: ./cmd/main/main.go
-  hasura_endpoint: http://localhost:8080/v1/graphql
-  schema_file: ./internal/repository/schema.graphql
-  hasura_secret: # Set your Hasura admin secret here
+  build_dir: bin
+  binary: '{{.build_dir}}/receiver'
+  cmd: ./cmd/main
 
 tasks:
   all:
@@ -17,92 +12,117 @@ tasks:
       - task: build
 
   build:
-    desc: Build the receiver application
+    desc: Build the receiver binary
     cmds:
-      - task: build-receiver
-
-  build-receiver:
-    desc: Build the receiver application
-    cmds:
+      - mkdir -p {{.build_dir}}
       - echo "Building receiver..."
-      - go build -o {{.build_dir}}/receiver {{.main_receiver}}
+      - go build -o {{.binary}} {{.cmd}}
 
   run:
-    desc: Run the receiver application with different configurations
+    desc: Alias for run-dev
     cmds:
       - task: run-dev
 
+  run-dev:
+    desc: Run the receiver in development mode
+    deps:
+      - build
+    cmds:
+      - echo "Running receiver in development mode..."
+      - GO_ENV=dev {{.binary}} listen
+
   run-prod:
     desc: Run the receiver in production mode
+    deps:
+      - build
     cmds:
-      - task: build-receiver
       - echo "Running receiver in production mode..."
-      - GO_ENV=prod {{.build_dir}}/receiver
+      - GO_ENV=prod {{.binary}} listen
 
   run-test:
     desc: Run the receiver in test mode
+    deps:
+      - build
     cmds:
-      - task: build-receiver
       - echo "Running receiver in test mode..."
-      - GO_ENV=test {{.build_dir}}/receiver
+      - GO_ENV=test {{.binary}} listen
 
-  upgrade:
-    desc: Upgrade go dependencies
+  run-local:
+    desc: Run receiver via go run (default GO_ENV=dev)
     cmds:
-      - echo "Upgrading go dependencies..."
-      - go get -u -v ./...
-      - go mod tidy
-
-  install-test:
-    desc: Install ginkgo for testing
-    cmds:
-      - echo "Installing ginkgo..."
-      - go install github.com/onsi/ginkgo/v2/ginkgo
-      - go get github.com/onsi/gomega/...
+      - |
+        echo "Running receiver via go run (GO_ENV=${GO_ENV:-dev})..."
+        GO_ENV=${GO_ENV:-dev} go run {{.cmd}} listen
 
   test:
-    desc: Test the application
+    desc: Run go test ./...
     cmds:
-      - echo "Running tests..."
+      - echo "Running go test..."
+      - go test ./...
+
+  test-int:
+    desc: Run integration tests (requires Docker)
+    cmds:
+      - |
+        echo "Running integration tests (Docker required)..."
+        GO_ENV=${GO_ENV:-test} go test -tags=integration ./test/integration/...
+
+  test-ginkgo:
+    desc: Run ginkgo suites
+    cmds:
+      - command -v ginkgo >/dev/null || { echo "Install ginkgo (go install github.com/onsi/ginkgo/v2/ginkgo@latest)"; exit 1; }
       - ginkgo -r -v
 
   coverage:
-    desc: Generate test coverage report
+    desc: Generate coverage report (profile + HTML)
     cmds:
+      - mkdir -p coverage
       - echo "Generating test coverage report..."
-      - ginkgo --json-report ./ginkgo.report  -coverpkg=./... -coverprofile=./coverage/coverage.out  -r
-      - go tool cover -html=./coverage/coverage.out -o ./coverage/coverage.html
-
-  clean:
-    desc: Clean build artifacts
-    cmds:
-      - echo "Cleaning build artifacts..."
-      - rm -rf {{.build_dir}}
+      - go test ./... -coverprofile=coverage/coverage.out
+      - go tool cover -html=coverage/coverage.out -o coverage/coverage.html
 
   fmt:
-    desc: Format the code
+    desc: Format Go code
     cmds:
       - echo "Formatting code..."
       - go fmt ./...
 
-  deps:
-    desc: Install dependencies
+  lint:
+    desc: Run golangci-lint
     cmds:
-      - echo "Installing dependencies..."
+      - |
+        if ! command -v golangci-lint >/dev/null; then
+          echo "Install golangci-lint: https://golangci-lint.run/"
+          exit 1
+        fi
+      - echo "Linting code..."
+      - golangci-lint run ./...
+
+  deps:
+    desc: Sync go.mod / go.sum
+    cmds:
+      - echo "Tidying go modules..."
       - go mod tidy
 
-  lint:
-    desc: Lint the code
+  upgrade:
+    desc: Upgrade Go dependencies
     cmds:
-      - echo "Linting code..."
-      - golangci-lint run
+      - echo "Upgrading go modules..."
+      - go get -u -v ./...
+      - go mod tidy
 
-  run-dev:
-    desc: Run the receiver in development mode (binary)
+  install-test:
+    desc: Install ginkgo/gomega tooling
     cmds:
-      - task: build-receiver
-      - echo "Running receiver in development mode..."
-      - GO_ENV=dev {{.build_dir}}/receiver listen
+      - echo "Installing ginkgo tooling..."
+      - go install github.com/onsi/ginkgo/v2/ginkgo@latest
+      - go get github.com/onsi/gomega/...
+
+  clean:
+    desc: Clean build + coverage artifacts
+    cmds:
+      - echo "Cleaning build artifacts..."
+      - rm -rf {{.build_dir}} coverage
 
   up:
     desc: Start TimescaleDB + NATS dev stack (docker compose)
@@ -161,21 +181,10 @@ tasks:
           )
           exec "${cmd[@]}"
         '
+
   help:
     desc: Show this help message
     cmds:
-      - echo "Taskfile usage:"
-      - echo "  task build          - Build the application"
-      - echo "  task run            - Run the receiver in development mode"
-      - echo "  task run-dev        - Run the receiver in development mode"
-      - echo "  task run-prod       - Run the receiver in production mode"
-      - echo "  task run-test       - Run the receiver in test mode"
-      - echo "  task test           - Run tests"
-      - echo "  task coverage       - Generate test coverage report"
-      - echo "  task install-test   - Install ginkgo for testing"
-      - echo "  task clean          - Clean build artifacts"
-      - echo "  task fmt            - Format the code"
-      - echo "  task deps           - Install dependencies"
-      - echo "  task lint           - Lint the code"
-      - echo "  task upgrade        - Upgrade go dependencies"
-      - echo "  task help           - Show this help message"
+      - |
+        printf "Task targets:\n"
+        task --list

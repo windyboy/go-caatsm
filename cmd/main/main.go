@@ -127,14 +127,20 @@ func executeListen(c *cli.Context) error {
 	}
 
 	// Initialize dependencies using Wire
-	processor, consumer, err := di.InitializeAppWithConfig(cfg)
+	processor, consumer, monitorServer, err := di.InitializeAppWithConfig(cfg)
 	if err != nil {
 		return fmt.Errorf("failed to initialize app: %w", err)
 	}
-
 	// Create context with cancellation
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	if monitorServer != nil {
+		if err := monitorServer.Start(ctx); err != nil {
+			return fmt.Errorf("failed to start monitoring server: %w", err)
+		}
+		defer monitorServer.Shutdown(context.Background())
+	}
 
 	// Handle graceful shutdown
 	sigChan := make(chan os.Signal, 1)

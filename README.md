@@ -149,30 +149,43 @@ Environment variable names are converted from `CAATSM_NATS_URL` to `nats.url` in
 
 ### Build
 
+Using Make (writes `bin/receiver`):
+
 ```bash
-go build -o bin/receiver ./cmd/main
+make build
 ```
 
-Or using Task:
+Using Task:
 
 ```bash
 task build
 ```
 
-### Run
+Or directly with Go:
 
 ```bash
-# Development mode
-GO_ENV=dev ./bin/receiver listen
-
-# Production mode
-GO_ENV=prod ./bin/receiver listen
+go build -o bin/receiver ./cmd/main
 ```
 
-Or using Task:
+### Run
+
+Use Make targets (binary mode):
+
+```bash
+make run-dev    # GO_ENV=dev
+make run-prod   # GO_ENV=prod
+make run-test   # GO_ENV=test
+make run-local  # go run ./cmd/main listen (honors GO_ENV)
+```
+
+Task equivalents:
 
 ```bash
 task run-dev
+task run-prod
+task run-test
+task run-local         # go run ./cmd/main listen
+task dev-run           # boots docker-compose dev stack + go run
 ```
 
 ### Command Line Options
@@ -227,6 +240,26 @@ Critical overrides stay available through CLI flags; advanced tuning such as str
   - `caatsm_parse_duration_ms` (histogram)
   These flow through the collector → Prometheus → Grafana dashboards in the dev stack.
 
+### Observability & Health
+
+A lightweight monitoring server exposes both readiness information and Prometheus-friendly metrics:
+
+- `GET /healthz` probes PostgreSQL (connection ping) and NATS (connection status). It returns HTTP 200 when both dependencies respond within `monitoring.health_timeout`, otherwise 503.
+- `GET /metrics` streams `caatsm_processed_total`, `caatsm_failures_total`, and `caatsm_parse_latency_seconds` counters/histograms from the built-in Prometheus registry.
+- Configure the server via the `[monitoring]` block (defaults shown):
+
+```toml
+[monitoring]
+addr = ":2112"
+enable_metrics = true
+enable_health = true
+read_timeout = "5s"
+write_timeout = "5s"
+health_timeout = "2s"
+```
+
+Set `monitoring.disabled = true` (or `addr = ""`) if you need to turn the HTTP server off, e.g., during certain integration tests.
+
 ## Development
 
 See `docs/dev-guide.md` for the full development workflow, including Docker Compose instructions, observability tooling, and troubleshooting tips.
@@ -241,7 +274,7 @@ docker compose -f docker-compose.dev.yml up -d postgres nats nats-box
 docker compose -f docker-compose.dev.yml up -d otel-collector jaeger prometheus grafana
 ```
 
-Run the processor locally while the infra runs in Docker (dev config defaults to `nats.mode = "core"` so the consumer reads from plain NATS subjects):
+Run the processor locally while the infra runs in Docker (default mode is JetStream; switch to core only if you explicitly set `CAATSM_NATS_MODE=core`):
 
 ```bash
 GO_ENV=dev \
@@ -251,6 +284,11 @@ CAATSM_POSTGRES_URL=postgres://caatsm:caatsm@localhost:5432/aviation?sslmode=dis
 ```
 
 Tear everything down with `docker compose -f docker-compose.dev.yml down -v`.
+
+## Deployment Examples
+
+- `docs/deploy-systemd.md` shows a minimal systemd unit that wires configuration via environment files and restarts on failure.
+- `docs/deploy-k8s.md` provides a reference Deployment + ConfigMap/Secret with liveness/readiness probes hitting `/healthz` and `/metrics`.
 
 ### Project Structure
 
@@ -278,26 +316,38 @@ Dependencies are managed using Google Wire. To add a new dependency:
 
 ### Testing
 
-```bash
-# Run all tests
-go test ./...
+The project keeps tests close to the code that they exercise:
 
-# Run tests with coverage
-task coverage
+- **Domain/adapter/app unit tests** live under `internal/**` and cover parsing, validation, orchestration, and adapters. Run them all with `task test` (or `make test`), which is just `go test ./...`.
+- **Integration tests** under `test/integration` spin up disposable TimescaleDB and NATS JetStream instances (via `testcontainers-go`) and execute a full ingestion flow. Use `task test-int` after ensuring Docker is running.
+- **Coverage goals** are tracked via `task coverage`, which produces both a coverage profile and an HTML report under `coverage/coverage.html`.
 
-# Run all Ginkgo suites (requires go install github.com/onsi/ginkgo/v2/ginkgo@latest)
-ginkgo -r
-```
+| Purpose                | Make command        | Task command        |
+|------------------------|---------------------|---------------------|
+| Run unit tests         | `make test`         | `task test`         |
+| Run integration tests  | `make test-int`     | `task test-int`     |
+| Run Ginkgo suites      | `make test-ginkgo`  | `task test-ginkgo`  |
+| Generate coverage html | `make coverage`     | `task coverage`     |
+| Lint (golangci-lint)   | `make lint`         | `task lint`         |
+
+> Integration tests need Docker available on the host. Ginkgo or lint targets require the respective binaries (`go install github.com/onsi/ginkgo/v2/ginkgo@latest`, [golangci-lint install guide](https://golangci-lint.run/)). Use `task install-test` to bootstrap Ginkgo tooling.
 
 ## Message Flow
 
-1. **NATS Consumer** receives raw telegram messages from NATS (JetStream durable pull in production; plain `nc.Subscribe` in dev when `nats.mode=core`)
+1. **NATS Consumer** receives raw telegram messages from NATS (JetStream durable pull by default; plain `nc.Subscribe` only when you opt into `nats.mode=core`)
 2. **MessageProcessor** orchestrates the processing:
    - Parses the message using the Parser adapter
    - Stores the parsed message in PostgreSQL via Repository
    - Publishes the parsed message to the output topic via Publisher
 3. **ACK/NAK** is sent based on processing success/failure
 4. **Retry Logic** handles transient failures automatically
+
+### Error Handling & Retries
+
+- **Parser failures** (invalid headers/body) are treated as permanent: the raw payload is stored in `aviation.telegrams_raw`, the message is ACKed, and no JetStream retries are attempted.
+- **Repository failures** are transient: the consumer returns an error, the message is `NAK`ed, and JetStream redelivers it using `[nats.consumer_rules.backoff]` and `ack_wait` to space retries.
+- **Publisher failures** are logged and persisted as raw records, but they are marked permanent to avoid hammering downstream topics; the deduplicated output can be replayed from the raw table later.
+- Tune JetStream retry behavior via `[nats.consumer_rules.max_deliver]`, `[nats.consumer_rules.backoff]`, and CLI overrides like `--ack-wait`. The monitoring server plus Prometheus counters provide visibility into each failure bucket.
 
 ### Failure Buckets
 
@@ -612,9 +662,9 @@ The legacy code has been removed. See the project history for migration details.
 
 ## License
 
-[Add your license here]
+This repository has not declared a public license yet.
 
 ## Contributing
 
-[Add contributing guidelines here]
+Contribution guidelines are not published; please coordinate changes via pull requests or direct maintainers.
 

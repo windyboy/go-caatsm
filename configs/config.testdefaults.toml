@@ -19,3 +19,14 @@ monitor_interval = "1s"
 level = "info"
 format = "json"
 
+[telemetry]
+enabled = false
+
+[monitoring]
+addr = ":0"
+enable_metrics = false
+enable_health = false
+read_timeout = "0s"
+write_timeout = "0s"
+health_timeout = "0s"
+
