@@ -49,7 +49,7 @@ monitor_interval = "30s"
 
 [log]
 level = "info"
-format = "json"
+format = "console"
 
 [telemetry]
 enabled = true

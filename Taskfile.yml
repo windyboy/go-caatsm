@@ -147,6 +147,13 @@ tasks:
       - echo "Stopping dev infrastructure..."
       - docker compose -f docker-compose.dev.yml down -v
 
+  dev-run-compose:
+    desc: Run receiver inside docker-compose dev stack
+    cmds:
+      - echo "Starting dev stack including caatsm-receiver..."
+      - docker compose -f docker-compose.dev.yml up -d postgres nats nats-box nats-exporter
+      - docker compose -f docker-compose.dev.yml up -d otel-collector jaeger prometheus grafana caatsm-receiver
+
   dev-run:
     desc: Run receiver locally against dev stack
     deps:
@@ -158,6 +165,9 @@ tasks:
       CAATSM_TELEMETRY_ENABLED: "true"
       CAATSM_TELEMETRY_ENDPOINT: localhost:4318
       CAATSM_TELEMETRY_INSECURE: "true"
+      CAATSM_MONITORING_ADDR: 0.0.0.0:2112
+      CAATSM_MONITORING_ENABLE_METRICS: "true"
+      CAATSM_MONITORING_ENABLE_HEALTH: "true"
       GO_ENV: dev
     cmds:
       - |
@@ -174,9 +184,9 @@ tasks:
         GO_ENV=dev \
         NATS_URL=${CAATSM_NATS_URL:-nats://localhost:4222} \
         SUBJECT=${CAATSM_NATS_SUBJECT:-telegram.serial} \
-        COUNT=${COUNT:-10} \
-        CATEGORY=${CATEGORY:-mixed} \
-        STATUS=${STATUS:-random} \
+        COUNT={{.COUNT | default "10"}} \
+        CATEGORY={{.CATEGORY | default "mixed"}} \
+        STATUS={{.STATUS | default "random"}} \
         bash -c '
           set -euo pipefail
           cmd=(go run ./cmd/seed-telegrams)

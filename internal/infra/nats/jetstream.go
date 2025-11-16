@@ -18,6 +18,8 @@ func ProvideNATSConn(cfg *config.Config, logger *zap.Logger) (*nats.Conn, error)
 		nats.RetryOnFailedConnect(true),
 		nats.Timeout(cfg.Timeouts.Server),
 		nats.ReconnectWait(cfg.Timeouts.ReconnectWait),
+		// Use infinite reconnects so the app survives long NATS outages (e.g. docker compose down/up).
+		nats.MaxReconnects(-1),
 		nats.DisconnectErrHandler(func(nc *nats.Conn, err error) {
 			if err != nil {
 				logger.Warn("NATS disconnected", zap.Error(err))

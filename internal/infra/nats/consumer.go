@@ -241,6 +241,17 @@ func (c *Consumer) startJetStream(ctx context.Context) error {
 				// Timeout is expected when no messages are available
 				continue
 			}
+			if errors.Is(err, nats.ErrNoResponders) {
+				// JetStream API is currently unavailable (e.g., NATS just restarted or JetStream not ready).
+				// Back off a bit to avoid log spam while allowing the system to recover.
+				c.logger.Warn("JetStream not available, will retry",
+					zap.Error(err),
+					zap.String("stream", c.streamName),
+					zap.String("consumer", c.consumerName),
+				)
+				time.Sleep(5 * time.Second)
+				continue
+			}
 			c.logger.Error("Failed to fetch messages", zap.Error(err))
 			time.Sleep(time.Second)
 			continue
@@ -377,7 +388,7 @@ func (c *Consumer) emitConsumerStats(ctx context.Context) {
 				continue
 			}
 
-			c.logger.Info("JetStream consumer metrics",
+			c.logger.Debug("JetStream consumer metrics",
 				zap.String("stream", c.streamName),
 				zap.String("consumer", c.consumerName),
 				zap.Uint64("num_ack_pending", uint64(info.NumAckPending)),
