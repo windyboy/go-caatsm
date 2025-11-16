@@ -11,6 +11,7 @@ import (
 	"caatsm/internal/infra/monitoring"
 	"caatsm/internal/infra/nats"
 	"caatsm/internal/infra/postgres"
+	"caatsm/internal/observability/telemetry"
 
 	"github.com/google/wire"
 )
@@ -48,6 +49,9 @@ var runtimeSet = wire.NewSet(
 
 	// Parser
 	parser.ProvideParser,
+
+	// Telemetry
+	telemetry.ProvideRecorder,
 
 	// App
 	app.NewMessageProcessor,

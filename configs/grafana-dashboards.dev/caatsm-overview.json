@@ -258,6 +258,35 @@
           "legendFormat": "{{message_category}}"
         }
       ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "NATS consumer pending messages (lag)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-dev"
+      },
+      "gridPos": { "h": 7, "w": 24, "x": 0, "y": 26 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [] }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "single" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "caatsm_nats_consumer_pending_messages",
+          "legendFormat": "{{stream}} / {{consumer}}"
+        }
+      ]
     }
   ]
 }

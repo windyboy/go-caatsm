@@ -27,6 +27,7 @@ const (
 	MetricDBQueryLatencySeconds = "caatsm_db_query_latency_seconds"
 	MetricDLQMessagesTotal      = "caatsm_dlq_messages_total"
 	MetricDLQPublishFailures    = "caatsm_dlq_publish_failures_total"
+	MetricNATSConsumerPending   = "caatsm_nats_consumer_pending_messages"
 
 	// Common label keys.
 	LabelStatus    = "status"
@@ -72,6 +73,9 @@ var (
 	// Database metrics.
 	dbQueriesTotal *prometheus.CounterVec
 	dbQueryLatency *prometheus.HistogramVec
+
+	// NATS consumer lag metrics.
+	natsConsumerPending *prometheus.GaugeVec
 )
 
 func initCollectors() {
@@ -138,6 +142,11 @@ func initCollectors() {
 		Buckets: prometheus.DefBuckets,
 	}, []string{LabelOperation})
 
+	natsConsumerPending = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: MetricNATSConsumerPending,
+		Help: "Approximate number of pending messages for a JetStream consumer, labelled by stream and consumer.",
+	}, []string{LabelStream, LabelConsumer})
+
 	registry.MustRegister(
 		processedCounter,
 		failureCounter,
@@ -150,6 +159,7 @@ func initCollectors() {
 		dlqPublishFailures,
 		dbQueriesTotal,
 		dbQueryLatency,
+		natsConsumerPending,
 	)
 }
 
@@ -224,6 +234,13 @@ func RecordDBQuery(operation, result string, elapsed time.Duration) {
 func RecordJSAPICall(operation string) {
 	ensureCollectors()
 	jsAPICallsTotal.WithLabelValues(labelValue(operation)).Inc()
+}
+
+// RecordNATSConsumerPending records the current pending message count for a
+// JetStream consumer as a gauge, enabling backlog / lag alerts.
+func RecordNATSConsumerPending(stream, consumer string, pending uint64) {
+	ensureCollectors()
+	natsConsumerPending.WithLabelValues(labelValue(stream), labelValue(consumer)).Set(float64(pending))
 }
 
 func labelValue(value string) string {

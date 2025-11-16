@@ -5,7 +5,7 @@ import (
 	"caatsm/internal/adapter/parser"
 	"caatsm/internal/model"
 	obslogging "caatsm/internal/observability/logging"
-	obsmetrics "caatsm/internal/observability/metrics"
+	"caatsm/internal/observability/telemetry"
 	"context"
 	"fmt"
 	"strings"
@@ -14,7 +14,6 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 )
@@ -25,6 +24,7 @@ type MessageProcessor struct {
 	repository adapter.Repository
 	publisher  adapter.Publisher
 	logger     *zap.Logger
+	telemetry  telemetry.Recorder
 }
 
 // ProcessingStatus represents the outcome of the processing pipeline
@@ -38,37 +38,12 @@ const (
 	ProcessingStatusPublishFailed ProcessingStatus = "publish_failed"
 )
 
-var (
-	appMeter               = otel.Meter("caatsm/app")
-	messageStatusAttrKey   = attribute.Key("message.status")
-	messageCategoryAttrKey = attribute.Key("message.category")
-
-	messageProcessedCounter   = mustInt64Counter("caatsm_messages_processed_total", "Total number of telegrams processed by the CAATSM processor.")
-	messagePublishFailCounter = mustInt64Counter("caatsm_publish_failures_total", "Total number of telegram publish failures.")
-	parseLatencyHistogram     = mustFloat64Histogram("caatsm_parse_duration_ms", "Latency of parsing a telegram, in milliseconds.", metric.WithUnit("ms"))
-)
-
-func mustInt64Counter(name, description string, opts ...metric.Int64CounterOption) metric.Int64Counter {
-	counter, err := appMeter.Int64Counter(name, append([]metric.Int64CounterOption{metric.WithDescription(description)}, opts...)...)
-	if err != nil {
-		panic(fmt.Sprintf("failed to create counter %s: %v", name, err))
-	}
-	return counter
-}
-
-func mustFloat64Histogram(name, description string, opts ...metric.Float64HistogramOption) metric.Float64Histogram {
-	hist, err := appMeter.Float64Histogram(name, append([]metric.Float64HistogramOption{metric.WithDescription(description)}, opts...)...)
-	if err != nil {
-		panic(fmt.Sprintf("failed to create histogram %s: %v", name, err))
-	}
-	return hist
-}
-
 // NewMessageProcessor creates a new message processor
 func NewMessageProcessor(
 	parser parser.Parser,
 	repository adapter.Repository,
 	publisher adapter.Publisher,
+	rec telemetry.Recorder,
 	logger *zap.Logger,
 ) *MessageProcessor {
 	return &MessageProcessor{
@@ -76,6 +51,7 @@ func NewMessageProcessor(
 		repository: repository,
 		publisher:  publisher,
 		logger:     logger,
+		telemetry:  rec,
 	}
 }
 
@@ -149,14 +125,8 @@ func (p *MessageProcessor) Handle(ctx context.Context, raw []byte, msgID string)
 				zap.Error(parseErr),
 			)
 		latency := parsed.ParsedAt.Sub(receivedAt)
-		parseLatencyHistogram.Record(ctx, float64(latency.Milliseconds()),
-			metric.WithAttributes(
-				messageStatusAttrKey.String(string(parsed.Status)),
-				messageCategoryAttrKey.String(parsed.Category),
-			),
-		)
-		obsmetrics.RecordFailure("parser")
-		recordProcessedMetric(ctx, parsed, latency)
+		p.telemetry.RecordFailure("parser")
+		p.telemetry.RecordProcessingResult(ctx, string(parsed.Status), parsed.Category, latency)
 		return Permanent(fmt.Errorf("parser error: %w", parseErr))
 	}
 	parsed.ErrorReason = ""
@@ -178,14 +148,8 @@ func (p *MessageProcessor) Handle(ctx context.Context, raw []byte, msgID string)
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 		latency := parsed.ParsedAt.Sub(receivedAt)
-		parseLatencyHistogram.Record(ctx, float64(latency.Milliseconds()),
-			metric.WithAttributes(
-				messageStatusAttrKey.String(string(parsed.Status)),
-				messageCategoryAttrKey.String(parsed.Category),
-			),
-		)
-		obsmetrics.RecordFailure("repository")
-		recordProcessedMetric(ctx, parsed, latency)
+		p.telemetry.RecordFailure("repository")
+		p.telemetry.RecordProcessingResult(ctx, string(parsed.Status), parsed.Category, latency)
 		return fmt.Errorf("failed to insert message: %w", err)
 	}
 
@@ -200,20 +164,10 @@ func (p *MessageProcessor) Handle(ctx context.Context, raw []byte, msgID string)
 		pubSpan.RecordError(err)
 		pubSpan.SetStatus(codes.Error, err.Error())
 		parsed.ErrorReason = err.Error()
-		messagePublishFailCounter.Add(ctx, 1,
-			metric.WithAttributes(
-				messageCategoryAttrKey.String(parsed.Category),
-			),
-		)
+		p.telemetry.RecordPublishFailure(ctx, parsed.Category)
 		latency := parsed.ParsedAt.Sub(receivedAt)
-		parseLatencyHistogram.Record(ctx, float64(latency.Milliseconds()),
-			metric.WithAttributes(
-				messageStatusAttrKey.String(string(parsed.Status)),
-				messageCategoryAttrKey.String(parsed.Category),
-			),
-		)
-		obsmetrics.RecordFailure("publisher")
-		recordProcessedMetric(ctx, parsed, latency)
+		p.telemetry.RecordFailure("publisher")
+		p.telemetry.RecordProcessingResult(ctx, string(parsed.Status), parsed.Category, latency)
 		p.persistRaw(ctx, parsed)
 		// Mark as permanent so the consumer will ack instead of retrying
 		pubSpan.End()
@@ -222,13 +176,7 @@ func (p *MessageProcessor) Handle(ctx context.Context, raw []byte, msgID string)
 	pubSpan.End()
 
 	latency := parsed.ParsedAt.Sub(receivedAt)
-	parseLatencyHistogram.Record(ctx, float64(latency.Milliseconds()),
-		metric.WithAttributes(
-			messageStatusAttrKey.String(string(parsed.Status)),
-			messageCategoryAttrKey.String(parsed.Category),
-		),
-	)
-	recordProcessedMetric(ctx, parsed, latency)
+	p.telemetry.RecordProcessingResult(ctx, string(parsed.Status), parsed.Category, latency)
 
 	return nil
 }
@@ -268,20 +216,4 @@ func truncateContent(content string, limit int) string {
 		return content[:limit]
 	}
 	return content[:limit-3] + "..."
-}
-
-func recordProcessedMetric(ctx context.Context, msg *model.ParsedTelegram, elapsed time.Duration) {
-	if msg == nil {
-		return
-	}
-	messageProcessedCounter.Add(ctx, 1,
-		metric.WithAttributes(
-			messageStatusAttrKey.String(string(msg.Status)),
-			messageCategoryAttrKey.String(msg.Category),
-		),
-	)
-	if elapsed < 0 {
-		elapsed = 0
-	}
-	obsmetrics.RecordProcessed(string(msg.Status), msg.Category, elapsed)
 }

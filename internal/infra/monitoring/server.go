@@ -1,6 +1,7 @@
 package monitoring
 
 import (
+	"caatsm/internal/infra/buildinfo"
 	"caatsm/internal/infra/config"
 	obsmetrics "caatsm/internal/observability/metrics"
 	"context"
@@ -47,11 +48,13 @@ func ProvideServer(
 
 	routes := 0
 	if cfg.Monitoring.EnableHealth {
-		// Liveness: basic process check. For now this reuses the same implementation
-		// as readiness but can diverge in the future if we need a cheaper liveness probe.
+		// Liveness: cheap process check that does not hit external dependencies.
+		mux.HandleFunc("/livez", server.handleLive)
+		// Backward-compatible health endpoint. For now this keeps the same
+		// semantics as readiness but will remain stable for existing users.
 		mux.HandleFunc("/healthz", server.handleHealth)
-		// Readiness: alias to the same implementation so consumers can adopt /readyz
-		// without breaking existing /healthz users.
+		// Readiness: dependency-aware check intended for load balancers and
+		// orchestrators.
 		mux.HandleFunc("/readyz", server.handleHealth)
 		routes++
 	}
@@ -111,33 +114,52 @@ func (s *Server) Shutdown(ctx context.Context) error {
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	status := http.StatusOK
-	result := map[string]interface{}{
-		"postgres": "ok",
-		"nats":     "ok",
+	deps := map[string]map[string]interface{}{
+		"postgres": {
+			"status": "ok",
+		},
+		"nats": {
+			"status": "ok",
+		},
 	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), s.healthTimeout())
 	defer cancel()
 
 	if s.pool == nil {
-		result["postgres"] = "unconfigured"
+		deps["postgres"]["status"] = "unconfigured"
 		status = http.StatusServiceUnavailable
-	} else if err := s.pool.Ping(ctx); err != nil {
-		result["postgres"] = err.Error()
-		status = http.StatusServiceUnavailable
+	} else {
+		start := time.Now()
+		if err := s.pool.Ping(ctx); err != nil {
+			deps["postgres"]["status"] = err.Error()
+			status = http.StatusServiceUnavailable
+		} else {
+			deps["postgres"]["latency_ms"] = time.Since(start).Milliseconds()
+		}
 	}
 
 	if s.conn == nil {
-		result["nats"] = "unconfigured"
+		deps["nats"]["status"] = "unconfigured"
 		status = http.StatusServiceUnavailable
 	} else if s.conn.Status() != nats.CONNECTED {
-		result["nats"] = s.conn.Status().String()
+		deps["nats"]["status"] = s.conn.Status().String()
 		status = http.StatusServiceUnavailable
+	}
+
+	payload := map[string]interface{}{
+		"status": httpStatusLabel(status),
+		"build": map[string]interface{}{
+			"version":  buildinfo.Version,
+			"rev":      buildinfo.Commit,
+			"built_at": buildinfo.BuiltAt,
+		},
+		"dependencies": deps,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(result)
+	_ = json.NewEncoder(w).Encode(payload)
 }
 
 func (s *Server) healthTimeout() time.Duration {
@@ -147,3 +169,28 @@ func (s *Server) healthTimeout() time.Duration {
 	}
 	return timeout
 }
+
+// handleLive reports basic process liveness and build information without
+// consulting external dependencies. It is suitable for liveness probes.
+func (s *Server) handleLive(w http.ResponseWriter, r *http.Request) {
+	payload := map[string]interface{}{
+		"status": "ok",
+		"build": map[string]interface{}{
+			"version":  buildinfo.Version,
+			"rev":      buildinfo.Commit,
+			"built_at": buildinfo.BuiltAt,
+		},
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(payload)
+}
+
+func httpStatusLabel(code int) string {
+	if code >= 200 && code < 300 {
+		return "ok"
+	}
+	return "error"
+}
+

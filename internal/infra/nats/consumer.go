@@ -5,6 +5,7 @@ import (
 	"caatsm/internal/infra/config"
 	obslogging "caatsm/internal/observability/logging"
 	obsmetrics "caatsm/internal/observability/metrics"
+	"caatsm/internal/observability/telemetry"
 	"context"
 	"encoding/json"
 	"errors"
@@ -28,6 +29,7 @@ type Consumer struct {
 	processor       *app.MessageProcessor
 	cfg             *config.Config
 	logger          *zap.Logger
+	telemetry       telemetry.Recorder
 	subject         string
 	consumerName    string
 	mode            string
@@ -53,6 +55,7 @@ func ProvideConsumer(
 	js nats.JetStreamContext,
 	processor *app.MessageProcessor,
 	cfg *config.Config,
+	rec telemetry.Recorder,
 	logger *zap.Logger,
 ) (*Consumer, error) {
 	subject := cfg.EffectiveSubscriptionTopic()
@@ -108,6 +111,7 @@ func ProvideConsumer(
 		processor:       processor,
 		cfg:             cfg,
 		logger:          logger,
+		telemetry:       rec,
 		subject:         subject,
 		consumerName:    consumerName,
 		mode:            mode,
@@ -238,7 +242,7 @@ func (c *Consumer) validateDLQ() {
 
 	// Ensure the DLQ subject is actually bound to a JetStream stream. This avoids
 	// the opaque `nats: no response from stream` error later when publishing.
-	obsmetrics.RecordJSAPICall("dlq_validate_stream")
+	c.telemetry.RecordJSAPICall("dlq_validate_stream")
 	streamName, err := c.js.StreamNameBySubject(subject)
 	if err != nil || strings.TrimSpace(streamName) == "" {
 		c.logger.Warn("DLQ subject not bound to any JetStream stream; DLQ routing disabled",
@@ -342,7 +346,7 @@ func (c *Consumer) startJetStream(ctx context.Context) error {
 				if isPermanent {
 					result = obsmetrics.ResultPermanentFail
 				}
-				obsmetrics.RecordMessageHandled(c.streamName, c.consumerName, result, elapsed)
+				c.telemetry.RecordMessageHandled(ctx, c.streamName, c.consumerName, result, elapsed)
 
 				if isPermanent {
 					c.consecutiveProcessErrors = 0
@@ -376,7 +380,7 @@ func (c *Consumer) startJetStream(ctx context.Context) error {
 				}
 
 				// Transient error: request redelivery with optional delay
-				obsmetrics.RecordRetry(c.streamName, c.consumerName, obsmetrics.RetryReasonProcessorError)
+				c.telemetry.RecordRetry(ctx, c.streamName, c.consumerName, obsmetrics.RetryReasonProcessorError)
 				if nakErr := c.nakWithStrategy(msg); nakErr != nil {
 					c.logger.Error("Failed to NAK message", zap.Error(nakErr))
 				}
@@ -393,7 +397,7 @@ func (c *Consumer) startJetStream(ctx context.Context) error {
 				c.logger.Error("Failed to ACK message", zap.Error(ackErr))
 			} else {
 				elapsed := time.Since(start)
-				obsmetrics.RecordMessageHandled(c.streamName, c.consumerName, "ok", elapsed)
+				c.telemetry.RecordMessageHandled(ctx, c.streamName, c.consumerName, "ok", elapsed)
 			}
 		}
 	}
@@ -531,6 +535,10 @@ func (c *Consumer) recordConsumerMetrics(ctx context.Context, info *nats.Consume
 	if c.delivered != nil {
 		c.delivered.Record(ctx, int64(info.Delivered.Stream))
 	}
+
+	// Export an explicit pending messages gauge for Prometheus-based lag /
+	// backlog alerts.
+	obsmetrics.RecordNATSConsumerPending(c.streamName, c.consumerName, info.NumPending)
 }
 
 // routeToDLQ publishes a copy of the failed message to the configured DLQ subject,
@@ -578,14 +586,14 @@ func (c *Consumer) routeToDLQ(ctx context.Context, msg *nats.Msg, cause error) e
 		// unavailable. Surface this explicitly to make operational diagnosis
 		// easier.
 		if errors.Is(err, nats.ErrNoResponders) {
-			obsmetrics.RecordDLQPublishFailure(c.streamName, c.consumerName)
+			c.telemetry.RecordDLQPublishFailure(ctx, c.streamName, c.consumerName)
 			return fmt.Errorf("publish to dlq subject %s: no JetStream stream found for subject or JetStream unavailable: %w", c.dlqSubject, err)
 		}
-		obsmetrics.RecordDLQPublishFailure(c.streamName, c.consumerName)
+		c.telemetry.RecordDLQPublishFailure(ctx, c.streamName, c.consumerName)
 		return fmt.Errorf("publish to dlq subject %s: %w", c.dlqSubject, err)
 	}
 
-	obsmetrics.RecordDLQMessage(c.streamName, c.consumerName)
+	c.telemetry.RecordDLQMessage(ctx, c.streamName, c.consumerName)
 
 	return nil
 }

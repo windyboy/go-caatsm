@@ -28,10 +28,13 @@ The service exposes Prometheus metrics via the monitoring HTTP server (default `
 - `caatsm_dlq_publish_failures_total{stream,consumer}`  
   Count of failures when attempting to publish messages to the DLQ.
 
+- `caatsm_nats_consumer_pending_messages{stream,consumer}`  
+  Current pending message count for each JetStream consumer (useful for lag/backlog alerts).
+
 Additional OTEL metrics are emitted via the configured OTEL endpoint, including:
 
 - `caatsm_messages_processed_total`  
-- `caatsm_parse_duration_ms`  
+- `caatsm_parse_duration_seconds`  
 - `caatsm_publish_failures_total`  
 - `caatsm_nats_consumer_ack_pending`  
 - `caatsm_nats_consumer_redelivered`  
@@ -133,15 +136,33 @@ To validate that the dashboard is receiving data:
 
 The monitoring server exposes:
 
-- `/healthz` – basic liveness and dependency check.  
-- `/readyz` – readiness endpoint with the same logic as `/healthz`, intended for load balancers / orchestrators.
+- `/livez` – lightweight liveness endpoint that reports process/build information without checking dependencies.  
+- `/healthz` – backward-compatible health endpoint used by existing deploys; currently shares logic with `/readyz`.  
+- `/readyz` – readiness endpoint that checks critical dependencies and should be used by load balancers / orchestrators.
 
 Checks performed:
 
-- PostgreSQL: `pgxpool.Pool.Ping` with configurable timeout (`monitoring.health_timeout`).  
-- NATS: connection status must be `CONNECTED`.
+- PostgreSQL: `pgxpool.Pool.Ping` with configurable timeout (`monitoring.health_timeout`), reporting `status` and `latency_ms`.  
+- NATS: connection status must be `CONNECTED`; otherwise the dependency is marked as unavailable.
 
-A non-200 response indicates the service is not healthy/ready and should be removed from traffic.
+Responses include build metadata and a dependency map, for example:
+
+```json
+{
+  "status": "ok",
+  "build": {
+    "version": "v0.4.3",
+    "rev": "abc1234",
+    "built_at": "2025-11-16T08:35:00Z"
+  },
+  "dependencies": {
+    "postgres": {"status": "ok", "latency_ms": 4},
+    "nats": {"status": "CONNECTED"}
+  }
+}
+```
+
+A non-2xx response indicates the service is not healthy/ready and should be removed from traffic.
 
 ### Tracing
 
@@ -167,7 +188,7 @@ The receiver reports two complementary sets of metrics:
   Implemented using `otel.Meter` in the NATS consumer and app processor,
   including:
   - `caatsm_messages_processed_total`
-  - `caatsm_parse_duration_ms`
+  - `caatsm_parse_duration_seconds`
   - `caatsm_publish_failures_total`
   - `caatsm_nats_consumer_ack_pending`
   - `caatsm_nats_consumer_redelivered`

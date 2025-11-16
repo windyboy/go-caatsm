@@ -120,6 +120,7 @@ Services:
   - Persists data in `grafana-data`, provisions datasources via `configs/grafana-datasources.dev.yml`, and listens on <http://localhost:3000> (login `admin` / `admin`)
   - Automatically loads dashboards from `configs/grafana-dashboards.dev/`, including OpenTelemetry Collector and NATS/JetStream overviews (find them under the **Dev Observability** folder)
   - The OpenTelemetry dashboard also charts the CAATSM-specific metrics `caatsm_messages_processed_total`, `caatsm_publish_failures_total`, and `caatsm_parse_duration_ms` (percentiles) so you can track throughput and parsing latency.
+  - Note: `caatsm_parse_duration_ms` has been renamed to `caatsm_parse_duration_seconds` to align with Prometheus `_seconds` conventions.
 
 ### Customizing Collections & Dashboards
 

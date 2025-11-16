@@ -58,7 +58,7 @@ sudo systemctl enable --now caatsm
 ## 4. Observability Hooks
 
 - Expose `monitoring.addr = ":2112"` (default) and add firewall rules so Prometheus can scrape `http://host:2112/metrics`.
-- systemd watchdogs can use `curl -sf http://127.0.0.1:2112/healthz`.
+- systemd watchdogs can use `curl -sf http://127.0.0.1:2112/livez` for liveness and `curl -sf http://127.0.0.1:2112/readyz` for readiness.
 
 With these three files (binary, config, env) the service becomes repeatable and easy to operate.
 

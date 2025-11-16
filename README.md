@@ -228,25 +228,41 @@ Critical overrides stay available through CLI flags; advanced tuning such as str
 - Configure server-side retry delays with `[nats.consumer].backoff = ["5s", "30s", "2m"]`; each duration becomes the delay before the next delivery attempt.
 - Combine `backoff` with `--ack-wait` to increase acknowledgement windows (e.g., `--ack-wait 2m`).
 
-### Telemetry
+### Observability
 
-- Enable tracing/metrics via `[telemetry] enabled = true` and set `endpoint` to your OTLP/HTTP collector (e.g., `http://otel-collector:4318`).
-- CLI overrides:
-  - `--telemetry-enabled` flips the feature on/off.
-  - `--telemetry-endpoint` and `--telemetry-insecure` adjust the OTLP HTTP endpoint and TLS behavior.
-- When enabled the app emits OpenTelemetry traces (parser/repository/publisher spans) and metrics. Custom OTLP metrics include:
-  - `caatsm_messages_processed_total` (counter, broken down by `message_status` / `message_category`)
-  - `caatsm_publish_failures_total` (counter)
-  - `caatsm_parse_duration_ms` (histogram)
-  These flow through the collector → Prometheus → Grafana dashboards in the dev stack.
+The processor exposes three complementary observability surfaces:
 
-### Observability & Health
+1. **OpenTelemetry (traces + metrics)**
+   - Enable via `[telemetry] enabled = true` and set `endpoint` to your OTLP/HTTP collector (e.g., `http://otel-collector:4318`).
+   - CLI overrides:
+     - `--telemetry-enabled` toggles exporters on/off.
+     - `--telemetry-endpoint` and `--telemetry-insecure` adjust the OTLP HTTP endpoint and TLS behavior.
+   - When enabled, the app emits:
+     - Traces for parser/repository/publisher spans (`caatsm/app`, `caatsm/postgres`, `caatsm/nats`).
+     - A focused set of metrics, including:
+       - `caatsm_messages_processed_total` (counter, by `message.status` / `message.category`)
+       - `caatsm_publish_failures_total` (counter)
+       - `caatsm_parse_duration_seconds` (histogram)
+   - Application code records these via a thin `telemetry.Recorder` abstraction, which fans out to OTEL and Prometheus backends as configured.
 
-A lightweight monitoring server exposes both readiness information and Prometheus-friendly metrics:
+2. **Prometheus metrics (`/metrics`)**
+   - Implemented in `internal/observability/metrics` and considered the primary source for SRE PromQL/SLOs.
+   - Key metric families:
+     - `caatsm_messages_total{stream,consumer,result}` – per-stream/consumer throughput and results.
+     - `caatsm_handle_latency_seconds_bucket{stream,consumer}` – end-to-end handling latency from NATS receive to handler completion.
+     - `caatsm_retries_total{stream,consumer,reason}` – JetStream retry/NAK counts.
+     - `caatsm_db_queries_total{operation,result}` and `caatsm_db_query_latency_seconds_bucket{operation}` – DB activity and latency.
+     - `caatsm_dlq_messages_total{stream,consumer}` and `caatsm_dlq_publish_failures_total{stream,consumer}` – DLQ routing success/failures.
+     - `caatsm_nats_consumer_pending_messages{stream,consumer}` – JetStream consumer backlog/lag.
+   - Prometheus scrapes `GET /metrics` on the monitoring server; Grafana dashboards under `configs/grafana-dashboards.dev` are wired to these series.
 
-- `GET /healthz` probes PostgreSQL (connection ping) and NATS (connection status). It returns HTTP 200 when both dependencies respond within `monitoring.health_timeout`, otherwise 503.
-- `GET /metrics` streams `caatsm_processed_total`, `caatsm_failures_total`, and `caatsm_parse_latency_seconds` counters/histograms from the built-in Prometheus registry.
-- Configure the server via the `[monitoring]` block (defaults shown):
+3. **Health and readiness endpoints**
+   - A lightweight monitoring server exposes:
+     - `GET /livez` – liveness endpoint: reports process and build information, does not call external dependencies.
+     - `GET /readyz` – readiness endpoint: pings PostgreSQL and checks NATS connection status within `monitoring.health_timeout`, returning 503 on failure.
+     - `GET /healthz` – backward-compatible alias currently sharing logic with `/readyz`.
+   - Responses include build metadata and dependency status/latency (see `docs/observability.md` for examples).
+   - Configure the server via the `[monitoring]` block (defaults shown):
 
 ```toml
 [monitoring]

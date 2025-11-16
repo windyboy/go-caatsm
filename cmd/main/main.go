@@ -25,12 +25,19 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 )
 
+// main is the entrypoint for the caatsm CLI.
+// It delegates all logic to run so that startup behaviour can be tested.
 func main() {
-	app := setupApp()
-	if err := app.Run(os.Args); err != nil {
-		fmt.Printf("Error running application: %v\n", err)
+	if err := run(os.Args); err != nil {
+		fmt.Fprintf(os.Stderr, "caatsm failed: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// run constructs the CLI application and executes it with the provided args.
+func run(args []string) error {
+	app := setupApp()
+	return app.Run(args)
 }
 
 func setupApp() *cli.App {
@@ -108,6 +115,9 @@ func setupApp() *cli.App {
 	}
 }
 
+// executeListen is the CLI handler for the "listen" command.
+// It is responsible for loading configuration, applying CLI overrides,
+// and delegating the main processing lifecycle to runListen.
 func executeListen(c *cli.Context) error {
 	cfg, err := config.LoadConfig()
 	if err != nil {
@@ -116,10 +126,29 @@ func executeListen(c *cli.Context) error {
 
 	applyCLIOverrides(cfg, c)
 
+	// Re-validate configuration after applying CLI overrides to ensure
+	// the resulting configuration is still consistent.
+	if err := cfg.Validate(); err != nil {
+		return fmt.Errorf("invalid configuration after CLI overrides: %w", err)
+	}
+
+	return runListen(context.Background(), cfg)
+}
+
+// runListen coordinates telemetry initialisation, dependency wiring,
+// signal handling and graceful shutdown for the listener workflow.
+func runListen(parentCtx context.Context, cfg *config.Config) error {
+	if cfg == nil {
+		return fmt.Errorf("config must not be nil")
+	}
+
+	ctx, stop := signal.NotifyContext(parentCtx, os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	shutdownTelemetry := func(context.Context) error { return nil }
 	if cfg.Telemetry.Enabled {
 		var telErr error
-		shutdownTelemetry, telErr = initTelemetry(context.Background(), cfg)
+		shutdownTelemetry, telErr = initTelemetry(ctx, cfg)
 		if telErr != nil {
 			return fmt.Errorf("failed to initialize telemetry: %w", telErr)
 		}
@@ -131,9 +160,6 @@ func executeListen(c *cli.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to initialize app: %w", err)
 	}
-	// Create context with cancellation
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	if monitorServer != nil {
 		if err := monitorServer.Start(ctx); err != nil {
@@ -142,32 +168,29 @@ func executeListen(c *cli.Context) error {
 		defer monitorServer.Shutdown(context.Background())
 	}
 
-	// Handle graceful shutdown
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-
 	// Start consumer in a goroutine
 	errChan := make(chan error, 1)
 	go func() {
-		if err := consumer.Start(ctx); err != nil {
+		if err := consumer.Start(ctx); err != nil && !errors.Is(err, context.Canceled) {
 			errChan <- fmt.Errorf("consumer error: %w", err)
 		}
 	}()
 
 	var runErr error
 
-	// Wait for signal or error
+	// Wait for shutdown signal or consumer error
 	select {
-	case sig := <-sigChan:
-		fmt.Printf("Received signal: %v, shutting down...\n", sig)
-		cancel()
+	case <-ctx.Done():
+		fmt.Printf("Received shutdown signal: %v, shutting down...\n", ctx.Err())
 	case err := <-errChan:
-		cancel()
-		if err != nil && !errors.Is(err, context.Canceled) {
+		if err != nil {
 			runErr = err
 		}
+		// Ensure all downstream users of ctx see cancellation.
+		stop()
 	}
 
+	// After cancellation, give the consumer a chance to finish cleanup.
 	waitTimeout := 5 * time.Second
 	select {
 	case err := <-errChan:

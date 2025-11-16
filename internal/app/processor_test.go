@@ -9,6 +9,7 @@ import (
 	"caatsm/internal/adapter"
 	"caatsm/internal/adapter/parser"
 	"caatsm/internal/model"
+	"caatsm/internal/observability/telemetry"
 
 	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
@@ -121,7 +122,7 @@ var _ = Describe("MessageProcessor", func() {
 				},
 				err: errors.New("parse failure"),
 			}
-			proc = NewMessageProcessor(parserStub, repo, pub, logger)
+			proc = NewMessageProcessor(parserStub, repo, pub, telemetry.NewNoop(), logger)
 
 			err := proc.Handle(ctx, []byte("raw"), "msg-6")
 			Expect(err).To(HaveOccurred())
@@ -145,7 +146,7 @@ var _ = Describe("MessageProcessor", func() {
 })
 
 func newTestProcessor(p parser.Parser, repo adapter.Repository, pub adapter.Publisher) *MessageProcessor {
-	return NewMessageProcessor(p, repo, pub, zap.NewNop())
+	return NewMessageProcessor(p, repo, pub, telemetry.NewNoop(), zap.NewNop())
 }
 
 type stubParser struct {

@@ -14,6 +14,7 @@ import (
 	"caatsm/internal/infra/monitoring"
 	"caatsm/internal/infra/nats"
 	"caatsm/internal/infra/postgres"
+	"caatsm/internal/observability/telemetry"
 	"github.com/google/wire"
 )
 
@@ -49,8 +50,9 @@ func buildAppComponents() (*appComponents, error) {
 	if err != nil {
 		return nil, err
 	}
-	messageProcessor := app.NewMessageProcessor(parserParser, repository, publisher, logger)
-	consumer, err := nats.ProvideConsumer(conn, jetStreamContext, messageProcessor, configConfig, logger)
+	recorder := telemetry.ProvideRecorder(configConfig)
+	messageProcessor := app.NewMessageProcessor(parserParser, repository, publisher, recorder, logger)
+	consumer, err := nats.ProvideConsumer(conn, jetStreamContext, messageProcessor, configConfig, recorder, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -92,8 +94,9 @@ func buildAppComponentsWithConfig(cfg *config.Config) (*appComponents, error) {
 	if err != nil {
 		return nil, err
 	}
-	messageProcessor := app.NewMessageProcessor(parserParser, repository, publisher, logger)
-	consumer, err := nats.ProvideConsumer(conn, jetStreamContext, messageProcessor, cfg, logger)
+	recorder := telemetry.ProvideRecorder(cfg)
+	messageProcessor := app.NewMessageProcessor(parserParser, repository, publisher, recorder, logger)
+	consumer, err := nats.ProvideConsumer(conn, jetStreamContext, messageProcessor, cfg, recorder, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -129,7 +132,7 @@ func InitializeAppWithConfig(cfg *config.Config) (*app.MessageProcessor, *nats.C
 	return comps.Processor, comps.Consumer, comps.Monitoring, nil
 }
 
-var runtimeSet = wire.NewSet(log.ProvideLogger, postgres.ProvideDB, postgres.ProvideRepository, nats.ProvideNATSConn, nats.ProvideJetStream, nats.ProvidePublisher, parser.ProvideParser, app.NewMessageProcessor, nats.ProvideConsumer, monitoring.ProvideServer)
+var runtimeSet = wire.NewSet(log.ProvideLogger, postgres.ProvideDB, postgres.ProvideRepository, nats.ProvideNATSConn, nats.ProvideJetStream, nats.ProvidePublisher, parser.ProvideParser, telemetry.ProvideRecorder, app.NewMessageProcessor, nats.ProvideConsumer, monitoring.ProvideServer)
 
 type appComponents struct {
 	Processor  *app.MessageProcessor

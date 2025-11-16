@@ -70,13 +70,13 @@ spec:
               mountPath: /etc/caatsm
           livenessProbe:
             httpGet:
-              path: /healthz
+              path: /livez
               port: monitoring
             initialDelaySeconds: 10
             periodSeconds: 15
           readinessProbe:
             httpGet:
-              path: /healthz
+              path: /readyz
               port: monitoring
             initialDelaySeconds: 5
             periodSeconds: 15
@@ -105,5 +105,5 @@ spec:
       protocol: TCP
 ```
 
-Point Prometheus at the service above (or annotate it if you use `prometheus-operator`). The `/healthz` probe doubles as a readiness check and quickly surfaces upstream connectivity issues.
+Point Prometheus at the service above (or annotate it if you use `prometheus-operator`). The `/readyz` probe surfaces upstream connectivity issues, while `/livez` is used solely for liveness.
 
