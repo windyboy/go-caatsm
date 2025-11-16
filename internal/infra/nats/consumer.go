@@ -72,7 +72,12 @@ func ProvideConsumer(
 		streamName = "TELEGRAM"
 	}
 
-	dlqSubject := strings.TrimSpace(cfg.DLQ.Subject)
+	// DLQ routing is only meaningful in JetStream mode. Respect dlq.enabled to allow
+	// environments to opt out cleanly even if a subject is configured.
+	dlqSubject := ""
+	if cfg.DLQ.Enabled {
+		dlqSubject = strings.TrimSpace(cfg.DLQ.Subject)
+	}
 
 	ackWait := cfg.NATS.ConsumerRules.AckWait
 	if ackWait == 0 {
@@ -120,6 +125,9 @@ func ProvideConsumer(
 		if err := consumer.ensureConsumer(); err != nil {
 			return nil, fmt.Errorf("failed to ensure consumer: %w", err)
 		}
+		// Validate DLQ configuration early so misconfiguration is visible at startup
+		// rather than only when the first poison message appears.
+		consumer.validateDLQ()
 	} else {
 		logger.Info("Running consumer in core NATS mode",
 			zap.String("subject", subject),
@@ -187,6 +195,64 @@ func (c *Consumer) ensureConsumer() error {
 	)
 
 	return nil
+}
+
+// validateDLQ verifies whether DLQ routing should be enabled and, if so, whether
+// the configured DLQ subject is bound to a JetStream stream. If validation fails,
+// DLQ routing is disabled (by clearing c.dlqSubject) and a warning is logged,
+// but the consumer is still allowed to start.
+func (c *Consumer) validateDLQ() {
+	if c == nil {
+		return
+	}
+
+	// DLQ routing is only active in JetStream mode.
+	if c.mode != "jetstream" {
+		return
+	}
+
+	// If DLQ is not enabled in config, make sure we don't accidentally route to it.
+	if !c.cfg.DLQ.Enabled {
+		if strings.TrimSpace(c.dlqSubject) != "" {
+			c.logger.Info("DLQ subject configured but dlq.enabled is false; DLQ routing disabled",
+				zap.String("dlq_subject", c.dlqSubject),
+			)
+		}
+		c.dlqSubject = ""
+		return
+	}
+
+	subject := strings.TrimSpace(c.dlqSubject)
+	if subject == "" {
+		c.logger.Warn("DLQ enabled but dlq.subject is empty; DLQ routing disabled")
+		return
+	}
+
+	if c.js == nil {
+		c.logger.Warn("DLQ enabled but JetStream context is nil; DLQ routing disabled",
+			zap.String("dlq_subject", subject),
+		)
+		c.dlqSubject = ""
+		return
+	}
+
+	// Ensure the DLQ subject is actually bound to a JetStream stream. This avoids
+	// the opaque `nats: no response from stream` error later when publishing.
+	obsmetrics.RecordJSAPICall("dlq_validate_stream")
+	streamName, err := c.js.StreamNameBySubject(subject)
+	if err != nil || strings.TrimSpace(streamName) == "" {
+		c.logger.Warn("DLQ subject not bound to any JetStream stream; DLQ routing disabled",
+			zap.String("dlq_subject", subject),
+			zap.Error(err),
+		)
+		c.dlqSubject = ""
+		return
+	}
+
+	c.logger.Info("DLQ configuration validated",
+		zap.String("dlq_subject", subject),
+		zap.String("dlq_stream", streamName),
+	)
 }
 
 // Start starts consuming messages
@@ -507,8 +573,19 @@ func (c *Consumer) routeToDLQ(ctx context.Context, msg *nats.Msg, cause error) e
 	}
 
 	if _, err := c.js.Publish(c.dlqSubject, data); err != nil {
+		// nats.ErrNoResponders typically means that no JetStream stream is
+		// configured to receive this subject, or JetStream is temporarily
+		// unavailable. Surface this explicitly to make operational diagnosis
+		// easier.
+		if errors.Is(err, nats.ErrNoResponders) {
+			obsmetrics.RecordDLQPublishFailure(c.streamName, c.consumerName)
+			return fmt.Errorf("publish to dlq subject %s: no JetStream stream found for subject or JetStream unavailable: %w", c.dlqSubject, err)
+		}
+		obsmetrics.RecordDLQPublishFailure(c.streamName, c.consumerName)
 		return fmt.Errorf("publish to dlq subject %s: %w", c.dlqSubject, err)
 	}
+
+	obsmetrics.RecordDLQMessage(c.streamName, c.consumerName)
 
 	return nil
 }

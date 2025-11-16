@@ -22,6 +22,12 @@ The service exposes Prometheus metrics via the monitoring HTTP server (default `
 - `caatsm_db_query_latency_seconds{operation}`  
   DB operation latency.
 
+- `caatsm_dlq_messages_total{stream,consumer}`  
+  Count of messages successfully routed to the DLQ.
+
+- `caatsm_dlq_publish_failures_total{stream,consumer}`  
+  Count of failures when attempting to publish messages to the DLQ.
+
 Additional OTEL metrics are emitted via the configured OTEL endpoint, including:
 
 - `caatsm_messages_processed_total`  

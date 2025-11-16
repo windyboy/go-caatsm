@@ -25,6 +25,8 @@ const (
 	MetricJSAPICallsTotal       = "caatsm_js_api_calls_total"
 	MetricDBQueriesTotal        = "caatsm_db_queries_total"
 	MetricDBQueryLatencySeconds = "caatsm_db_query_latency_seconds"
+	MetricDLQMessagesTotal      = "caatsm_dlq_messages_total"
+	MetricDLQPublishFailures    = "caatsm_dlq_publish_failures_total"
 
 	// Common label keys.
 	LabelStatus    = "status"
@@ -60,10 +62,12 @@ var (
 	parseLatency     *prometheus.HistogramVec
 
 	// Message handling metrics (per stream / consumer).
-	messagesTotal   *prometheus.CounterVec
-	handleLatency   *prometheus.HistogramVec
-	retriesTotal    *prometheus.CounterVec
-	jsAPICallsTotal *prometheus.CounterVec
+	messagesTotal      *prometheus.CounterVec
+	handleLatency      *prometheus.HistogramVec
+	retriesTotal       *prometheus.CounterVec
+	jsAPICallsTotal    *prometheus.CounterVec
+	dlqMessagesTotal   *prometheus.CounterVec
+	dlqPublishFailures *prometheus.CounterVec
 
 	// Database metrics.
 	dbQueriesTotal *prometheus.CounterVec
@@ -107,6 +111,16 @@ func initCollectors() {
 		Help: "Total number of message retries (negative acknowledgements), labelled by stream, consumer and reason.",
 	}, []string{LabelStream, LabelConsumer, LabelReason})
 
+	dlqMessagesTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: MetricDLQMessagesTotal,
+		Help: "Total number of messages routed to the DLQ, labelled by stream and consumer.",
+	}, []string{LabelStream, LabelConsumer})
+
+	dlqPublishFailures = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: MetricDLQPublishFailures,
+		Help: "Total number of failures when publishing to the DLQ, labelled by stream and consumer.",
+	}, []string{LabelStream, LabelConsumer})
+
 	jsAPICallsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: MetricJSAPICallsTotal,
 		Help: "Count of JetStream API calls made by the receiver.",
@@ -132,6 +146,8 @@ func initCollectors() {
 		handleLatency,
 		retriesTotal,
 		jsAPICallsTotal,
+		dlqMessagesTotal,
+		dlqPublishFailures,
 		dbQueriesTotal,
 		dbQueryLatency,
 	)
@@ -177,6 +193,19 @@ func RecordMessageHandled(stream, consumer, result string, elapsed time.Duration
 func RecordRetry(stream, consumer, reason string) {
 	ensureCollectors()
 	retriesTotal.WithLabelValues(labelValue(stream), labelValue(consumer), labelValue(reason)).Inc()
+}
+
+// RecordDLQMessage increments the DLQ message counter for a successfully routed message.
+func RecordDLQMessage(stream, consumer string) {
+	ensureCollectors()
+	dlqMessagesTotal.WithLabelValues(labelValue(stream), labelValue(consumer)).Inc()
+}
+
+// RecordDLQPublishFailure increments the DLQ publish failure counter when a DLQ
+// publish attempt fails.
+func RecordDLQPublishFailure(stream, consumer string) {
+	ensureCollectors()
+	dlqPublishFailures.WithLabelValues(labelValue(stream), labelValue(consumer)).Inc()
 }
 
 // RecordDBQuery records metrics for a single database operation.

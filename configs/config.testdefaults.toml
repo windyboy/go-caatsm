@@ -22,6 +22,10 @@ format = "json"
 [telemetry]
 enabled = false
 
+[dlq]
+enabled = false
+subject = ""
+
 [monitoring]
 addr = ":0"
 enable_metrics = false
