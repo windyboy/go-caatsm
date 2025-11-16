@@ -2,8 +2,8 @@ package nats
 
 import (
 	"caatsm/internal/adapter"
-	"caatsm/internal/domain"
 	"caatsm/internal/infra/config"
+	"caatsm/internal/model"
 	"encoding/json"
 	"fmt"
 	"github.com/google/uuid"
@@ -49,7 +49,7 @@ func (p *Publisher) Publish(message interface{}) error {
 	jsMsg.Data = messageBytes
 
 	switch typed := message.(type) {
-	case *domain.ParsedMessage:
+	case *model.ParsedTelegram:
 		if typed != nil && typed.Uuid != "" {
 			jsMsg.Header.Set("Nats-Msg-Id", typed.Uuid)
 		} else {

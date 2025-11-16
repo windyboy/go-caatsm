@@ -3,7 +3,7 @@ package app
 import (
 	"caatsm/internal/adapter"
 	"caatsm/internal/adapter/parser"
-	"caatsm/internal/domain"
+	"caatsm/internal/model"
 	obslogging "caatsm/internal/observability/logging"
 	obsmetrics "caatsm/internal/observability/metrics"
 	"context"
@@ -26,6 +26,17 @@ type MessageProcessor struct {
 	publisher  adapter.Publisher
 	logger     *zap.Logger
 }
+
+// ProcessingStatus represents the outcome of the processing pipeline
+// (persistence, publishing, etc.), independent from the parsing status
+// captured in model.MessageStatus.
+type ProcessingStatus string
+
+const (
+	ProcessingStatusOK            ProcessingStatus = "ok"
+	ProcessingStatusPersistFailed ProcessingStatus = "persist_failed"
+	ProcessingStatusPublishFailed ProcessingStatus = "publish_failed"
+)
 
 var (
 	appMeter               = otel.Meter("caatsm/app")
@@ -83,10 +94,10 @@ func (p *MessageProcessor) Handle(ctx context.Context, raw []byte, msgID string)
 
 	parsed, parseErr := p.parser.Parse(string(raw))
 	if parsed == nil {
-		parsed = domain.NewParsedMessage()
+		parsed = model.NewParsedTelegram()
 		parsed.Content = string(raw)
 		parsed.ErrorReason = "parser returned nil"
-		parsed.Status = domain.MessageStatusBodyError
+		parsed.Status = model.MessageStatusBodyError
 		parseErr = fmt.Errorf("parser returned nil")
 	}
 
@@ -103,11 +114,11 @@ func (p *MessageProcessor) Handle(ctx context.Context, raw []byte, msgID string)
 	if parsed.ParsedAt.IsZero() {
 		parsed.ParsedAt = time.Now()
 	}
-	if parsed.Status == domain.MessageStatusUnknown {
+	if parsed.Status == model.MessageStatusUnknown {
 		if parseErr == nil {
-			parsed.Status = domain.MessageStatusParsed
+			parsed.Status = model.MessageStatusParsed
 		} else {
-			parsed.Status = domain.MessageStatusBodyError
+			parsed.Status = model.MessageStatusBodyError
 		}
 	}
 
@@ -166,7 +177,6 @@ func (p *MessageProcessor) Handle(ctx context.Context, raw []byte, msgID string)
 	if err := p.repository.InsertOne(ctx, parsed); err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
-		parsed.Status = domain.MessageStatusRepositoryFail
 		latency := parsed.ParsedAt.Sub(receivedAt)
 		parseLatencyHistogram.Record(ctx, float64(latency.Milliseconds()),
 			metric.WithAttributes(
@@ -189,7 +199,6 @@ func (p *MessageProcessor) Handle(ctx context.Context, raw []byte, msgID string)
 			)
 		pubSpan.RecordError(err)
 		pubSpan.SetStatus(codes.Error, err.Error())
-		parsed.Status = domain.MessageStatusPublishFail
 		parsed.ErrorReason = err.Error()
 		messagePublishFailCounter.Add(ctx, 1,
 			metric.WithAttributes(
@@ -224,7 +233,7 @@ func (p *MessageProcessor) Handle(ctx context.Context, raw []byte, msgID string)
 	return nil
 }
 
-func (p *MessageProcessor) persistRaw(ctx context.Context, msg *domain.ParsedMessage) {
+func (p *MessageProcessor) persistRaw(ctx context.Context, msg *model.ParsedTelegram) {
 	if msg == nil || p.repository == nil {
 		return
 	}
@@ -261,7 +270,7 @@ func truncateContent(content string, limit int) string {
 	return content[:limit-3] + "..."
 }
 
-func recordProcessedMetric(ctx context.Context, msg *domain.ParsedMessage, elapsed time.Duration) {
+func recordProcessedMetric(ctx context.Context, msg *model.ParsedTelegram, elapsed time.Duration) {
 	if msg == nil {
 		return
 	}

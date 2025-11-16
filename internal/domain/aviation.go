@@ -1,7 +1,5 @@
 package domain
 
-import "time"
-
 // An aviation message typically contains various fields that are crucial for air traffic management and communication.
 //These fields include identifiers, date and time, priority indicators, addresses,
 //and additional information such as call signs, flight plans, route details, altitude, speed, position,
@@ -84,52 +82,6 @@ DispatchedAt: time.Time{}.
 NeedDispatch: false.
 */
 
-// ParsedMessage holds the parsed data from an aviation message
-type MessageStatus string
-
-const (
-	MessageStatusUnknown        MessageStatus = "unknown"
-	MessageStatusParsed         MessageStatus = "parsed"
-	MessageStatusHeaderError    MessageStatus = "header_error"
-	MessageStatusBodyError      MessageStatus = "body_error"
-	MessageStatusRepositoryFail MessageStatus = "repository_error"
-	MessageStatusPublishFail    MessageStatus = "publish_error"
-)
-
-// ParsedMessage holds the parsed data from an aviation message
-type ParsedMessage struct {
-	// StartIndicator     string      `json:"startIndicator"`               // 电报开始标识: The start of the message indicator (e.g., 'ZCZC').
-	Uuid               string      `json:"uuid"`
-	MessageID          string      `json:"messageId"`                    // 信息ID: The message ID (e.g., 'TMQ1324').
-	DateTime           string      `json:"dateTime"`                     // 日期时间: The date and time of the message (e.g., '150631').
-	PriorityIndicator  string      `json:"priorityIndicator"`            // 优先级标识: The priority level of the message (e.g., 'FF').
-	PrimaryAddress     string      `json:"primaryAddress"`               // 主要地址: The primary recipient address (e.g., 'ZBTJZPZX').
-	SecondaryAddresses string      `json:"secondaryAddresses,omitempty"` // 次要地址: Additional recipient addresses (space-separated string such as "150630 ZBACZQZX").
-	Originator         string      `json:"originator,omitempty"`         // 发件人: The sender of the message.
-	OriginatorDateTime string      `json:"originatorDateTime,omitempty"` // 发件日期时间: The date and time when the originator sent the message.
-	Category           string      `json:"category,omitempty"`           // 类别: The category of the message.
-	Body               string      // 正文和页脚: The body and footer of the message (e.g., 'CALLSIGN/ABC123\nFPL/AB1234-AB\n...').
-	Content            string      `json:"content,omitempty"`      // 正文: The body of the message.
-	BodyData           interface{} `json:"bodyData,omitempty"`     // 正文数据: Parsed body data.
-	ReceivedAt         time.Time   `json:"receivedAt"`             // 接收时间: The time when the message was received.
-	ParsedAt           time.Time   `json:"parsedAt,omitempty"`     // 解析时间: The time when the message was parsed.
-	DispatchedAt       time.Time   `json:"dispatchedAt,omitempty"` // 分发时间: The time when the message was dispatched.
-	NeedDispatch       bool        `json:"needDispatch"`           // 需要分发: Indicates if the message needs to be dispatched.
-	Parsed             bool        `json:"parsed"`                 // 解析: Indicates if the message has been parsed.
-	Comments           string      `json:"comments,omitempty"`     // 备注: Additional comments.
-	Status             MessageStatus
-	ErrorReason        string `json:"errorReason,omitempty"`
-}
-
-// NewParsedMessage initializes a ParsedMessage with default values
-func NewParsedMessage() *ParsedMessage {
-	return &ParsedMessage{
-		// SecondaryAddresses: []string{},
-		Parsed: false,
-		Status: MessageStatusUnknown,
-	}
-}
-
-func (message *ParsedMessage) ToString() string {
-	return message.MessageID + " " + message.Category + " " + message.Originator
-}
+// NOTE: Parsed telegram pipeline structures (ParsedTelegram, MessageStatus, etc.)
+// have been moved to the internal/model package to keep the domain layer focused
+// purely on aviation business concepts (FPL, DEP, ARR, etc.).

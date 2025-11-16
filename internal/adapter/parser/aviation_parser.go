@@ -1,7 +1,7 @@
 package parser
 
 import (
-	"caatsm/internal/domain"
+	"caatsm/internal/model"
 	"caatsm/internal/parsers"
 )
 
@@ -13,8 +13,8 @@ func NewAviationParser() *AviationParser {
 	return &AviationParser{}
 }
 
-// Parse parses a raw message string and returns a ParsedMessage
-func (p *AviationParser) Parse(rawText string) (*domain.ParsedMessage, error) {
+// Parse parses a raw message string and returns a ParsedTelegram
+func (p *AviationParser) Parse(rawText string) (*model.ParsedTelegram, error) {
 	// Use the existing Parse function from internal/parsers
 	return parsers.Parse(rawText)
 }

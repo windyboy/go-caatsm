@@ -131,7 +131,7 @@ NNNN`)
 			SELECT status FROM aviation.telegrams WHERE message_id = $1 LIMIT 1
 		`, "TMQ2526").Scan(&status)
 		if err == nil {
-			if status == string(domain.MessageStatusParsed) {
+			if status == string(model.MessageStatusParsed) {
 				return
 			}
 			t.Logf("message persisted with status=%s, waiting for parsed", status)

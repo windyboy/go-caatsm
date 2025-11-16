@@ -1,7 +1,7 @@
 package mapper
 
 import (
-	"caatsm/internal/domain"
+	"caatsm/internal/model"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -9,7 +9,7 @@ import (
 	"github.com/google/uuid"
 )
 
-// TelegramMapper maps between domain.ParsedMessage and database rows
+// TelegramMapper maps between ParsedTelegram and database rows
 type TelegramMapper struct{}
 
 // NewTelegramMapper creates a new telegram mapper
@@ -17,8 +17,8 @@ func NewTelegramMapper() *TelegramMapper {
 	return &TelegramMapper{}
 }
 
-// ToDBRow converts a domain.ParsedMessage to a database row representation
-func (m *TelegramMapper) ToDBRow(msg *domain.ParsedMessage) ([]interface{}, error) {
+// ToDBRow converts a ParsedTelegram to a database row representation
+func (m *TelegramMapper) ToDBRow(msg *model.ParsedTelegram) ([]interface{}, error) {
 	// Parse UUID
 	var msgUUID uuid.UUID
 	var err error
@@ -45,7 +45,7 @@ func (m *TelegramMapper) ToDBRow(msg *domain.ParsedMessage) ([]interface{}, erro
 
 	status := msg.Status
 	if status == "" {
-		status = domain.MessageStatusUnknown
+		status = model.MessageStatusUnknown
 	}
 
 	return []interface{}{
@@ -69,8 +69,8 @@ func (m *TelegramMapper) ToDBRow(msg *domain.ParsedMessage) ([]interface{}, erro
 	}, nil
 }
 
-// FromDBRow converts a database row to a domain.ParsedMessage
-func (m *TelegramMapper) FromDBRow(row []interface{}) (*domain.ParsedMessage, error) {
+// FromDBRow converts a database row to a ParsedTelegram
+func (m *TelegramMapper) FromDBRow(row []interface{}) (*model.ParsedTelegram, error) {
 	const expectedColumns = 17
 	if len(row) < expectedColumns {
 		return nil, fmt.Errorf("expected %d columns, got %d", expectedColumns, len(row))
@@ -128,12 +128,12 @@ func (m *TelegramMapper) FromDBRow(row []interface{}) (*domain.ParsedMessage, er
 		}
 	}
 
-	status := domain.MessageStatusUnknown
+	status := model.MessageStatusUnknown
 	if rawStatus := toString(row[11]); rawStatus != "" {
-		status = domain.MessageStatus(rawStatus)
+		status = model.MessageStatus(rawStatus)
 	}
 
-	return &domain.ParsedMessage{
+	return &model.ParsedTelegram{
 		Uuid:               msgUUID.String(),
 		MessageID:          toString(row[1]),
 		DateTime:           toString(row[2]),

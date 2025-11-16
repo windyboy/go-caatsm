@@ -55,10 +55,15 @@ tasks:
         GO_ENV=${GO_ENV:-dev} go run {{.cmd}} listen
 
   test:
-    desc: Run go test ./...
+    desc: Run Ginkgo unit test suites
     cmds:
-      - echo "Running go test..."
-      - go test ./...
+      - |
+        if ! command -v ginkgo >/dev/null; then
+          echo "Install ginkgo (go install github.com/onsi/ginkgo/v2/ginkgo@latest)"
+          exit 1
+        fi
+      - echo "Running Ginkgo unit test suites..."
+      - ginkgo -r ./cmd ./internal
 
   test-int:
     desc: Run integration tests (requires Docker)
@@ -68,10 +73,15 @@ tasks:
         GO_ENV=${GO_ENV:-test} go test -tags=integration ./test/integration/...
 
   test-ginkgo:
-    desc: Run ginkgo suites
+    desc: Alias for Ginkgo unit test suites
     cmds:
-      - command -v ginkgo >/dev/null || { echo "Install ginkgo (go install github.com/onsi/ginkgo/v2/ginkgo@latest)"; exit 1; }
-      - ginkgo -r -v
+      - task: test
+
+  test-all:
+    desc: Run unit tests (Ginkgo) and integration tests
+    cmds:
+      - task: test
+      - task: test-int
 
   coverage:
     desc: Generate coverage report (profile + HTML)

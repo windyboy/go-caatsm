@@ -2,6 +2,7 @@ package parsers
 
 import (
 	"caatsm/internal/domain"
+	"caatsm/internal/model"
 	"caatsm/pkg/utils"
 	"errors"
 	"fmt"
@@ -199,33 +200,65 @@ func (parser *BodyParser) createBodyData(data map[string]string) (string, interf
 	}
 }
 
-func Parse(rawText string) (*domain.ParsedMessage, error) {
-	message, err := ParseHeader(rawText)
+func Parse(rawText string) (*model.ParsedTelegram, error) {
+	header, err := ParseHeader(rawText)
 	if err != nil {
-		msg := domain.NewParsedMessage()
+		msg := model.NewParsedTelegram()
 		msg.Content = rawText
 		msg.Comments = err.Error()
 		msg.ErrorReason = err.Error()
-		msg.Status = domain.MessageStatusHeaderError
+		msg.Status = model.MessageStatusHeaderError
 		return msg, fmt.Errorf("%w: %w", ErrHeaderParse, err)
 	}
 
-	bodyParser := NewBodyParser(message.Body)
+	bodyParser := NewBodyParser(header.Body)
 	category, bodyData, bodyErr := bodyParser.Parse()
-	message.Category = category
-	message.ParsedAt = time.Now()
+	header.Category = category
+	header.ParsedAt = time.Now()
 
 	if bodyErr != nil {
-		message.Comments = bodyErr.Error()
-		message.ErrorReason = bodyErr.Error()
-		message.Status = domain.MessageStatusBodyError
-		return &message, fmt.Errorf("%w: %w", ErrBodyParse, bodyErr)
+		return &model.ParsedTelegram{
+			MessageID:          header.MessageID,
+			DateTime:           header.DateTime,
+			PriorityIndicator:  header.PriorityIndicator,
+			PrimaryAddress:     header.PrimaryAddress,
+			SecondaryAddresses: header.SecondaryAddresses,
+			Originator:         header.Originator,
+			OriginatorDateTime: header.OriginatorDateTime,
+			Category:           header.Category,
+			Body:               header.Body,
+			Content:            header.Content,
+			ReceivedAt:         header.ReceivedAt,
+			ParsedAt:           header.ParsedAt,
+			Parsed:             false,
+			Comments:           bodyErr.Error(),
+			Status:             model.MessageStatusBodyError,
+			ErrorReason:        bodyErr.Error(),
+		}, fmt.Errorf("%w: %w", ErrBodyParse, bodyErr)
 	}
-	message.Parsed = true
-	message.Status = domain.MessageStatusParsed
-	message.BodyData = bodyData
-	message.Uuid = uuid.New().String()
-	return &message, nil
+
+	parsed := &model.ParsedTelegram{
+		MessageID:          header.MessageID,
+		DateTime:           header.DateTime,
+		PriorityIndicator:  header.PriorityIndicator,
+		PrimaryAddress:     header.PrimaryAddress,
+		SecondaryAddresses: header.SecondaryAddresses,
+		Originator:         header.Originator,
+		OriginatorDateTime: header.OriginatorDateTime,
+		Category:           header.Category,
+		Body:               header.Body,
+		Content:            header.Content,
+		BodyData:           bodyData,
+		ReceivedAt:         header.ReceivedAt,
+		ParsedAt:           header.ParsedAt,
+		Parsed:             true,
+		Status:             model.MessageStatusParsed,
+		ErrorReason:        "",
+	}
+
+	parsed.Uuid = uuid.New().String()
+
+	return parsed, nil
 }
 
 func cleanMessage(text string) string {
@@ -241,25 +274,42 @@ func cleanMessage(text string) string {
 	return ""
 }
 
-func ParseHeader(fullMessage string) (domain.ParsedMessage, error) {
+// ParseHeader parses only the header portion of the message and returns a lightweight struct
+// with header fields and body content. It is used internally by the aviation parser.
+type Header struct {
+	MessageID          string
+	DateTime           string
+	PriorityIndicator  string
+	PrimaryAddress     string
+	SecondaryAddresses string
+	Originator         string
+	OriginatorDateTime string
+	Category           string
+	Content            string
+	Body               string
+	ReceivedAt         time.Time
+	ParsedAt           time.Time
+}
+
+func ParseHeader(fullMessage string) (Header, error) {
 	log := utils.GetSugaredLogger()
 	cleaned := cleanMessage(fullMessage)
 	lines := strings.Split(cleaned, "\n")
 
 	if len(lines) < 3 {
 		log.Warnf("invalid message format: %s", fullMessage)
-		return domain.ParsedMessage{Content: fullMessage}, fmt.Errorf("invalid message format: %s", fullMessage)
+		return Header{Content: fullMessage}, fmt.Errorf("invalid message format: %s", fullMessage)
 	}
 
 	_, messageID, dateTime, err := parseStartIndicator(lines[0])
 	if err != nil {
-		return domain.ParsedMessage{Content: fullMessage}, err
+		return Header{Content: fullMessage}, err
 	}
 
 	priorityIndicator, primaryAddress := parsePriorityAndPrimary(lines[1])
 	secondaryAddresses, originator, originatorDateTime, body := parseRemainingLines(lines[2:])
 
-	return domain.ParsedMessage{
+	return Header{
 		MessageID:          messageID,
 		DateTime:           dateTime,
 		PriorityIndicator:  priorityIndicator,

@@ -318,19 +318,19 @@ Dependencies are managed using Google Wire. To add a new dependency:
 
 The project keeps tests close to the code that they exercise:
 
-- **Domain/adapter/app unit tests** live under `internal/**` and cover parsing, validation, orchestration, and adapters. Run them all with `task test` (or `make test`), which is just `go test ./...`.
+- **Domain/adapter/app unit tests** live under `internal/**` and cover parsing, validation, orchestration, and adapters. Run them all with `task test` (or `make test`), which now uses the Ginkgo CLI to run unit test suites (`ginkgo -r ./cmd ./internal`).
 - **Integration tests** under `test/integration` spin up disposable TimescaleDB and NATS JetStream instances (via `testcontainers-go`) and execute a full ingestion flow. Use `task test-int` after ensuring Docker is running.
 - **Coverage goals** are tracked via `task coverage`, which produces both a coverage profile and an HTML report under `coverage/coverage.html`.
 
-| Purpose                | Make command        | Task command        |
-|------------------------|---------------------|---------------------|
-| Run unit tests         | `make test`         | `task test`         |
-| Run integration tests  | `make test-int`     | `task test-int`     |
-| Run Ginkgo suites      | `make test-ginkgo`  | `task test-ginkgo`  |
-| Generate coverage html | `make coverage`     | `task coverage`     |
-| Lint (golangci-lint)   | `make lint`         | `task lint`         |
+| Purpose                    | Make command        | Task command        |
+|----------------------------|---------------------|---------------------|
+| Run unit tests (Ginkgo)    | `make test`         | `task test`         |
+| Run integration tests      | `make test-int`     | `task test-int`     |
+| Run unit+integration tests | `make test-all`     | `task test-all`     |
+| Generate coverage html     | `make coverage`     | `task coverage`     |
+| Lint (golangci-lint)       | `make lint`         | `task lint`         |
 
-> Integration tests need Docker available on the host. Ginkgo or lint targets require the respective binaries (`go install github.com/onsi/ginkgo/v2/ginkgo@latest`, [golangci-lint install guide](https://golangci-lint.run/)). Use `task install-test` to bootstrap Ginkgo tooling.
+> Integration tests need Docker available on the host. Ginkgo-based unit tests or lint targets require the respective binaries (`go install github.com/onsi/ginkgo/v2/ginkgo@latest`, [golangci-lint install guide](https://golangci-lint.run/)). Use `task install-test` to bootstrap Ginkgo tooling before running `task test`, `task test-all`, or their `make` equivalents.
 
 ## Message Flow
 

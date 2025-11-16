@@ -3,7 +3,7 @@ package mapper
 import (
 	"time"
 
-	"caatsm/internal/domain"
+	"caatsm/internal/model"
 
 	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
@@ -19,7 +19,7 @@ var _ = Describe("TelegramMapper", func() {
 
 	Describe("ToDBRow", func() {
 		It("generates a UUID when missing", func() {
-			msg := &domain.ParsedMessage{}
+			msg := &model.ParsedTelegram{}
 
 			row, err := mapper.ToDBRow(msg)
 			Expect(err).NotTo(HaveOccurred())
@@ -33,7 +33,7 @@ var _ = Describe("TelegramMapper", func() {
 	Describe("FromDBRow", func() {
 		It("round-trips telegram data", func() {
 			now := time.Now().UTC()
-			original := &domain.ParsedMessage{
+			original := &model.ParsedTelegram{
 				Uuid:               uuid.NewString(),
 				MessageID:          "TMQ1324",
 				DateTime:           "150631",
@@ -49,7 +49,7 @@ var _ = Describe("TelegramMapper", func() {
 				ParsedAt:           now,
 				DispatchedAt:       now,
 				NeedDispatch:       true,
-				Status:             domain.MessageStatusParsed,
+				Status:             model.MessageStatusParsed,
 			}
 
 			row, err := mapper.ToDBRow(original)

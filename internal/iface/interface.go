@@ -1,9 +1,6 @@
 package iface
 
-import (
-	"caatsm/internal/domain"
-	"caatsm/internal/infra/config"
-)
+import "caatsm/internal/infra/config"
 
 type MessageHandler interface {
 	HandleMessage(msg []byte, id string) error
@@ -18,5 +15,5 @@ type MessageSubscriber interface {
 }
 
 type MessageRepository interface {
-	CreateNew(message *domain.ParsedMessage) error
+	CreateNew(message interface{}) error
 }

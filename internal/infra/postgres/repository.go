@@ -3,7 +3,7 @@ package postgres
 import (
 	"caatsm/internal/adapter"
 	"caatsm/internal/adapter/mapper"
-	"caatsm/internal/domain"
+	"caatsm/internal/model"
 	obsmetrics "caatsm/internal/observability/metrics"
 	"context"
 	"encoding/json"
@@ -36,7 +36,7 @@ func ProvideRepository(pool *pgxpool.Pool, logger *zap.Logger) (adapter.Reposito
 }
 
 // InsertOne inserts a single telegram message
-func (r *Repository) InsertOne(ctx context.Context, msg *domain.ParsedMessage) error {
+func (r *Repository) InsertOne(ctx context.Context, msg *model.ParsedTelegram) error {
 	ctx, span := otel.Tracer("caatsm/postgres").Start(ctx, "Repository.InsertOne")
 	defer span.End()
 	span.SetAttributes(attribute.String("db.table", "aviation.telegrams"))
@@ -114,7 +114,7 @@ func (r *Repository) InsertOne(ctx context.Context, msg *domain.ParsedMessage) e
 }
 
 // InsertBatch inserts multiple telegram messages in a batch using CopyFrom
-func (r *Repository) InsertBatch(ctx context.Context, msgs []*domain.ParsedMessage) error {
+func (r *Repository) InsertBatch(ctx context.Context, msgs []*model.ParsedTelegram) error {
 	ctx, span := otel.Tracer("caatsm/postgres").Start(ctx, "Repository.InsertBatch")
 	defer span.End()
 	span.SetAttributes(attribute.String("db.table", "aviation.telegrams"))
@@ -169,7 +169,7 @@ func (r *Repository) InsertBatch(ctx context.Context, msgs []*domain.ParsedMessa
 }
 
 // InsertRaw inserts a failed telegram into aviation.telegrams_raw for post-processing.
-func (r *Repository) InsertRaw(ctx context.Context, msg *domain.ParsedMessage) error {
+func (r *Repository) InsertRaw(ctx context.Context, msg *model.ParsedTelegram) error {
 	ctx, span := otel.Tracer("caatsm/postgres").Start(ctx, "Repository.InsertRaw")
 	defer span.End()
 	span.SetAttributes(attribute.String("db.table", "aviation.telegrams_raw"))
