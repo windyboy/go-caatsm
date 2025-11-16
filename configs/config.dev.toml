@@ -57,6 +57,7 @@ endpoint = "localhost:4318"
 insecure = true
 
 [monitoring]
+disabled = false
 addr = ":2112"
 enable_metrics = true
 enable_health = true

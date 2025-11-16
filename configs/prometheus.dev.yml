@@ -12,3 +12,10 @@ scrape_configs:
       - targets:
           - "nats-exporter:7777"
 
+  - job_name: "caatsm-receiver"
+    static_configs:
+      - targets:
+          # When go-caatsm runs on the host/WSL and Prometheus runs in Docker,
+          # use host.docker.internal to reach the host monitoring server.
+          - "host.docker.internal:2112"
+

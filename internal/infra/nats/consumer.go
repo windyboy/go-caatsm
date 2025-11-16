@@ -130,7 +130,7 @@ func ProvideConsumer(
 	return consumer, nil
 }
 
-// ensureConsumer creates the consumer if it doesn't exist
+// ensureConsumer creates the consumer if it doesn't exist; if it already exists, it is reused.
 func (c *Consumer) ensureConsumer() error {
 	consumerConfig := &nats.ConsumerConfig{
 		Durable:       c.consumerName,
@@ -158,21 +158,33 @@ func (c *Consumer) ensureConsumer() error {
 		}
 	}
 
-	_, err := c.js.AddConsumer(c.streamName, consumerConfig)
-	if err != nil && err != nats.ErrConsumerNameAlreadyInUse {
-		return fmt.Errorf("failed to create consumer: %w", err)
-	}
-
-	if err == nil {
-		c.logger.Info("Created JetStream consumer",
+	// First check if the consumer already exists to make this initialization idempotent.
+	info, err := c.js.ConsumerInfo(c.streamName, c.consumerName)
+	if err == nil && info != nil {
+		c.logger.Info("Using existing JetStream consumer",
 			zap.String("consumer", c.consumerName),
 			zap.String("stream", c.streamName),
 			zap.String("subject", c.subject),
-			zap.Duration("ack_wait", c.ackWait),
-			zap.String("deliver_policy", c.cfg.NATS.ConsumerRules.DeliverPolicy),
-			zap.String("replay_policy", c.cfg.NATS.ConsumerRules.ReplayPolicy),
 		)
+		return nil
 	}
+	if err != nil && !errors.Is(err, nats.ErrConsumerNotFound) {
+		return fmt.Errorf("failed to fetch consumer info: %w", err)
+	}
+
+	// Consumer does not exist; create it.
+	if _, err := c.js.AddConsumer(c.streamName, consumerConfig); err != nil {
+		return fmt.Errorf("failed to create consumer: %w", err)
+	}
+
+	c.logger.Info("Created JetStream consumer",
+		zap.String("consumer", c.consumerName),
+		zap.String("stream", c.streamName),
+		zap.String("subject", c.subject),
+		zap.Duration("ack_wait", c.ackWait),
+		zap.String("deliver_policy", c.cfg.NATS.ConsumerRules.DeliverPolicy),
+		zap.String("replay_policy", c.cfg.NATS.ConsumerRules.ReplayPolicy),
+	)
 
 	return nil
 }

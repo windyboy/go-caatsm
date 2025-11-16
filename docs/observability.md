@@ -39,6 +39,49 @@ These metrics are intended to be scraped by Prometheus (either directly or via t
 - NATS consumer backlog and redelivery counts.  
 - DB query rates and latencies.
 
+#### Prometheus scrape configuration
+
+In the local dev environment, metrics are typically scraped by the Prometheus
+container defined in `docker-compose.dev.yml` using `configs/prometheus.dev.yml`.
+
+A recommended scrape configuration for the receiver is:
+
+```yaml
+scrape_configs:
+  - job_name: "otel-collector"
+    static_configs:
+      - targets:
+          - "otel-collector:8888"
+
+  - job_name: "nats-exporter"
+    static_configs:
+      - targets:
+          - "nats-exporter:7777"
+
+  - job_name: "caatsm-receiver"
+    static_configs:
+      - targets:
+          # go-caatsm running on host/WSL, Prometheus in Docker
+          - "host.docker.internal:2112"
+```
+
+When you run the receiver directly on the host/WSL, ensure the monitoring
+server listens on all interfaces so that Docker can reach it, for example via:
+
+```bash
+export CAATSM_MONITORING_ADDR=0.0.0.0:2112
+export CAATSM_MONITORING_ENABLE_METRICS=true
+export CAATSM_MONITORING_ENABLE_HEALTH=true
+```
+
+Alternative topologies:
+
+- **Receiver and Prometheus in the same Docker network**  
+  Expose the monitoring server via a container port and use the container
+  name as the scrape target, e.g. `caatsm-receiver:2112`.
+- **Receiver behind a reverse proxy / load balancer**  
+  Point Prometheus at the proxy address and path that forwards to `/metrics`.
+
 #### CAATSM – Receiver Overview Dashboard
 
 The `caatsm-overview` Grafana dashboard (provisioned from `configs/grafana-dashboards.dev/caatsm-overview.json`) focuses on the CAATSM receiver service and surfaces:
@@ -49,6 +92,36 @@ The `caatsm-overview` Grafana dashboard (provisioned from `configs/grafana-dashb
 - **DB query rate and latency** – from `caatsm_db_queries_total` and `caatsm_db_query_latency_seconds_bucket`.  
 - **Retry and permanent failure rates** – from `caatsm_retries_total` and `caatsm_messages_total{result="permanent_fail"}`.  
 - **Publish failures** – from `caatsm_publish_failures_total`.
+
+To validate that the dashboard is receiving data:
+
+1. Check the monitoring endpoint directly:
+
+   ```bash
+   curl -s http://localhost:2112/metrics | grep caatsm_messages_total || true
+   ```
+
+2. In Prometheus (`http://localhost:9090`), run:
+
+   ```text
+   caatsm_messages_total
+   ```
+
+   and
+
+   ```text
+   rate(caatsm_messages_total[5m])
+   ```
+
+3. In Grafana, open the **CAATSM – Receiver Overview** dashboard and
+   verify that:
+
+   - “Messages by result (5m rate)” shows time series for `ok`, `fail`,
+     and `permanent_fail`.
+   - “Messages per stream/consumer” shows series labelled by `stream`
+     and `consumer`.
+   - DB-related panels show non-zero values based on
+     `caatsm_db_queries_total` and `caatsm_db_query_latency_seconds`.
 
 ### Health and Readiness
 
@@ -71,6 +144,37 @@ Tracing is configured via the `telemetry` section:
 - `telemetry.enabled` – enables OTEL exporters.  
 - `telemetry.endpoint` – OTLP HTTP endpoint (e.g. `localhost:4318`).  
 - `telemetry.insecure` – disables TLS for local/dev.
+
+#### OTEL vs Prometheus metrics
+
+The receiver reports two complementary sets of metrics:
+
+- **Prometheus metrics via `/metrics`**  
+  Implemented in `internal/observability/metrics`, covering:
+  - End-to-end message handling (`caatsm_messages_total`,
+    `caatsm_handle_latency_seconds`, `caatsm_retries_total`)
+  - DB activity (`caatsm_db_queries_total`,
+    `caatsm_db_query_latency_seconds`)
+  - Legacy per-telegram metrics
+
+- **OpenTelemetry metrics via OTLP**  
+  Implemented using `otel.Meter` in the NATS consumer and app processor,
+  including:
+  - `caatsm_messages_processed_total`
+  - `caatsm_parse_duration_ms`
+  - `caatsm_publish_failures_total`
+  - `caatsm_nats_consumer_ack_pending`
+  - `caatsm_nats_consumer_redelivered`
+  - `caatsm_nats_consumer_pending`
+  - `caatsm_nats_consumer_delivered`
+
+Prometheus only sees the metrics exposed on `/metrics`. OTEL metrics are
+exported to the configured OTEL collector (`telemetry.endpoint`) via OTLP and
+are, by default, forwarded to Jaeger (traces) and logs (metrics) according to
+`configs/otel-collector.dev.yaml`. If you want OTEL metrics to appear in
+Prometheus as well, you can extend the collector configuration with a
+`prometheus` or `prometheusremotewrite` exporter and add a corresponding
+scrape or remote-write configuration.
 
 Key spans:
 
