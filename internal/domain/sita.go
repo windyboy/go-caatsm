@@ -1,9 +1,10 @@
 package domain
 
 import (
-	"caatsm/pkg/utils"
 	"fmt"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 /*
@@ -95,7 +96,7 @@ type TimeReceiver struct {
 }
 
 func (h *SITAHeader) Validate() error {
-	log := utils.GetLogger()
+	log := zap.S()
 	// Validate SendTime format (e.g., DDHHMM)
 	if len(h.SendTime) != 6 {
 		err := "invalid send_time format"

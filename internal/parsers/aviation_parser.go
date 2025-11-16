@@ -3,7 +3,6 @@ package parsers
 import (
 	"caatsm/internal/domain"
 	"caatsm/internal/model"
-	"caatsm/pkg/utils"
 	"errors"
 	"fmt"
 	"regexp"
@@ -12,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 )
 
 const (
@@ -292,7 +292,7 @@ type Header struct {
 }
 
 func ParseHeader(fullMessage string) (Header, error) {
-	log := utils.GetSugaredLogger()
+	log := zap.S()
 	cleaned := cleanMessage(fullMessage)
 	lines := strings.Split(cleaned, "\n")
 
@@ -328,7 +328,7 @@ func parseStartIndicator(line string) (string, string, string, error) {
 	if len(parts) >= 3 && strings.HasPrefix(parts[0], StartIndicatorPrefix) {
 		return parts[0], parts[1], parts[2], nil
 	}
-	utils.GetSugaredLogger().Warnf("invalid start indicator line format: %s", line)
+	zap.S().Warnf("invalid start indicator line format: %s", line)
 	return "", "", "", fmt.Errorf("invalid start indicator line format: %s", line)
 }
 
@@ -337,7 +337,7 @@ func parsePriorityAndPrimary(line string) (string, string) {
 	if len(parts) >= 2 {
 		return parts[0], parts[1]
 	}
-	utils.GetSugaredLogger().Warnf("invalid priority and primary address line format: %s", line)
+	zap.S().Warnf("invalid priority and primary address line format: %s", line)
 	return "", ""
 }
 
@@ -389,7 +389,7 @@ func getOriginator(line string) (string, string) {
 	if len(match) >= 3 {
 		return match[1], match[2]
 	}
-	utils.GetSugaredLogger().Warnf("invalid originator line format: %s", line)
+	zap.S().Warnf("invalid originator line format: %s", line)
 	return "", ""
 }
 

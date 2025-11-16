@@ -2,10 +2,10 @@ package parsers
 
 import (
 	"caatsm/internal/domain"
-	"caatsm/pkg/utils"
 	"errors"
-
 	"strings"
+
+	"go.uber.org/zap"
 )
 
 func ExtractWaypoint(message string) *domain.WayPoint {
@@ -47,7 +47,7 @@ func standardizeSpaces(s string) string {
 }
 
 func ParseWithDef(line string, parserDef *LineParser) *domain.ScheduleLine {
-	log := utils.GetSugaredLogger()
+	log := zap.S()
 	cleanLine := standardizeSpaces(strings.TrimSpace(line))
 	words := strings.Split(cleanLine, " ")
 	var flightSchedule = &domain.ScheduleLine{
@@ -99,7 +99,7 @@ func ParseWithDef(line string, parserDef *LineParser) *domain.ScheduleLine {
 
 // ParseLine processes a single line of schedule data and returns a ScheduleLine object.
 func ParseLine(line string) (*domain.ScheduleLine, error) {
-	log := utils.GetSugaredLogger()
+	log := zap.S()
 	cleanLine := strings.TrimSpace(line)
 	words := strings.Split(cleanLine, " ")
 	flightSchedule := &domain.ScheduleLine{Reference: line}
@@ -167,7 +167,7 @@ func updateFlightSchedule(flightSchedule *domain.ScheduleLine, name string, data
 
 // parseWaypoints processes a slice of waypoint strings and returns a slice of WayPoint objects.
 func parseWaypoints(target []string) ([]domain.WayPoint, error) {
-	log := utils.GetSugaredLogger()
+	log := zap.S()
 	points := getValidPoints(target)
 	if len(points) == 0 {
 		log.Warn("No waypoints found")
