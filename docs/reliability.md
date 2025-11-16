@@ -101,6 +101,27 @@ Recommended pattern:
 - Use a backoff array such as `[5s, 30s, 2m]`.  
 - Treat messages that still fail after `max_deliver` as candidates for DLQ, via the permanent error/poison message path where applicable.
 
+### JetStream Availability and Auto-Recovery (Dev vs Prod)
+
+- When the JetStream API is temporarily unavailable (for example, NATS has just
+  restarted and returns `ErrNoResponders`), the consumer uses an exponential
+  backoff when retrying `Fetch` calls (roughly `1s, 2s, 4s, ...` up to
+  around `30s`) to avoid log spam while allowing the system to recover.
+- In dev/test environments, if the stream or consumer is detected as missing at
+  runtime (for example after `docker compose down -v`), the consumer calls the
+  shared `EnsureStream` and `ensureConsumer` logic to recreate them and
+  re-establish subscriptions.
+- In production environments, missing streams/consumers are treated as
+  configuration or operational errors:
+  - They are **not** auto-recreated.
+  - Errors are logged prominently so operators can diagnose and fix the issue.
+- On the publishing side, JetStream `ErrNoResponders` and similar errors are
+  treated as temporary by the processor:
+  - Such errors cause the consumer to NAK messages and rely on the configured
+    backoff for retries.
+  - Permanent configuration/permission errors remain mapped to permanent
+    failures and follow the DLQ + ACK flow.
+
 ### Alerts and Dashboards
 
 Prometheus alert suggestions:

@@ -5,7 +5,9 @@ import (
 	"caatsm/internal/infra/config"
 	"caatsm/internal/model"
 	"encoding/json"
+	"errors"
 	"fmt"
+
 	"github.com/google/uuid"
 	"github.com/nats-io/nats.go"
 	"go.uber.org/zap"
@@ -62,6 +64,10 @@ func (p *Publisher) Publish(message interface{}) error {
 	// Publish to JetStream
 	_, err = p.js.PublishMsg(jsMsg)
 	if err != nil {
+		// Distinguish temporary JetStream unavailability from permanent config errors.
+		if errors.Is(err, nats.ErrNoResponders) {
+			return fmt.Errorf("transient publish error (no responders): %w", err)
+		}
 		return fmt.Errorf("failed to publish message: %w", err)
 	}
 

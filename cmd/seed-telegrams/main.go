@@ -23,6 +23,26 @@ var (
 	bodyCategories     = []string{"ARR", "DEP", "CNL", "DLA", "FPL"}
 )
 
+// SeedConfig controls how telegrams are generated and dispatched.
+type SeedConfig struct {
+	Count        int
+	Mode         string
+	IntervalMin  time.Duration
+	IntervalMax  time.Duration
+	Duration     time.Duration
+	CategoryFlag string
+	StatusFlag   string
+	ErrorReason  string
+	HeaderFormat string
+	DryRun       bool
+}
+
+// publishFunc abstracts the publish side-effect so that it can be swapped in tests.
+type publishFunc func(*telegram) error
+
+// sleepFunc is used instead of time.Sleep so tests can stub out real sleeping.
+var sleepFunc = time.Sleep
+
 func main() {
 	natsURL := flag.String("nats-url", "nats://127.0.0.1:4222", "NATS server URL (empty skips publish)")
 	subject := flag.String("subject", "telegram.raw", "Subject to publish telegrams to")
@@ -36,6 +56,10 @@ func main() {
 	jsStream := flag.String("stream", "", "JetStream stream (optional when --jetstream)")
 	jsSubject := flag.String("js-subject", "", "Override subject for JetStream publish (defaults to --subject)")
 	headerFormat := flag.String("header-format", "json", "Metadata header encoding: json|none")
+	mode := flag.String("mode", "burst", "Seed mode: burst|interval|mixed")
+	intervalMin := flag.Duration("interval-min", time.Second, "Minimum interval between messages in interval/mixed modes")
+	intervalMax := flag.Duration("interval-max", 2*time.Second, "Maximum interval between messages in interval/mixed modes")
+	duration := flag.Duration("duration", 0, "Total duration for interval/mixed modes (0 = rely on --count only)")
 	flag.Parse()
 
 	rand.Seed(time.Now().UnixNano())
@@ -64,62 +88,34 @@ func main() {
 		}
 	}
 
-	categories := bodyCategories
-	if strings.ToLower(*category) != "mixed" {
-		categories = []string{strings.ToUpper(*category)}
+	// Normalize and prepare configuration.
+	if *intervalMax < *intervalMin {
+		*intervalMax = *intervalMin
 	}
 
-	statuses := statusValues
-	if strings.ToLower(*status) != "random" {
-		statuses = []string{strings.ToLower(*status)}
+	cfg := SeedConfig{
+		Count:        *count,
+		Mode:         strings.ToLower(*mode),
+		IntervalMin:  *intervalMin,
+		IntervalMax:  *intervalMax,
+		Duration:     *duration,
+		CategoryFlag: *category,
+		StatusFlag:   *status,
+		ErrorReason:  *errorReason,
+		HeaderFormat: *headerFormat,
+		DryRun:       *dryRun,
 	}
 
-	for i := 0; i < *count; i++ {
-		cat := categories[rand.Intn(len(categories))]
-		payload, intentionallyInvalid := buildTelegram(cat)
+	categories := buildCategories(cfg.CategoryFlag, bodyCategories)
+	statuses := buildStatuses(cfg.StatusFlag, statusValues)
 
-		// 当状态为 random 时，根据报文是否合法来倾向选择 parsed 或 body_error
-		if strings.ToLower(*status) == "random" {
-			if intentionallyInvalid {
-				// 故意非法的报文：大概率标记为 body_error
-				if rand.Intn(100) < 80 {
-					payload.Status = "body_error"
-				} else {
-					payload.Status = statusValues[rand.Intn(len(statusValues))]
-				}
-			} else {
-				// 合法报文：大概率标记为 parsed
-				if rand.Intn(100) < 70 {
-					payload.Status = "parsed"
-				} else {
-					payload.Status = statusValues[rand.Intn(len(statusValues))]
-				}
-			}
-		} else {
-			// 非 random 模式下沿用原有逻辑
-			payload.Status = statuses[rand.Intn(len(statuses))]
-		}
-
-		payload.ErrorReason = *errorReason
-		payload.Metadata = map[string]string{
-			"message_id": payload.MessageID,
-			"category":   payload.Category,
-			"comments":   fmt.Sprintf("seeded iteration=%d", i),
-			"status":     payload.Status,
-		}
-
-		if *dryRun {
-			blob, _ := json.MarshalIndent(payload, "", "  ")
-			fmt.Println(string(blob))
-			fmt.Println("---")
-			continue
-		}
-
-		if nc != nil && !*noNATS {
+	var publisher publishFunc
+	if nc != nil && !*noNATS {
+		publisher = func(payload *telegram) error {
 			data := []byte(payload.Content)
 			msg := &nats.Msg{Subject: *subject, Data: data, Header: nats.Header{}}
 			msg.Header.Set("Nats-Msg-Id", payload.UUID)
-			if strings.ToLower(*headerFormat) == "json" {
+			if strings.ToLower(cfg.HeaderFormat) == "json" {
 				headerJSON, _ := json.Marshal(payload.Metadata)
 				msg.Header.Set("x-telegram-meta", string(headerJSON))
 			}
@@ -134,14 +130,20 @@ func main() {
 				}
 				msg.Subject = pubSubject
 				if _, err := js.PublishMsg(msg); err != nil {
-					log.Fatalf("jetstream publish: %v", err)
+					return fmt.Errorf("jetstream publish: %w", err)
 				}
-			} else {
-				if err := nc.PublishMsg(msg); err != nil {
-					log.Fatalf("nats publish: %v", err)
-				}
+				return nil
 			}
+
+			if err := nc.PublishMsg(msg); err != nil {
+				return fmt.Errorf("nats publish: %w", err)
+			}
+			return nil
 		}
+	}
+
+	if err := RunSeed(cfg, categories, statuses, publisher); err != nil {
+		log.Fatalf("run seed: %v", err)
 	}
 
 	if !*dryRun {
@@ -149,6 +151,160 @@ func main() {
 			log.Printf("Published %d telegram(s) to %s", *count, *subject)
 		}
 	}
+}
+
+// RunSeed drives telegram generation according to the configured mode.
+// It delegates message construction to buildTelegram and side-effects to the provided publisher.
+func RunSeed(cfg SeedConfig, categories []string, statuses []string, publisher publishFunc) error {
+	if len(categories) == 0 {
+		return fmt.Errorf("no categories available")
+	}
+	if len(statuses) == 0 {
+		return fmt.Errorf("no statuses available")
+	}
+
+	switch cfg.Mode {
+	case "interval":
+		return runIntervalMode(cfg, categories, statuses, publisher)
+	case "mixed":
+		return runMixedMode(cfg, categories, statuses, publisher)
+	default:
+		// Default to burst semantics.
+		return runBurstMode(cfg, categories, statuses, publisher)
+	}
+}
+
+func runBurstMode(cfg SeedConfig, categories []string, statuses []string, publisher publishFunc) error {
+	count := cfg.Count
+	if count <= 0 {
+		return nil
+	}
+	for i := 0; i < count; i++ {
+		if err := sendTelegram(i, cfg, categories, statuses, publisher); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func runIntervalMode(cfg SeedConfig, categories []string, statuses []string, publisher publishFunc) error {
+	start := time.Now()
+	sent := 0
+
+	for {
+		if cfg.Count > 0 && sent >= cfg.Count {
+			break
+		}
+		if cfg.Duration > 0 && time.Since(start) >= cfg.Duration {
+			break
+		}
+
+		if err := sendTelegram(sent, cfg, categories, statuses, publisher); err != nil {
+			return err
+		}
+		sent++
+
+		// Compute next sleep duration within [IntervalMin, IntervalMax].
+		sleepDur := cfg.IntervalMin
+		if cfg.IntervalMax > cfg.IntervalMin {
+			delta := cfg.IntervalMax - cfg.IntervalMin
+			sleepDur = cfg.IntervalMin + time.Duration(rand.Int63n(int64(delta)+1))
+		}
+		if sleepDur > 0 && !cfg.DryRun {
+			sleepFunc(sleepDur)
+		}
+	}
+
+	return nil
+}
+
+// mixed 模式：前半段使用 interval 模式，后半段使用 burst。
+func runMixedMode(cfg SeedConfig, categories []string, statuses []string, publisher publishFunc) error {
+	// 简单策略：如果 Count>0，前半部分 interval，后半部分 burst；否则退化为 interval。
+	if cfg.Count <= 0 {
+		return runIntervalMode(cfg, categories, statuses, publisher)
+	}
+
+	half := cfg.Count / 2
+	if half == 0 {
+		// Count==1 时直接按 burst 处理。
+		return runBurstMode(cfg, categories, statuses, publisher)
+	}
+
+	intervalCfg := cfg
+	intervalCfg.Count = half
+	if err := runIntervalMode(intervalCfg, categories, statuses, publisher); err != nil {
+		return err
+	}
+
+	burstCfg := cfg
+	burstCfg.Count = cfg.Count - half
+	return runBurstMode(burstCfg, categories, statuses, publisher)
+}
+
+// sendTelegram builds a single telegram, assigns status/metadata, and either prints or publishes it.
+func sendTelegram(iteration int, cfg SeedConfig, categories []string, statuses []string, publisher publishFunc) error {
+	cat := categories[rand.Intn(len(categories))]
+	payload, intentionallyInvalid := buildTelegram(cat)
+
+	payload.Status = chooseStatus(intentionallyInvalid, cfg.StatusFlag, statuses)
+	payload.ErrorReason = cfg.ErrorReason
+	payload.Metadata = map[string]string{
+		"message_id": payload.MessageID,
+		"category":   payload.Category,
+		"comments":   fmt.Sprintf("seeded iteration=%d", iteration),
+		"status":     payload.Status,
+	}
+
+	if cfg.DryRun {
+		blob, _ := json.MarshalIndent(payload, "", "  ")
+		fmt.Println(string(blob))
+		fmt.Println("---")
+		return nil
+	}
+
+	if publisher != nil {
+		return publisher(payload)
+	}
+	return nil
+}
+
+// buildCategories returns the effective categories list based on the CLI flag.
+func buildCategories(flagValue string, all []string) []string {
+	if strings.ToLower(flagValue) == "mixed" || flagValue == "" {
+		return all
+	}
+	return []string{strings.ToUpper(flagValue)}
+}
+
+// buildStatuses returns the effective statuses list based on the CLI flag.
+func buildStatuses(flagValue string, all []string) []string {
+	if strings.ToLower(flagValue) == "random" || flagValue == "" {
+		return all
+	}
+	return []string{strings.ToLower(flagValue)}
+}
+
+// chooseStatus encapsulates the status selection logic, including the special \"random\" behaviour.
+func chooseStatus(intentionallyInvalid bool, statusFlag string, statuses []string) string {
+	if strings.ToLower(statusFlag) != "random" {
+		return statuses[rand.Intn(len(statuses))]
+	}
+
+	// random 模式：根据报文是否合法，对 parsed/body_error 做倾向性选择。
+	if intentionallyInvalid {
+		// 非法报文：大概率 body_error。
+		if rand.Intn(100) < 80 {
+			return "body_error"
+		}
+	} else {
+		// 合法报文：大概率 parsed。
+		if rand.Intn(100) < 70 {
+			return "parsed"
+		}
+	}
+
+	return statuses[rand.Intn(len(statuses))]
 }
 
 type telegram struct {

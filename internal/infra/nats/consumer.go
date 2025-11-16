@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -47,6 +48,32 @@ type Consumer struct {
 
 	// simple backpressure / degradation state
 	consecutiveProcessErrors int
+}
+
+func isDevLikeEnv() bool {
+	switch strings.ToLower(os.Getenv("GO_ENV")) {
+	case "", "dev", "development", "test", "testing":
+		return true
+	default:
+		return false
+	}
+}
+
+func isJetStreamResourceNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, nats.ErrStreamNotFound) || errors.Is(err, nats.ErrConsumerNotFound) {
+		return true
+	}
+
+	// Some JetStream API errors are only exposed via error strings.
+	msg := strings.ToLower(err.Error())
+	if strings.Contains(msg, "stream not found") || strings.Contains(msg, "consumer not found") {
+		return true
+	}
+
+	return false
 }
 
 // ProvideConsumer creates a NATS consumer
@@ -201,6 +228,58 @@ func (c *Consumer) ensureConsumer() error {
 	return nil
 }
 
+// recoverJetStreamResources attempts to recreate the stream and consumer in
+// dev/test environments if they are missing. It is safe to call multiple times.
+func (c *Consumer) recoverJetStreamResources() error {
+	if c.js == nil {
+		return fmt.Errorf("jetstream context is nil")
+	}
+	if c.cfg == nil {
+		return fmt.Errorf("config is nil")
+	}
+
+	// Ensure stream exists (dev/test may auto-create, prod will error).
+	if err := EnsureStream(c.js, c.cfg, c.logger); err != nil {
+		return fmt.Errorf("ensure stream %s: %w", c.streamName, err)
+	}
+
+	// Ensure durable consumer exists and is properly bound.
+	if err := c.ensureConsumer(); err != nil {
+		return fmt.Errorf("ensure consumer %s: %w", c.consumerName, err)
+	}
+
+	return nil
+}
+
+// createPullSubscriptionWithRecovery creates a pull subscription and, in
+// dev/test environments, attempts to self-heal missing stream/consumer
+// by recreating them once.
+func (c *Consumer) createPullSubscriptionWithRecovery() (*nats.Subscription, error) {
+	sub, err := c.js.PullSubscribe(c.subject, c.consumerName, nats.Bind(c.streamName, c.consumerName))
+	if err == nil {
+		return sub, nil
+	}
+
+	if isJetStreamResourceNotFound(err) && isDevLikeEnv() && shouldBootstrapStream() {
+		c.logger.Warn("PullSubscribe failed due to missing JetStream resources; attempting to recreate",
+			zap.Error(err),
+			zap.String("stream", c.streamName),
+			zap.String("consumer", c.consumerName),
+		)
+		if recErr := c.recoverJetStreamResources(); recErr != nil {
+			return nil, fmt.Errorf("failed to recover JetStream resources: %w", recErr)
+		}
+		// Retry subscription after successful recovery.
+		sub, err = c.js.PullSubscribe(c.subject, c.consumerName, nats.Bind(c.streamName, c.consumerName))
+		if err != nil {
+			return nil, fmt.Errorf("failed to create pull subscription after recovery: %w", err)
+		}
+		return sub, nil
+	}
+
+	return nil, fmt.Errorf("failed to create pull subscription: %w", err)
+}
+
 // validateDLQ verifies whether DLQ routing should be enabled and, if so, whether
 // the configured DLQ subject is bound to a JetStream stream. If validation fails,
 // DLQ routing is disabled (by clearing c.dlqSubject) and a warning is logged,
@@ -269,10 +348,10 @@ func (c *Consumer) Start(ctx context.Context) error {
 }
 
 func (c *Consumer) startJetStream(ctx context.Context) error {
-	// Create pull subscription
-	sub, err := c.js.PullSubscribe(c.subject, c.consumerName, nats.Bind(c.streamName, c.consumerName))
+	// Create pull subscription (with simple self-healing in dev/test).
+	sub, err := c.createPullSubscriptionWithRecovery()
 	if err != nil {
-		return fmt.Errorf("failed to create pull subscription: %w", err)
+		return err
 	}
 	defer sub.Unsubscribe()
 
@@ -296,6 +375,8 @@ func (c *Consumer) startJetStream(ctx context.Context) error {
 	defer statsCancel()
 	go c.emitConsumerStats(statsCtx)
 
+	var fetchErrorStreak int
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -308,23 +389,78 @@ func (c *Consumer) startJetStream(ctx context.Context) error {
 		msgs, err := sub.Fetch(c.batchSize, nats.MaxWait(c.batchTimeout))
 		if err != nil {
 			if errors.Is(err, nats.ErrTimeout) {
-				// Timeout is expected when no messages are available
+				// Timeout is expected when no messages are available.
 				continue
 			}
+
+			// JetStream API is currently unavailable (e.g., NATS just restarted or JetStream not ready).
 			if errors.Is(err, nats.ErrNoResponders) {
-				// JetStream API is currently unavailable (e.g., NATS just restarted or JetStream not ready).
-				// Back off a bit to avoid log spam while allowing the system to recover.
-				c.logger.Warn("JetStream not available, will retry",
+				fetchErrorStreak++
+				backoff := time.Duration(fetchErrorStreak) * time.Second
+				if backoff > 30*time.Second {
+					backoff = 30 * time.Second
+				}
+				c.logger.Warn("JetStream not available, will retry with backoff",
+					zap.Error(err),
+					zap.String("stream", c.streamName),
+					zap.String("consumer", c.consumerName),
+					zap.Duration("backoff", backoff),
+				)
+				time.Sleep(backoff)
+				continue
+			}
+
+			// Underlying consumer/stream removed while app is running.
+			if isJetStreamResourceNotFound(err) {
+				if isDevLikeEnv() && shouldBootstrapStream() {
+					c.logger.Warn("JetStream consumer or stream missing; attempting to recreate",
+						zap.Error(err),
+						zap.String("stream", c.streamName),
+						zap.String("consumer", c.consumerName),
+					)
+					if recErr := c.recoverJetStreamResources(); recErr != nil {
+						c.logger.Error("Failed to recover JetStream resources", zap.Error(recErr))
+						return recErr
+					}
+
+					// Recreate subscription after successful recovery.
+					sub.Unsubscribe()
+					sub, err = c.createPullSubscriptionWithRecovery()
+					if err != nil {
+						return err
+					}
+
+					// Reset error streak after successful recovery.
+					fetchErrorStreak = 0
+					continue
+				}
+
+				// Production: treat as configuration/operational error.
+				c.logger.Error("JetStream consumer or stream missing; not auto-recreating in this environment",
 					zap.Error(err),
 					zap.String("stream", c.streamName),
 					zap.String("consumer", c.consumerName),
 				)
-				time.Sleep(5 * time.Second)
-				continue
+				return err
 			}
-			c.logger.Error("Failed to fetch messages", zap.Error(err))
-			time.Sleep(time.Second)
+
+			// Generic error path with modest backoff.
+			fetchErrorStreak++
+			backoff := time.Duration(fetchErrorStreak) * time.Second
+			if backoff > 10*time.Second {
+				backoff = 10 * time.Second
+			}
+			c.logger.Error("Failed to fetch messages; backing off",
+				zap.Error(err),
+				zap.Duration("backoff", backoff),
+			)
+			time.Sleep(backoff)
 			continue
+		}
+
+		// Successful fetch -> reset error streak.
+		if fetchErrorStreak > 0 {
+			fetchErrorStreak = 0
 		}
 
 		// Process each message

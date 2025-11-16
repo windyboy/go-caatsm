@@ -532,6 +532,87 @@ Flight plan messages contain detailed flight planning information.
 -<OtherInfo>)
 ```
 
+## Seed Tool: `cmd/seed-telegrams`
+
+`seed-telegrams` 是一个开发/测试用的报文发生器，用来向 NATS/JetStream 持续或突发地发送合成电报（ARR/DEP/CNL/DLA/FPL），用于驱动解析与下游流水线。
+
+### 支持的类别与内容
+
+生成的电报遵循与解析器相同的格式约定：
+
+- ARR / DEP：支持无 SSR、合法简单 SSR，以及刻意构造为“当前正则无法解析”的复杂 SSR。
+- CNL / DLA：与 `internal/parsers/aviation_parser_test.go` 中的测试样例同一类结构。
+- FPL：生成包含多行 route 与 `OtherInfo` 字段的完整 FPL，`OtherInfo` 中会随机组合 `PBN/`, `NAV/`, `REG/`, `EET/`, `SEL/`, `PER/`, `RIF/`, `RMK/` 等片段，以覆盖解析逻辑。
+
+### 命令行参数
+
+常用参数：
+
+- `--nats-url`：NATS 地址（默认 `nats://127.0.0.1:4222`，为空字符串则完全不连接 NATS）。
+- `--subject`：普通 NATS 发布 subject（默认 `telegram.raw`）。
+- `--jetstream`：是否使用 JetStream 发布。
+- `--stream` / `--js-subject`：JetStream 相关选项。
+- `--count`：要发送的电报数量（`mode=burst` 或有上限的 interval/mixed 时生效）。
+- `--category`：`ARR|DEP|CNL|DLA|FPL|mixed`，`mixed` 表示在五类中随机选择。
+- `--status`：`parsed|header_error|body_error|publish_error|repository_error|random`。
+  - `random` 模式下，合法报文偏向标记为 `parsed`，刻意非法报文偏向标记为 `body_error`。
+- `--error-reason`：错误原因说明，将写入元数据 header（默认 `synthetic test payload`）。
+- `--dry-run`：只打印电报内容，不真正发布到 NATS。
+- `--header-format`：`json|none`，控制是否以 JSON 形式附加元数据 header。
+- `--mode`：seed 模式：
+  - `burst`：一次性快速发送完 `count` 条。
+  - `interval`：按照给定时间间隔持续发送。
+  - `mixed`：先按 interval 发送一部分，再以 burst 方式发送剩余。
+- `--interval-min` / `--interval-max`：`interval`/`mixed` 模式下两条电报之间的最小/最大间隔（默认 `1s` / `2s`）。
+- `--duration`：`interval`/`mixed` 模式下的总持续时间，`0` 表示仅按 `count` 控制停止条件。
+
+### 使用示例
+
+#### 1. 一次性快速打 100 条（突发流量）
+
+```bash
+go run ./cmd/seed-telegrams \
+  --count=100 \
+  --mode=burst \
+  --category=mixed \
+  --status=random
+```
+
+#### 2. 模拟真实流量：每 1–2 秒发一条，持续 5 分钟
+
+```bash
+go run ./cmd/seed-telegrams \
+  --mode=interval \
+  --interval-min=1s \
+  --interval-max=2s \
+  --duration=5m \
+  --status=random \
+  --category=mixed
+```
+
+#### 3. 慢热 + 突发：前半段慢慢发，后半段瞬间打完
+
+```bash
+go run ./cmd/seed-telegrams \
+  --count=200 \
+  --mode=mixed \
+  --interval-min=500ms \
+  --interval-max=1500ms \
+  --status=random
+```
+
+#### 4. 只打印合成电报，不发送（本地调试报文格式）
+
+```bash
+go run ./cmd/seed-telegrams \
+  --count=5 \
+  --mode=burst \
+  --dry-run \
+  --category=FPL
+```
+
+该工具专门为开发与测试设计，不影响生产服务逻辑，推荐在本地或测试环境配合解析与存储流水线一起使用，用于回归测试、吞吐量观察和错误场景演练。
+
 **Parsed Fields:**
 - `category`: "FPL"
 - `flight_number`: Flight number

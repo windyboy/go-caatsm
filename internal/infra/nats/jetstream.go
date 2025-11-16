@@ -45,15 +45,29 @@ func ProvideJetStream(nc *nats.Conn, cfg *config.Config, logger *zap.Logger) (na
 		return nil, fmt.Errorf("failed to get JetStream context: %w", err)
 	}
 
-	// Create stream if it doesn't exist
+	// Ensure the stream exists and is minimally aligned with configuration.
+	if err := EnsureStream(js, cfg, logger); err != nil {
+		nc.Close()
+		return nil, err
+	}
+
+	return js, nil
+}
+
+// EnsureStream ensures that the configured JetStream stream exists and has
+// at least the expected subjects bound. It is safe to call multiple times.
+//
+// In dev/test environments (see shouldBootstrapStream), the stream will be
+// auto-created if it does not exist. In production, a missing stream results
+// in an error so that operators can intervene.
+func EnsureStream(js nats.JetStreamContext, cfg *config.Config, logger *zap.Logger) error {
 	streamName := cfg.NATS.Stream
 	consumerSubject := cfg.EffectiveSubscriptionTopic()
 	publisherSubject := strings.TrimSpace(cfg.Publisher.Topic)
 
 	streamSubjects := dedupeSubjects([]string{consumerSubject, publisherSubject})
 	if len(streamSubjects) == 0 {
-		nc.Close()
-		return nil, fmt.Errorf("no subjects configured for JetStream stream %s", streamName)
+		return fmt.Errorf("no subjects configured for JetStream stream %s", streamName)
 	}
 
 	streamLimits := cfg.NATS.StreamLimits
@@ -87,26 +101,22 @@ func ProvideJetStream(nc *nats.Conn, cfg *config.Config, logger *zap.Logger) (na
 		if errors.Is(err, nats.ErrStreamNotFound) {
 			if shouldBootstrapStream() {
 				if _, err = js.AddStream(streamConfig); err != nil {
-					nc.Close()
-					return nil, fmt.Errorf("failed to create stream: %w", err)
+					return fmt.Errorf("failed to create stream %s: %w", streamName, err)
 				}
-				logger.Info("Created JetStream",
+				logger.Info("Created JetStream stream",
 					zap.String("stream", streamName),
 					zap.Strings("subjects", streamSubjects),
 				)
-			} else {
-				nc.Close()
-				return nil, fmt.Errorf("stream %s not found and auto-creation disabled", streamName)
+				return nil
 			}
-		} else {
-			nc.Close()
-			return nil, fmt.Errorf("failed to fetch stream info: %w", err)
+			return fmt.Errorf("stream %s not found and auto-creation disabled", streamName)
 		}
-	} else {
-		validateStreamConfig(info, streamSubjects, logger)
+		return fmt.Errorf("failed to fetch stream info for %s: %w", streamName, err)
 	}
 
-	return js, nil
+	// Stream exists: validate subjects but do not fail hard if they differ.
+	validateStreamConfig(info, streamSubjects, logger)
+	return nil
 }
 
 func shouldBootstrapStream() bool {

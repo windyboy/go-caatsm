@@ -31,6 +31,25 @@ Stop and clean the stack when finished:
 docker compose -f docker-compose.dev.yml down -v
 ```
 
+In development (`GO_ENV=dev` or unset), if you run the application while
+stopping and recreating the NATS/JetStream containers (for example:
+
+```bash
+docker compose -f docker-compose.dev.yml down -v
+docker compose -f docker-compose.dev.yml up -d postgres nats nats-box
+```
+
+), the JetStream state will be reset. The processor behaves as follows:
+
+- The NATS client keeps retrying the connection and automatically reconnects
+  when NATS is back.
+- The JetStream consumer detects missing streams/consumers and, in dev/test
+  environments, uses shared `EnsureStream`/`ensureConsumer` logic to
+  auto-recreate them.
+- In production environments, missing streams/consumers are treated as
+  configuration/operational errors and are not auto-recreated; operators
+  should investigate and fix the underlying issue.
+
 ### Using Taskfile shortcuts
 
 The `Taskfile.yml` includes helper targets that wrap the commands above:

@@ -169,7 +169,17 @@ func (p *MessageProcessor) Handle(ctx context.Context, raw []byte, msgID string)
 		p.telemetry.RecordFailure("publisher")
 		p.telemetry.RecordProcessingResult(ctx, string(parsed.Status), parsed.Category, latency)
 		p.persistRaw(ctx, parsed)
-		// Mark as permanent so the consumer will ack instead of retrying
+
+		// Treat clearly temporary JetStream issues (e.g. no responders) as transient so
+		// the consumer will NAK and retry according to backoff settings.
+		lowerErr := strings.ToLower(err.Error())
+		if strings.Contains(lowerErr, "no responders") {
+			pubSpan.End()
+			// Return a non-permanent error to trigger retry via nakWithStrategy in the consumer.
+			return fmt.Errorf("transient publish error: %w", err)
+		}
+
+		// Other publish errors are treated as permanent and will go to DLQ + ACK.
 		pubSpan.End()
 		return Permanent(fmt.Errorf("failed to publish message: %w", err))
 	}
