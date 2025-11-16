@@ -38,15 +38,10 @@ run-local: ## Run receiver directly via go run
 	@GO_ENV=$(GO_ENV) go run $(CMD) listen
 
 .PHONY: test
-test: ## Run unit tests (Ginkgo)
+test: ## Run unit tests (Ginkgo, verbose)
 	@command -v ginkgo >/dev/null || (echo "Please install ginkgo (go install github.com/onsi/ginkgo/v2/ginkgo@latest)"; exit 1)
-	@echo "Running Ginkgo unit test suites..."
-	@ginkgo -r ./cmd ./internal
-
-.PHONY: test-int
-test-int: ## Run integration tests (requires Docker)
-	@echo "Running integration tests..."
-	@GO_ENV=$(GO_ENV) go test -tags=integration ./test/integration/...
+	@echo "Running Ginkgo unit test suites (verbose)..."
+	@ginkgo -r -v ./...
 
 .PHONY: test-int
 test-int: ## Run integration tests (requires Docker)

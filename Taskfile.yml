@@ -55,15 +55,15 @@ tasks:
         GO_ENV=${GO_ENV:-dev} go run {{.cmd}} listen
 
   test:
-    desc: Run Ginkgo unit test suites
+    desc: Run Ginkgo unit test suites (verbose)
     cmds:
       - |
         if ! command -v ginkgo >/dev/null; then
           echo "Install ginkgo (go install github.com/onsi/ginkgo/v2/ginkgo@latest)"
           exit 1
         fi
-      - echo "Running Ginkgo unit test suites..."
-      - ginkgo -r ./cmd ./internal
+      - echo "Running Ginkgo unit test suites (verbose)..."
+      - ginkgo -r -v ./...
 
   test-int:
     desc: Run integration tests (requires Docker)
