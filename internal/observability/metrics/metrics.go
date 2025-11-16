@@ -11,31 +11,130 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
+// Metric and label key/value contracts for the CAATSM receiver. Centralising these
+// names avoids scattering magic strings across the codebase and keeps PromQL and
+// documentation aligned with the implementation.
+const (
+	// Metric names.
+	MetricProcessedTotal        = "caatsm_processed_total"
+	MetricFailuresTotal         = "caatsm_failures_total"
+	MetricParseLatencySeconds   = "caatsm_parse_latency_seconds"
+	MetricMessagesTotal         = "caatsm_messages_total"
+	MetricHandleLatencySeconds  = "caatsm_handle_latency_seconds"
+	MetricRetriesTotal          = "caatsm_retries_total"
+	MetricJSAPICallsTotal       = "caatsm_js_api_calls_total"
+	MetricDBQueriesTotal        = "caatsm_db_queries_total"
+	MetricDBQueryLatencySeconds = "caatsm_db_query_latency_seconds"
+
+	// Common label keys.
+	LabelStatus    = "status"
+	LabelCategory  = "category"
+	LabelStage     = "stage"
+	LabelStream    = "stream"
+	LabelConsumer  = "consumer"
+	LabelResult    = "result"
+	LabelReason    = "reason"
+	LabelOperation = "operation"
+
+	// Standard result label values for caatsm_messages_total.
+	ResultOK            = "ok"
+	ResultFail          = "fail"
+	ResultPermanentFail = "permanent_fail"
+
+	// Standard result values for DB operations.
+	DBResultOK    = "ok"
+	DBResultError = "error"
+
+	// Standard retry reasons.
+	RetryReasonProcessorError = "processor_error"
+)
+
 var (
-	once             sync.Once
-	registry         *prometheus.Registry
+	once sync.Once
+
+	registry *prometheus.Registry
+
+	// Legacy metrics (kept for backward compatibility).
 	processedCounter *prometheus.CounterVec
 	failureCounter   *prometheus.CounterVec
 	parseLatency     *prometheus.HistogramVec
+
+	// Message handling metrics (per stream / consumer).
+	messagesTotal   *prometheus.CounterVec
+	handleLatency   *prometheus.HistogramVec
+	retriesTotal    *prometheus.CounterVec
+	jsAPICallsTotal *prometheus.CounterVec
+
+	// Database metrics.
+	dbQueriesTotal *prometheus.CounterVec
+	dbQueryLatency *prometheus.HistogramVec
 )
 
 func initCollectors() {
 	registry = prometheus.NewRegistry()
+
+	// Legacy metrics.
 	processedCounter = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "caatsm_processed_total",
+		Name: MetricProcessedTotal,
 		Help: "Count of telegrams processed by status and category.",
-	}, []string{"status", "category"})
+	}, []string{LabelStatus, LabelCategory})
+
 	failureCounter = prometheus.NewCounterVec(prometheus.CounterOpts{
-		Name: "caatsm_failures_total",
+		Name: MetricFailuresTotal,
 		Help: "Count of processor failures by stage (parser, repository, publisher).",
-	}, []string{"stage"})
+	}, []string{LabelStage})
+
 	parseLatency = prometheus.NewHistogramVec(prometheus.HistogramOpts{
-		Name:    "caatsm_parse_latency_seconds",
+		Name:    MetricParseLatencySeconds,
 		Help:    "Latency between reception and parse completion.",
 		Buckets: prometheus.DefBuckets,
-	}, []string{"status", "category"})
+	}, []string{LabelStatus, LabelCategory})
 
-	registry.MustRegister(processedCounter, failureCounter, parseLatency)
+	// New message handling metrics.
+	messagesTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: MetricMessagesTotal,
+		Help: "Total number of messages handled by the receiver, labelled by stream, consumer and result.",
+	}, []string{LabelStream, LabelConsumer, LabelResult})
+
+	handleLatency = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    MetricHandleLatencySeconds,
+		Help:    "Latency of end-to-end message handling in seconds, from NATS receive to handler completion.",
+		Buckets: prometheus.DefBuckets,
+	}, []string{LabelStream, LabelConsumer})
+
+	retriesTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: MetricRetriesTotal,
+		Help: "Total number of message retries (negative acknowledgements), labelled by stream, consumer and reason.",
+	}, []string{LabelStream, LabelConsumer, LabelReason})
+
+	jsAPICallsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: MetricJSAPICallsTotal,
+		Help: "Count of JetStream API calls made by the receiver.",
+	}, []string{LabelOperation})
+
+	// Database metrics.
+	dbQueriesTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: MetricDBQueriesTotal,
+		Help: "Total number of database operations, labelled by operation and result.",
+	}, []string{LabelOperation, LabelResult})
+
+	dbQueryLatency = prometheus.NewHistogramVec(prometheus.HistogramOpts{
+		Name:    MetricDBQueryLatencySeconds,
+		Help:    "Latency of database operations in seconds, labelled by operation.",
+		Buckets: prometheus.DefBuckets,
+	}, []string{LabelOperation})
+
+	registry.MustRegister(
+		processedCounter,
+		failureCounter,
+		parseLatency,
+		messagesTotal,
+		handleLatency,
+		retriesTotal,
+		jsAPICallsTotal,
+		dbQueriesTotal,
+		dbQueryLatency,
+	)
 }
 
 func ensureCollectors() {
@@ -60,6 +159,42 @@ func RecordProcessed(status, category string, elapsed time.Duration) {
 func RecordFailure(stage string) {
 	ensureCollectors()
 	failureCounter.WithLabelValues(labelValue(stage)).Inc()
+}
+
+// RecordMessageHandled records end-to-end message handling metrics (per stream / consumer).
+// Result is expected to be values such as "ok", "fail", or "retry".
+func RecordMessageHandled(stream, consumer, result string, elapsed time.Duration) {
+	ensureCollectors()
+	if elapsed < 0 {
+		elapsed = 0
+	}
+	messagesTotal.WithLabelValues(labelValue(stream), labelValue(consumer), labelValue(result)).Inc()
+	handleLatency.WithLabelValues(labelValue(stream), labelValue(consumer)).Observe(elapsed.Seconds())
+}
+
+// RecordRetry increments the retry counter for a message that is being negatively acknowledged.
+// Reason can capture the high-level cause, e.g. "processor_error" or "nats_timeout".
+func RecordRetry(stream, consumer, reason string) {
+	ensureCollectors()
+	retriesTotal.WithLabelValues(labelValue(stream), labelValue(consumer), labelValue(reason)).Inc()
+}
+
+// RecordDBQuery records metrics for a single database operation.
+// Operation examples: "insert_one", "insert_batch", "insert_raw".
+// Result is usually "ok" or "error".
+func RecordDBQuery(operation, result string, elapsed time.Duration) {
+	ensureCollectors()
+	if elapsed < 0 {
+		elapsed = 0
+	}
+	dbQueriesTotal.WithLabelValues(labelValue(operation), labelValue(result)).Inc()
+	dbQueryLatency.WithLabelValues(labelValue(operation)).Observe(elapsed.Seconds())
+}
+
+// RecordJSAPICall increments the JetStream API call counter for the given operation.
+func RecordJSAPICall(operation string) {
+	ensureCollectors()
+	jsAPICallsTotal.WithLabelValues(labelValue(operation)).Inc()
 }
 
 func labelValue(value string) string {

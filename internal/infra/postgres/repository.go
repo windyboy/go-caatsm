@@ -4,6 +4,7 @@ import (
 	"caatsm/internal/adapter"
 	"caatsm/internal/adapter/mapper"
 	"caatsm/internal/domain"
+	obsmetrics "caatsm/internal/observability/metrics"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -40,6 +41,25 @@ func (r *Repository) InsertOne(ctx context.Context, msg *domain.ParsedMessage) e
 	defer span.End()
 	span.SetAttributes(attribute.String("db.table", "aviation.telegrams"))
 
+	// Optional idempotency check based on business message identity. If we have a
+	// non-empty message ID and date/time, we can cheaply skip duplicates here to
+	// avoid applying the same business event multiple times.
+	if msg != nil && msg.MessageID != "" && msg.DateTime != "" {
+		exists, err := r.messageExists(ctx, msg.MessageID, msg.DateTime)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+			return fmt.Errorf("failed to check existing message: %w", err)
+		}
+		if exists {
+			r.logger.Info("Duplicate message detected by message_id/date_time; skipping insert",
+				zap.String("message_id", msg.MessageID),
+				zap.String("date_time", msg.DateTime),
+			)
+			return nil
+		}
+	}
+
 	row, err := r.mapper.ToDBRow(msg)
 	if err != nil {
 		span.RecordError(err)
@@ -59,15 +79,23 @@ func (r *Repository) InsertOne(ctx context.Context, msg *domain.ParsedMessage) e
 		ON CONFLICT (uuid, received_at) DO NOTHING
 	`
 
+	start := time.Now()
 	tag, err := r.pool.Exec(ctx, query,
 		row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8],
 		row[9], row[10], row[11], row[12], row[13], row[14], row[15], row[16],
 	)
+	elapsed := time.Since(start)
+
+	result := obsmetrics.DBResultOK
 	if err != nil {
+		result = obsmetrics.DBResultError
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
+		obsmetrics.RecordDBQuery("insert_one", result, elapsed)
 		return fmt.Errorf("failed to insert message: %w", err)
 	}
+
+	obsmetrics.RecordDBQuery("insert_one", result, elapsed)
 
 	if tag.RowsAffected() == 0 {
 		r.logger.Info("Duplicate message skipped",
@@ -106,6 +134,7 @@ func (r *Repository) InsertBatch(ctx context.Context, msgs []*domain.ParsedMessa
 	}
 
 	// Use CopyFrom for efficient batch insert
+	start := time.Now()
 	copyCount, err := r.pool.CopyFrom(
 		ctx,
 		pgx.Identifier{"aviation", "telegrams"},
@@ -117,11 +146,18 @@ func (r *Repository) InsertBatch(ctx context.Context, msgs []*domain.ParsedMessa
 		},
 		pgx.CopyFromRows(rows),
 	)
+	elapsed := time.Since(start)
+
+	result := obsmetrics.DBResultOK
 	if err != nil {
+		result = obsmetrics.DBResultError
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
+		obsmetrics.RecordDBQuery("insert_batch", result, elapsed)
 		return fmt.Errorf("failed to batch insert messages: %w", err)
 	}
+
+	obsmetrics.RecordDBQuery("insert_batch", result, elapsed)
 
 	span.SetAttributes(attribute.Int64("db.inserted", copyCount))
 	r.logger.Info("Batch inserted messages",
@@ -174,6 +210,7 @@ func (r *Repository) InsertRaw(ctx context.Context, msg *domain.ParsedMessage) e
 			metadata = EXCLUDED.metadata
 	`
 
+	start := time.Now()
 	_, err = r.pool.Exec(ctx, query,
 		msg.Uuid,
 		string(msg.Status),
@@ -182,11 +219,18 @@ func (r *Repository) InsertRaw(ctx context.Context, msg *domain.ParsedMessage) e
 		msg.ReceivedAt,
 		metadataJSON,
 	)
+	elapsed := time.Since(start)
+
+	result := obsmetrics.DBResultOK
 	if err != nil {
+		result = obsmetrics.DBResultError
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
+		obsmetrics.RecordDBQuery("insert_raw", result, elapsed)
 		return fmt.Errorf("failed to insert raw telegram: %w", err)
 	}
+
+	obsmetrics.RecordDBQuery("insert_raw", result, elapsed)
 
 	span.SetAttributes(attribute.String("telegram.uuid", msg.Uuid), attribute.String("telegram.status", string(msg.Status)))
 	r.logger.Debug("Persisted raw telegram",
@@ -195,4 +239,30 @@ func (r *Repository) InsertRaw(ctx context.Context, msg *domain.ParsedMessage) e
 	)
 
 	return nil
+}
+
+// messageExists performs a lightweight existence check for a business message,
+// using (message_id, date_time) as the idempotency key. This avoids requiring a
+// unique constraint at the database level while still preventing duplicate effects.
+func (r *Repository) messageExists(ctx context.Context, messageID, dateTime string) (bool, error) {
+	if messageID == "" || dateTime == "" {
+		return false, nil
+	}
+
+	const query = `
+		SELECT 1
+		FROM aviation.telegrams
+		WHERE message_id = $1 AND date_time = $2
+		LIMIT 1
+	`
+
+	var one int
+	if err := r.pool.QueryRow(ctx, query, messageID, dateTime).Scan(&one); err != nil {
+		if err == pgx.ErrNoRows {
+			return false, nil
+		}
+		return false, err
+	}
+
+	return true, nil
 }

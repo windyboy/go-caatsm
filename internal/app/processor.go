@@ -4,6 +4,7 @@ import (
 	"caatsm/internal/adapter"
 	"caatsm/internal/adapter/parser"
 	"caatsm/internal/domain"
+	obslogging "caatsm/internal/observability/logging"
 	obsmetrics "caatsm/internal/observability/metrics"
 	"context"
 	"fmt"
@@ -110,6 +111,20 @@ func (p *MessageProcessor) Handle(ctx context.Context, raw []byte, msgID string)
 		}
 	}
 
+	// Enrich span with parsed telegram information as soon as we have it.
+	span.SetAttributes(
+		attribute.String("telegram.message_id", parsed.MessageID),
+		attribute.String("telegram.category", parsed.Category),
+		attribute.String("telegram.status", string(parsed.Status)),
+	)
+
+	msgLogger := obslogging.WithMessageContext(p.logger, obslogging.MessageFields{
+		Service:        "caatsm-processor",
+		TransportMsgID: msgID,
+		BusinessMsgID:  parsed.MessageID,
+		Category:       parsed.Category,
+	})
+
 	if parseErr != nil || !parsed.Parsed {
 		if parsed.ErrorReason == "" && parseErr != nil {
 			parsed.ErrorReason = parseErr.Error()
@@ -117,12 +132,11 @@ func (p *MessageProcessor) Handle(ctx context.Context, raw []byte, msgID string)
 		span.RecordError(parseErr)
 		span.SetStatus(codes.Error, parseErr.Error())
 		p.persistRaw(ctx, parsed)
-		p.logger.Warn("Message failed to parse",
-			zap.String("msg_id", msgID),
-			zap.String("status", string(parsed.Status)),
-			zap.String("content_preview", truncateContent(parsed.Content, 256)),
-			zap.Error(parseErr),
-		)
+		msgLogger.With(zap.String("status", string(parsed.Status))).
+			Warn("Message failed to parse",
+				zap.String("content_preview", truncateContent(parsed.Content, 256)),
+				zap.Error(parseErr),
+			)
 		latency := parsed.ParsedAt.Sub(receivedAt)
 		parseLatencyHistogram.Record(ctx, float64(latency.Milliseconds()),
 			metric.WithAttributes(
@@ -143,10 +157,7 @@ func (p *MessageProcessor) Handle(ctx context.Context, raw []byte, msgID string)
 		attribute.String("telegram.category", parsed.Category),
 	)
 
-	p.logger.Info("Message parsed successfully",
-		zap.String("msg_id", msgID),
-		zap.String("message_id", parsed.MessageID),
-		zap.String("category", parsed.Category),
+	msgLogger.Info("Message parsed successfully",
 		zap.Time("received_at", parsed.ReceivedAt),
 		zap.Time("parsed_at", parsed.ParsedAt),
 	)
@@ -172,10 +183,10 @@ func (p *MessageProcessor) Handle(ctx context.Context, raw []byte, msgID string)
 	_, pubSpan := tracer.Start(ctx, "Publisher.Publish")
 	if err := p.publisher.Publish(parsed); err != nil {
 		// Log error but don't fail the entire operation
-		p.logger.Error("Failed to publish message",
-			zap.String("msg_id", msgID),
-			zap.Error(err),
-		)
+		msgLogger.With(zap.String("status", string(parsed.Status))).
+			Error("Failed to publish message",
+				zap.Error(err),
+			)
 		pubSpan.RecordError(err)
 		pubSpan.SetStatus(codes.Error, err.Error())
 		parsed.Status = domain.MessageStatusPublishFail

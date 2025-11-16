@@ -47,7 +47,12 @@ func ProvideServer(
 
 	routes := 0
 	if cfg.Monitoring.EnableHealth {
+		// Liveness: basic process check. For now this reuses the same implementation
+		// as readiness but can diverge in the future if we need a cheaper liveness probe.
 		mux.HandleFunc("/healthz", server.handleHealth)
+		// Readiness: alias to the same implementation so consumers can adopt /readyz
+		// without breaking existing /healthz users.
+		mux.HandleFunc("/readyz", server.handleHealth)
 		routes++
 	}
 	if cfg.Monitoring.EnableMetrics {

@@ -21,6 +21,7 @@ type Config struct {
 	Publisher  PublisherConfig  `koanf:"publisher"`
 	Telemetry  TelemetryConfig  `koanf:"telemetry"`
 	Monitoring MonitoringConfig `koanf:"monitoring"`
+	DLQ        DLQConfig        `koanf:"dlq"`
 	// Legacy fields for backward compatibility during migration
 	Subscription SubscriptionConfig `koanf:"subscription"`
 	Timeouts     TimeoutsConfig     `koanf:"timeouts"`
@@ -91,6 +92,14 @@ type TelemetryConfig struct {
 	Enabled  bool   `koanf:"enabled"`
 	Endpoint string `koanf:"endpoint"`
 	Insecure bool   `koanf:"insecure"`
+}
+
+// DLQConfig defines the dead-letter queue routing for poison/permanent messages.
+// If Enabled is true and Subject is non-empty, permanent failures will be published
+// to the configured subject for offline processing.
+type DLQConfig struct {
+	Enabled bool   `koanf:"enabled"`
+	Subject string `koanf:"subject"`
 }
 
 // MonitoringConfig controls the lightweight HTTP server that exposes health and metrics endpoints.

@@ -63,3 +63,7 @@ enable_health = true
 read_timeout = "5s"
 write_timeout = "5s"
 health_timeout = "2s"
+
+[dlq]
+enabled = true
+subject = "caatsm.dlq"

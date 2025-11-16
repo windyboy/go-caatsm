@@ -3,7 +3,10 @@ package nats
 import (
 	"caatsm/internal/app"
 	"caatsm/internal/infra/config"
+	obslogging "caatsm/internal/observability/logging"
+	obsmetrics "caatsm/internal/observability/metrics"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -29,6 +32,7 @@ type Consumer struct {
 	consumerName    string
 	mode            string
 	streamName      string
+	dlqSubject      string
 	ackWait         time.Duration
 	batchSize       int
 	batchTimeout    time.Duration
@@ -38,6 +42,9 @@ type Consumer struct {
 	redelivered     metric.Int64Histogram
 	pending         metric.Int64Histogram
 	delivered       metric.Int64Histogram
+
+	// simple backpressure / degradation state
+	consecutiveProcessErrors int
 }
 
 // ProvideConsumer creates a NATS consumer
@@ -64,6 +71,8 @@ func ProvideConsumer(
 	if streamName == "" {
 		streamName = "TELEGRAM"
 	}
+
+	dlqSubject := strings.TrimSpace(cfg.DLQ.Subject)
 
 	ackWait := cfg.NATS.ConsumerRules.AckWait
 	if ackWait == 0 {
@@ -98,6 +107,7 @@ func ProvideConsumer(
 		consumerName:    consumerName,
 		mode:            mode,
 		streamName:      streamName,
+		dlqSubject:      dlqSubject,
 		ackWait:         ackWait,
 		batchSize:       batchSize,
 		batchTimeout:    batchTimeout,
@@ -227,31 +237,74 @@ func (c *Consumer) startJetStream(ctx context.Context) error {
 		// Process each message
 		// TODO: consider buffering messages to take advantage of Repository.InsertBatch for higher throughput.
 		for _, msg := range msgs {
+			start := time.Now()
+
 			if err := c.processMessage(ctx, msg); err != nil {
 				isPermanent := app.IsPermanent(err)
+				elapsed := time.Since(start)
+
 				c.logger.Error("Failed to process message",
 					zap.String("subject", msg.Subject),
 					zap.Error(err),
 					zap.Bool("permanent", isPermanent),
 				)
 
+				result := obsmetrics.ResultFail
 				if isPermanent {
+					result = obsmetrics.ResultPermanentFail
+				}
+				obsmetrics.RecordMessageHandled(c.streamName, c.consumerName, result, elapsed)
+
+				if isPermanent {
+					c.consecutiveProcessErrors = 0
+					// Poison/permanent message: route to DLQ if configured, then ACK
+					if err := c.routeToDLQ(ctx, msg, err); err != nil {
+						c.logger.Error("Failed to route permanent-error message to DLQ", zap.Error(err))
+					}
 					if ackErr := msg.Ack(); ackErr != nil {
 						c.logger.Error("Failed to ACK permanent-error message", zap.Error(ackErr))
 					}
 					continue
 				}
 
+				// Transient error: increment error streak and apply simple backpressure if needed.
+				if c.consecutiveProcessErrors < 0 {
+					c.consecutiveProcessErrors = 0
+				}
+				c.consecutiveProcessErrors++
+				if c.consecutiveProcessErrors >= 10 {
+					// Apply a brief sleep to slow down consumption when the system
+					// is failing many messages in a row (e.g. DB unavailable).
+					backoff := time.Duration(c.consecutiveProcessErrors) * 100 * time.Millisecond
+					if backoff > 5*time.Second {
+						backoff = 5 * time.Second
+					}
+					c.logger.Warn("Applying backpressure due to consecutive processing errors",
+						zap.Int("consecutive_errors", c.consecutiveProcessErrors),
+						zap.Duration("sleep", backoff),
+					)
+					time.Sleep(backoff)
+				}
+
 				// Transient error: request redelivery with optional delay
+				obsmetrics.RecordRetry(c.streamName, c.consumerName, obsmetrics.RetryReasonProcessorError)
 				if nakErr := c.nakWithStrategy(msg); nakErr != nil {
 					c.logger.Error("Failed to NAK message", zap.Error(nakErr))
 				}
 				continue
 			}
 
+			// Successful processing resets the error streak.
+			if c.consecutiveProcessErrors > 0 {
+				c.consecutiveProcessErrors = 0
+			}
+
 			// ACK the message
 			if ackErr := msg.Ack(); ackErr != nil {
 				c.logger.Error("Failed to ACK message", zap.Error(ackErr))
+			} else {
+				elapsed := time.Since(start)
+				obsmetrics.RecordMessageHandled(c.streamName, c.consumerName, "ok", elapsed)
 			}
 		}
 	}
@@ -359,16 +412,16 @@ func (c *Consumer) initMetrics() {
 	meter := otel.Meter("caatsm/nats")
 	c.meter = meter
 
-	if hist, err := meter.Int64Histogram("nats.consumer.ack_pending"); err == nil {
+	if hist, err := meter.Int64Histogram("caatsm_nats_consumer_ack_pending"); err == nil {
 		c.ackPending = hist
 	}
-	if hist, err := meter.Int64Histogram("nats.consumer.redelivered"); err == nil {
+	if hist, err := meter.Int64Histogram("caatsm_nats_consumer_redelivered"); err == nil {
 		c.redelivered = hist
 	}
-	if hist, err := meter.Int64Histogram("nats.consumer.pending"); err == nil {
+	if hist, err := meter.Int64Histogram("caatsm_nats_consumer_pending"); err == nil {
 		c.pending = hist
 	}
-	if hist, err := meter.Int64Histogram("nats.consumer.delivered"); err == nil {
+	if hist, err := meter.Int64Histogram("caatsm_nats_consumer_delivered"); err == nil {
 		c.delivered = hist
 	}
 }
@@ -389,6 +442,52 @@ func (c *Consumer) recordConsumerMetrics(ctx context.Context, info *nats.Consume
 	if c.delivered != nil {
 		c.delivered.Record(ctx, int64(info.Delivered.Stream))
 	}
+}
+
+// routeToDLQ publishes a copy of the failed message to the configured DLQ subject,
+// including useful metadata for offline analysis. If DLQ is not configured or the
+// consumer is not running in JetStream mode, this is a no-op.
+func (c *Consumer) routeToDLQ(ctx context.Context, msg *nats.Msg, cause error) error {
+	if c == nil || c.js == nil {
+		return nil
+	}
+	if c.mode != "jetstream" {
+		return nil
+	}
+	if strings.TrimSpace(c.dlqSubject) == "" {
+		return nil
+	}
+
+	meta, _ := msg.Metadata()
+	jsSeq := uint64(0)
+	deliveries := uint64(0)
+	if meta != nil {
+		jsSeq = meta.Sequence.Stream
+		deliveries = meta.NumDelivered
+	}
+
+	payload := map[string]interface{}{
+		"transport_msg_id": msg.Header.Get("Nats-Msg-Id"),
+		"subject":          msg.Subject,
+		"stream":           c.streamName,
+		"consumer":         c.consumerName,
+		"nats_sequence":    jsSeq,
+		"deliveries":       deliveries,
+		"error":            fmt.Sprint(cause),
+		"received_at":      time.Now().UTC(),
+		"body":             string(msg.Data),
+	}
+
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("marshal dlq payload: %w", err)
+	}
+
+	if _, err := c.js.Publish(c.dlqSubject, data); err != nil {
+		return fmt.Errorf("publish to dlq subject %s: %w", c.dlqSubject, err)
+	}
+
+	return nil
 }
 
 func (c *Consumer) nakWithStrategy(msg *nats.Msg) error {
@@ -439,10 +538,28 @@ func (c *Consumer) processMessage(ctx context.Context, msg *nats.Msg) error {
 		)
 	}
 
-	c.logger.Debug("Processing message",
-		zap.String("subject", msg.Subject),
-		zap.String("msg_id", msgID),
+	// Attach structured logging context including stream/consumer and NATS metadata.
+	jsSeq := uint64(0)
+	if meta, metaErr := msg.Metadata(); metaErr == nil {
+		jsSeq = meta.Sequence.Stream
+		span.SetAttributes(
+			attribute.Int64("nats.js.stream_seq", int64(meta.Sequence.Stream)),
+			attribute.Int64("nats.js.consumer_seq", int64(meta.Sequence.Consumer)),
+		)
+	}
+
+	msgLogger := obslogging.WithMessageContext(c.logger, obslogging.MessageFields{
+		Service:        "caatsm-consumer",
+		TransportMsgID: msgID,
+		Stream:         c.streamName,
+		Consumer:       c.consumerName,
+		Subject:        msg.Subject,
+		JSSequence:     jsSeq,
+	})
+
+	msgLogger.Debug("Processing message",
 		zap.Int("data_size", len(msg.Data)),
+		zap.String("msg_id_source", source),
 	)
 
 	// Call processor
