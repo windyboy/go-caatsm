@@ -76,8 +76,30 @@ func main() {
 
 	for i := 0; i < *count; i++ {
 		cat := categories[rand.Intn(len(categories))]
-		payload := buildTelegram(cat)
-		payload.Status = statuses[rand.Intn(len(statuses))]
+		payload, intentionallyInvalid := buildTelegram(cat)
+
+		// 当状态为 random 时，根据报文是否合法来倾向选择 parsed 或 body_error
+		if strings.ToLower(*status) == "random" {
+			if intentionallyInvalid {
+				// 故意非法的报文：大概率标记为 body_error
+				if rand.Intn(100) < 80 {
+					payload.Status = "body_error"
+				} else {
+					payload.Status = statusValues[rand.Intn(len(statusValues))]
+				}
+			} else {
+				// 合法报文：大概率标记为 parsed
+				if rand.Intn(100) < 70 {
+					payload.Status = "parsed"
+				} else {
+					payload.Status = statusValues[rand.Intn(len(statusValues))]
+				}
+			}
+		} else {
+			// 非 random 模式下沿用原有逻辑
+			payload.Status = statuses[rand.Intn(len(statuses))]
+		}
+
 		payload.ErrorReason = *errorReason
 		payload.Metadata = map[string]string{
 			"message_id": payload.MessageID,
@@ -140,7 +162,7 @@ type telegram struct {
 	Metadata    map[string]string `json:"metadata"`
 }
 
-func buildTelegram(category string) *telegram {
+func buildTelegram(category string) (*telegram, bool) {
 	now := time.Now().UTC()
 	messageID := fmt.Sprintf("%s%04d", category, rand.Intn(9000)+1000)
 	headerTime := now.Format("020304")
@@ -149,7 +171,7 @@ func buildTelegram(category string) *telegram {
 	originLine := originatorLines[rand.Intn(len(originatorLines))]
 	originator := originators[rand.Intn(len(originators))]
 
-	body := buildBody(category)
+	body, intentionallyInvalid := buildBody(category)
 
 	content := strings.Join([]string{
 		fmt.Sprintf("ZCZC %s %s", messageID, headerTime),
@@ -166,10 +188,10 @@ func buildTelegram(category string) *telegram {
 		Category:   category,
 		Content:    content,
 		ReceivedAt: now,
-	}
+	}, intentionallyInvalid
 }
 
-func buildBody(category string) string {
+func buildBody(category string) (string, bool) {
 	flight := fmt.Sprintf("%s%04d", []string{"CCA", "SWA", "DLH", "AAL", "JAE"}[rand.Intn(5)], rand.Intn(9000)+1000)
 	dep := airports[rand.Intn(len(airports))]
 	arr := airports[rand.Intn(len(airports))]
@@ -179,15 +201,23 @@ func buildBody(category string) string {
 	switch category {
 	case "ARR":
 		if rand.Intn(2) == 0 {
-			return fmt.Sprintf("(ARR-%s-%s-%s%s)", flight, dep, arr, arrTime)
+			return fmt.Sprintf("(ARR-%s-%s-%s%s)", flight, dep, arr, arrTime), false
 		}
-		return fmt.Sprintf("(ARR-%s/%s-%s-%s%s)", flight, randomSSR(), dep, arr, arrTime)
+		// 70% 使用简单 SSR（合法），30% 使用复杂 SSR（当前正则下非法）
+		if rand.Intn(100) < 30 {
+			return fmt.Sprintf("(ARR-%s/%s-%s-%s%s)", flight, randomComplexSSR(), dep, arr, arrTime), true
+		}
+		return fmt.Sprintf("(ARR-%s/%s-%s-%s%s)", flight, randomSimpleSSR(), dep, arr, arrTime), false
 	case "DEP":
-		return fmt.Sprintf("(DEP-%s/%s-%s%s-%s)", flight, randomSSR(), dep, depTime, arr)
+		// 70% 使用简单 SSR（合法），30% 使用复杂 SSR（当前正则下非法）
+		if rand.Intn(100) < 30 {
+			return fmt.Sprintf("(DEP-%s/%s-%s%s-%s)", flight, randomComplexSSR(), dep, depTime, arr), true
+		}
+		return fmt.Sprintf("(DEP-%s/%s-%s%s-%s)", flight, randomSimpleSSR(), dep, depTime, arr), false
 	case "CNL":
-		return fmt.Sprintf("(CNL-%s-%s-%s)", flight, dep, arr)
+		return fmt.Sprintf("(CNL-%s-%s-%s)", flight, dep, arr), false
 	case "DLA":
-		return fmt.Sprintf("(DLA-%s-%s%s-%s)", flight, dep, depTime, arr)
+		return fmt.Sprintf("(DLA-%s-%s%s-%s)", flight, dep, depTime, arr), false
 	default: // FPL
 		return fmt.Sprintf(`(FPL-%s-IS
 -%s/H
@@ -208,12 +238,22 @@ func buildBody(category string) string {
 			arrTime,
 			randomAirportPair(),
 			randomOtherInfo(),
-		)
+		), false
 	}
 }
 
 func randomSSR() string {
 	return []string{"A0132", "A5633", "SXIRPZJWY/LB101", "SHID/C"}[rand.Intn(4)]
+}
+
+// 与当前 ARR/DEP 正则匹配的简单 SSR
+func randomSimpleSSR() string {
+	return []string{"A0132", "A5633"}[rand.Intn(2)]
+}
+
+// 故意构造为当前 ARR/DEP 正则无法解析的复杂 SSR
+func randomComplexSSR() string {
+	return []string{"SXIRPZJWY/LB101", "SHID/C"}[rand.Intn(2)]
 }
 
 func randomAircraft() string {

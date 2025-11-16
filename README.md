@@ -318,7 +318,7 @@ Dependencies are managed using Google Wire. To add a new dependency:
 
 The project keeps tests close to the code that they exercise:
 
-- **Domain/adapter/app unit tests** live under `internal/**` and cover parsing, validation, orchestration, and adapters. Run them all with `task test` (or `make test`), which now uses the Ginkgo CLI to run unit test suites in verbose mode (`ginkgo -r -v ./...`).
+- **Domain/adapter/app unit tests** live under `internal/**` and cover parsing, validation, orchestration, and adapters. Run them all with `task test` (or `make test`), which now uses the Ginkgo CLI to run unit test suites in verbose mode (`ginkgo -r -v ./cmd ./internal`).
 - **Integration tests** under `test/integration` spin up disposable TimescaleDB and NATS JetStream instances (via `testcontainers-go`) and execute a full ingestion flow. Use `task test-int` after ensuring Docker is running.
 - **Coverage goals** are tracked via `task coverage`, which produces both a coverage profile and an HTML report under `coverage/coverage.html`.
 
@@ -330,7 +330,7 @@ The project keeps tests close to the code that they exercise:
 | Generate coverage html     | `make coverage`     | `task coverage`     |
 | Lint (golangci-lint)       | `make lint`         | `task lint`         |
 
-> Integration tests need Docker available on the host. Ginkgo-based unit tests or lint targets require the respective binaries (`go install github.com/onsi/ginkgo/v2/ginkgo@latest`, [golangci-lint install guide](https://golangci-lint.run/)). Use `task install-test` to bootstrap Ginkgo tooling before running `task test`, `task test-all`, or their `make` equivalents. `make test` / `task test` run Ginkgo in verbose mode (`-v`), showing each spec for easier debugging.
+> Integration tests need Docker available on the host. Ginkgo-based unit tests or lint targets require the respective binaries (`go install github.com/onsi/ginkgo/v2/ginkgo@latest`, [golangci-lint install guide](https://golangci-lint.run/)). Use `task install-test` to bootstrap Ginkgo tooling before running `task test`, `task test-all`, or their `make` equivalents. `make test` / `task test` run Ginkgo in verbose mode (`-v`) over `./cmd` and `./internal`, showing each spec for easier debugging.
 
 ## Message Flow
 

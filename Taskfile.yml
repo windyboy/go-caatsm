@@ -63,7 +63,7 @@ tasks:
           exit 1
         fi
       - echo "Running Ginkgo unit test suites (verbose)..."
-      - ginkgo -r -v ./...
+      - ginkgo -r -v ./cmd ./internal
 
   test-int:
     desc: Run integration tests (requires Docker)
