@@ -1,0 +1,143 @@
+# Production Configuration for CAATSM
+# 
+# This configuration is optimized for production environments.
+# Key differences from dev config:
+#   - Uses JetStream mode (required for production)
+#   - Higher resource limits and connection pools
+#   - JSON logging (for log aggregation)
+#   - SSL/TLS enabled for secure connections
+#   - Higher stream replicas for HA (3+)
+#   - Longer retention periods
+#
+# IMPORTANT: Stream and Consumer must be created manually in production.
+# The application does NOT auto-create them in production mode.
+
+[nats]
+url = "nats://nats.prod:4222"
+# Production MUST use JetStream mode for message reliability
+mode = "jetstream"
+client = "caatsm-prod-client"
+cluster = "prod-cluster"
+stream = "TELEGRAM"
+consumer = "telegram-consumer"
+
+[nats.stream_limits]
+# Production stream limits - adjust based on your requirements
+# max_msgs: Maximum number of messages to keep in the stream (0 = unlimited)
+max_msgs = 1000000
+# max_bytes: Maximum total size of messages in bytes (1GB = 1073741824)
+max_bytes = 1073741824
+# max_age: Maximum age of messages before automatic deletion (7 days)
+max_age = "168h"
+# discard: What to do when limits are reached: "old" (delete oldest) or "new" (reject new)
+discard = "old"
+# storage: "file" (persistent to disk) - REQUIRED for production
+storage = "file"
+# replicas: Number of stream replicas for high availability (3+ for production cluster)
+replicas = 3
+
+[nats.consumer_rules]
+# Consumer delivery and retry rules for production
+# max_deliver: Maximum number of delivery attempts before giving up
+max_deliver = 5
+# ack_wait: Time to wait for ACK before redelivering message
+ack_wait = "30s"
+# max_ack_pending: Maximum number of unacknowledged messages before pausing delivery
+max_ack_pending = 1024
+# deliver_policy: "new" - Start from new messages after consumer creation (recommended for production)
+#   Other options: "all", "last", "last_per_subject", "sequence", "time"
+deliver_policy = "new"
+# replay_policy: How to replay messages: "instant" (as fast as possible) or "original" (preserve timing)
+replay_policy = "instant"
+# backoff: Array of delays between retry attempts
+#   First retry waits 5s, second waits 30s, third waits 2m, fourth+ wait 5m
+backoff = ["5s", "30s", "2m", "5m"]
+# start_sequence: Starting sequence number (only used when deliver_policy = "sequence")
+start_sequence = 0
+# start_time: Starting time in RFC3339 format (only used when deliver_policy = "time")
+#   Example: "2024-11-15T08:00:00Z"
+start_time = ""
+
+[subscription]
+topic = "telegram.serial"
+queue_group = "tele-queue"
+
+[publisher]
+topic = "telegram.json"
+
+[timeouts]
+server = "10s"
+reconnect_wait = "5s"
+close = "30s"
+ack_wait = "30s"
+
+[postgres]
+# Production PostgreSQL connection - USE SSL/TLS
+# Replace with your production database URL
+url = "postgres://user:password@db.prod:5432/aviation?sslmode=require"
+# Higher connection pool for production workloads
+max_conns = 20
+min_conns = 5
+
+[app]
+# Production batch processing configuration
+# batch_size: Larger batch size for better throughput
+batch_size = 100
+# batch_timeout: Maximum time to wait when fetching a batch
+batch_timeout = "2s"
+# monitor_interval: How often to emit consumer statistics and metrics
+monitor_interval = "30s"
+
+[log]
+# Production logging configuration
+# level: Use "info" or "warn" in production (avoid "debug")
+level = "info"
+# format: "json" for log aggregation systems (ELK, Loki, etc.)
+format = "json"
+# output: Only stdout in production (let container/logging system handle file rotation)
+output = ["stdout"]
+# file: Not used in production (logging to stdout)
+# file = "logs/caatsm.log"
+
+# File rotation settings (not used when output = ["stdout"])
+# max_size = 100      # MB
+# max_backups = 7     # Keep 7 rotated files
+# max_age = 30        # Keep logs for 30 days
+# compress = true     # Compress old log files
+
+# Advanced options
+disable_caller = false
+disable_stacktrace = false
+development = false
+
+# Sampling configuration (optional, for high-volume scenarios)
+# [log.sampling]
+# initial = 100       # Log first 100 messages
+# thereafter = 100    # Then log every 100th message
+# tick = "1s"         # Per second
+
+[telemetry]
+# Production telemetry configuration
+enabled = true
+# Replace with your production OTLP collector endpoint
+endpoint = "otel-collector.prod:4318"
+# Use TLS in production (set to false)
+insecure = false
+
+[monitoring]
+# Production monitoring configuration
+disabled = false
+addr = ":2112"
+enable_metrics = true
+enable_health = true
+read_timeout = "5s"
+write_timeout = "5s"
+health_timeout = "2s"
+
+[dlq]
+# Dead-Letter Queue configuration (REQUIRED for production)
+# enabled: Enable DLQ routing for poison messages
+enabled = true
+# subject: NATS subject where failed messages will be published for manual inspection
+subject = "caatsm.dlq"
+

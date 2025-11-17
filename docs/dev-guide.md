@@ -10,7 +10,11 @@ Spin up PostgreSQL/TimescaleDB and NATS JetStream in the background:
 docker compose -f docker-compose.dev.yml up -d postgres nats nats-box
 ```
 
-> Development mode defaults to `nats.mode = "core"`, so the processor consumes directly from the configured subject (`subscription.topic`). **However, the publisher always targets JetStream for deduplicated fan-out, so the provided Taskfile (and most examples below) override the mode to `jetstream`.** If you truly need core mode, set `CAATSM_NATS_MODE=core` manually and ensure any publishers use core subjects.
+> **NATS Mode Selection:** The application supports two consumption modes:
+> - **Core NATS mode** (default for development): Simple pub/sub without persistence or retry mechanisms. Recommended for local development and testing where message loss is acceptable. Fast and lightweight.
+> - **JetStream mode**: Provides message persistence, ACK/NAK, automatic retries, and DLQ support. Recommended for production environments and integration testing.
+>
+> Development mode defaults to `nats.mode = "core"` in `config.dev.toml`. To use JetStream in development, set `CAATSM_NATS_MODE=jetstream` or change the config file. **Note:** The publisher always targets JetStream for deduplicated fan-out, so if you use Core mode for consumption, ensure your publishers align with your messaging strategy. See the README.md "NATS Mode Selection" section for a detailed comparison.
 
 - `postgres` seeds the `aviation` schema using `internal/infra/postgres/telegrams.ddl` and exposes port `5432`.
 - `nats` enables JetStream with client port `4222` and monitoring/UI on `8222`.
@@ -55,7 +59,7 @@ docker compose -f docker-compose.dev.yml up -d postgres nats nats-box
 The `Taskfile.yml` includes helper targets that wrap the commands above:
 
 - `task up` – starts PostgreSQL, NATS (JetStream, toolbox, and Prometheus exporter), and the observability stack (OpenTelemetry Collector, Jaeger, Prometheus, Grafana) using Docker Compose.
-- `task dev-run` – ensures `task up` has run, exports the necessary `CAATSM_*` environment variables (including `CAATSM_NATS_MODE=jetstream`), and executes `go run ./cmd/main listen` with telemetry enabled.
+- `task dev-run` – ensures `task up` has run, exports the necessary `CAATSM_*` environment variables (defaults to `CAATSM_NATS_MODE=core` for development), and executes `go run ./cmd/main listen` with telemetry enabled.
 - `task down` – stops the entire stack and removes containers/volumes.
 
 Use these tasks if you prefer a one-command workflow instead of invoking `docker compose` and environment exports manually.
@@ -64,10 +68,29 @@ Use these tasks if you prefer a one-command workflow instead of invoking `docker
 
 Use the helper CLI in `cmd/seed-telegrams` to push realistic payloads onto NATS (mirrors the fixtures in `internal/adapter/parser/aviation_parser_test.go`):
 
+### Publishing to JetStream (Recommended)
+
+When using JetStream mode, publish messages to the JetStream stream:
+
 ```bash
-# Insert rows into aviation.telegrams_raw and publish to NATS simultaneously
+# Publish to JetStream stream (messages are persisted)
 GO_ENV=dev go run ./cmd/seed-telegrams \
-  --postgres-url postgres://caatsm:caatsm@localhost:5432/aviation?sslmode=disable \
+  --nats-url nats://127.0.0.1:4222 \
+  --jetstream \
+  --stream TELEGRAM \
+  --js-subject telegram.serial \
+  --count 20 \
+  --category mixed \
+  --status random
+```
+
+### Publishing to Core NATS
+
+For Core NATS mode, use standard publish:
+
+```bash
+# Publish to Core NATS (no persistence)
+GO_ENV=dev go run ./cmd/seed-telegrams \
   --nats-url nats://127.0.0.1:4222 \
   --subject telegram.serial \
   --count 20 \
@@ -75,13 +98,29 @@ GO_ENV=dev go run ./cmd/seed-telegrams \
   --status random
 ```
 
-- `--postgres-url` controls database insertion (omit to skip DB writes); metadata lands in `aviation.telegrams_raw.metadata`.
-- `--dry-run` prints telegrams without touching NATS/Postgres.
-- `--category` chooses ARR/DEP/CNL/DLA/FPL or `mixed`.
-- `--status` controls stored/published status (`parsed|header_error|body_error|publish_error|repository_error|random`).
-- `--no-nats` disables publishing; `--jetstream`, `--stream`, `--js-subject` toggle JetStream publishing.
-- Inspect deliveries with `docker compose exec nats-box nats sub 'telegram.>'`.
-- When running in core mode (default), the seeder publishes via standard `nc.Publish` and sets `Nats-Msg-Id` headers so the processor can derive message IDs.
+### Common Options
+
+- `--postgres-url`: Insert rows into `aviation.telegrams_raw` (omit to skip DB writes)
+- `--dry-run`: Print telegrams without publishing to NATS/Postgres
+- `--category`: Choose message type (`ARR|DEP|CNL|DLA|FPL|mixed`)
+- `--status`: Control stored/published status (`parsed|header_error|body_error|publish_error|repository_error|random`)
+- `--no-nats`: Disable publishing to NATS
+- `--jetstream`: Enable JetStream publishing (requires `--stream` and `--js-subject`)
+- `--stream`: JetStream stream name (default: `TELEGRAM`)
+- `--js-subject`: Subject within the JetStream stream
+
+### Inspecting Messages
+
+```bash
+# View messages in JetStream stream
+docker compose exec nats-box nats stream view TELEGRAM
+
+# Subscribe to messages (Core NATS or JetStream)
+docker compose exec nats-box nats sub 'telegram.>'
+
+# View consumer status and pending messages
+docker compose exec nats-box nats consumer info TELEGRAM telegram-consumer
+```
 
 The main processor keeps consuming `subscription.topic` (defaults to `telegram.>`). Use the seeder to simulate parser failures, publish errors, or replay raw telegrams directly from the database.
 
@@ -96,6 +135,15 @@ The main processor keeps consuming `subscription.topic` (defaults to `telegram.>
 
 2. **Run the processor with telemetry enabled**
    ```bash
+   # Using Core NATS mode (default for development)
+   CAATSM_TELEMETRY_ENABLED=true \
+   CAATSM_TELEMETRY_ENDPOINT=localhost:4318 \
+   CAATSM_TELEMETRY_INSECURE=true \
+   GO_ENV=dev \
+   CAATSM_POSTGRES_URL=postgres://caatsm:caatsm@localhost:5432/aviation?sslmode=disable \
+   go run ./cmd/main listen
+   
+   # Or use JetStream mode for integration testing
    CAATSM_TELEMETRY_ENABLED=true \
    CAATSM_TELEMETRY_ENDPOINT=localhost:4318 \
    CAATSM_TELEMETRY_INSECURE=true \

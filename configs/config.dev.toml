@@ -1,5 +1,20 @@
 [nats]
 url = "nats://localhost:4222"
+# mode: "core" (default for dev) or "jetstream" (recommended for production)
+#   - "core": Uses Core NATS for simple pub/sub messaging with:
+#     * No message persistence (messages lost if consumer offline)
+#     * No ACK mechanism (fire-and-forget delivery)
+#     * No automatic retry on processing failures
+#     * Queue groups for load balancing only
+#     * Suitable for development/testing or real-time scenarios where message loss is acceptable
+#     * Recommended for local development and testing
+#   - "jetstream": Uses NATS JetStream for persistent message streaming with:
+#     * Message persistence and replay capability
+#     * ACK/NAK mechanism for guaranteed delivery
+#     * Automatic retry with configurable backoff
+#     * Dead-letter queue (DLQ) support
+#     * Batch processing and consumer monitoring
+#     * Recommended for production environments
 mode = "core"
 client = "serial-client"
 cluster = "tele-cluster"
@@ -7,21 +22,45 @@ stream = "TELEGRAM"
 consumer = "telegram-consumer"
 
 [nats.stream_limits]
+# Stream retention and storage limits (only applies when mode = "jetstream")
+# max_msgs: Maximum number of messages to keep in the stream (0 = unlimited)
 max_msgs = 100000
+# max_bytes: Maximum total size of messages in bytes (0 = unlimited, 67108864 = 64MB)
 max_bytes = 67108864
+# max_age: Maximum age of messages before automatic deletion (e.g., "24h", "7d")
 max_age = "24h"
+# discard: What to do when limits are reached: "old" (delete oldest) or "new" (reject new)
 discard = "old"
+# storage: "file" (persistent to disk) or "memory" (ephemeral, faster but lost on restart)
 storage = "file"
+# replicas: Number of stream replicas for high availability (1 = single node, 3+ for production cluster)
 replicas = 1
 
 [nats.consumer_rules]
+# Consumer delivery and retry rules (only applies when mode = "jetstream")
+# max_deliver: Maximum number of delivery attempts before giving up (0 = unlimited)
 max_deliver = 5
+# ack_wait: Time to wait for ACK before redelivering message (e.g., "30s", "2m")
 ack_wait = "30s"
+# max_ack_pending: Maximum number of unacknowledged messages before pausing delivery
 max_ack_pending = 1024
+# deliver_policy: When to start delivering messages:
+#   - "all": Deliver all messages from the stream
+#   - "new": Only deliver new messages after consumer creation
+#   - "last": Deliver only the last message
+#   - "last_per_subject": Deliver last message per subject
+#   - "sequence": Start from a specific sequence (requires start_sequence)
+#   - "time": Start from a specific time (requires start_time in RFC3339 format)
 deliver_policy = "all"
+# replay_policy: How to replay messages: "instant" (as fast as possible) or "original" (preserve timing)
 replay_policy = "instant"
+# backoff: Array of delays between retry attempts (e.g., ["5s", "30s", "2m"])
+#   First retry waits 5s, second waits 30s, third and beyond wait 2m
 backoff = ["5s", "30s", "2m"]
+# start_sequence: Starting sequence number (only used when deliver_policy = "sequence")
 start_sequence = 0
+# start_time: Starting time in RFC3339 format (only used when deliver_policy = "time")
+#   Example: "2024-11-15T08:00:00Z"
 start_time = ""
 
 [subscription]
@@ -43,8 +82,12 @@ max_conns = 10
 min_conns = 2
 
 [app]
+# Batch processing configuration (applies to both core and jetstream modes)
+# batch_size: Number of messages to fetch in each batch (JetStream pull batch size)
 batch_size = 50
+# batch_timeout: Maximum time to wait when fetching a batch (e.g., "2s")
 batch_timeout = "2s"
+# monitor_interval: How often to emit consumer statistics and metrics
 monitor_interval = "30s"
 
 [log]
@@ -85,5 +128,8 @@ write_timeout = "5s"
 health_timeout = "2s"
 
 [dlq]
-enabled = true
+# Dead-Letter Queue configuration (only applies when mode = "jetstream")
+# enabled: Enable DLQ routing for poison messages (messages that fail after max_deliver attempts)
+enabled = false  # Set to true when switching to JetStream mode
+# subject: NATS subject where failed messages will be published for manual inspection
 subject = "caatsm.dlq"

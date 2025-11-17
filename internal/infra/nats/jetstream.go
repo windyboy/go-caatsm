@@ -26,12 +26,14 @@ func ProvideNATSConn(cfg *config.Config, logger *zap.Logger) (*nats.Conn, error)
 			}
 		}),
 		nats.ReconnectHandler(func(nc *nats.Conn) {
-			logger.Info("NATS reconnected", zap.String("url", nc.ConnectedUrl()))
+			safeURL := sanitizeURLForLogging(nc.ConnectedUrl())
+			logger.Info("NATS reconnected", zap.String("url", safeURL))
 		}),
 	)
 	if err != nil {
+		safeURL := sanitizeURLForLogging(cfg.NATS.URL)
 		logger.Error("failed to connect to NATS",
-			zap.String("url", cfg.NATS.URL),
+			zap.String("url", safeURL),
 			zap.Duration("timeout", cfg.Timeouts.Server),
 			zap.Duration("reconnect_wait", cfg.Timeouts.ReconnectWait),
 			zap.Error(err),
@@ -43,12 +45,20 @@ func ProvideNATSConn(cfg *config.Config, logger *zap.Logger) (*nats.Conn, error)
 }
 
 // ProvideJetStream creates a NATS JetStream context using an existing connection.
+// Returns nil, nil when cfg.NATS.Mode == "core" to support plain NATS servers without JetStream.
 func ProvideJetStream(nc *nats.Conn, cfg *config.Config, logger *zap.Logger) (nats.JetStreamContext, error) {
+	mode := strings.ToLower(cfg.NATS.Mode)
+	if mode == "core" {
+		logger.Info("Skipping JetStream initialization for core NATS mode")
+		return nil, nil
+	}
+
 	// Get JetStream context
 	js, err := nc.JetStream()
 	if err != nil {
+		safeURL := sanitizeURLForLogging(cfg.NATS.URL)
 		logger.Error("failed to get JetStream context",
-			zap.String("url", cfg.NATS.URL),
+			zap.String("url", safeURL),
 			zap.Error(err),
 		)
 		nc.Close()

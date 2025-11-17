@@ -43,6 +43,10 @@ This project follows Clean Architecture principles with clear separation of conc
 - **Structured Logging**: Zap logger with configurable levels and formats
 - **Batch Processing**: Efficient batch message processing and database inserts
 
+## Contributor Guide
+
+For coding standards, test expectations, and release hygiene, read [AGENTS.md](AGENTS.md).
+
 ## Prerequisites
 
 - Go 1.22+
@@ -83,12 +87,16 @@ Configuration is loaded from TOML files and environment variables. The configura
 ```toml
 [nats]
 url = "nats://localhost:4222"
+# mode: "jetstream" (default) or "core"
+#   See "NATS Mode Selection" section below for detailed comparison
+mode = "jetstream"
 stream = "TELEGRAM"
 consumer = "telegram-consumer"
 client = "serial-client"
 cluster = "tele-cluster"
 
 [nats.stream_limits]
+# These settings only apply when mode = "jetstream"
 max_msgs = 100000
 max_bytes = 67108864
 max_age = "24h"
@@ -97,6 +105,7 @@ storage = "file"
 replicas = 1
 
 [nats.consumer_rules]
+# These settings only apply when mode = "jetstream"
 max_deliver = 5
 ack_wait = "30s"
 max_ack_pending = 1024
@@ -109,6 +118,7 @@ start_time = ""
 [subscription]
 # Optional. Defaults to "telegram.>" when omitted.
 topic = "telegram.serial"
+# queue_group: Used in both core and jetstream modes for load balancing
 queue_group = "tele-queue"
 
 [publisher]
@@ -150,6 +160,211 @@ export CAATSM_LOG_LEVEL="debug"
 
 Environment variable names are converted from `CAATSM_NATS_URL` to `nats.url` in the configuration.
 
+### NATS Mode Selection
+
+The application supports two NATS consumption modes, controlled by `nats.mode`:
+
+#### JetStream Mode (Recommended for Production)
+
+**Configuration:** `nats.mode = "jetstream"` (default)
+
+**Features:**
+- ✅ **Message Persistence**: Messages are stored in a Stream, allowing replay and recovery
+- ✅ **ACK/NAK Mechanism**: Explicit message acknowledgment ensures guaranteed delivery
+- ✅ **Automatic Retry**: Failed messages are automatically redelivered with configurable backoff
+- ✅ **Dead-Letter Queue**: Poison messages can be routed to a DLQ for inspection
+- ✅ **Batch Processing**: Efficient batch fetching and processing
+- ✅ **Consumer Monitoring**: Real-time metrics for consumer lag and pending messages
+- ✅ **At-Least-Once Delivery**: Messages are guaranteed to be delivered at least once
+
+**Use Cases:**
+- Production environments requiring message reliability
+- Scenarios where message loss is unacceptable
+- Systems needing message replay capabilities
+- Applications requiring retry logic for transient failures
+
+**Configuration Requirements:**
+- Requires JetStream to be enabled on the NATS server
+- Stream must be created (auto-created in dev/test environments)
+- Consumer configuration via `[nats.consumer_rules]` section
+
+**How to Use JetStream Mode:**
+
+1. **Prerequisites:**
+   - Ensure NATS server has JetStream enabled (default in `docker-compose.dev.yml`)
+   - Set `nats.mode = "jetstream"` in your config file (or use `CAATSM_NATS_MODE=jetstream`)
+
+2. **Start NATS with JetStream:**
+   ```bash
+   # Using Docker Compose (recommended for development)
+   docker compose -f docker-compose.dev.yml up -d nats
+   
+   # Or start NATS server manually with JetStream enabled:
+   # nats-server -js
+   ```
+
+3. **Configure Stream and Consumer:**
+   The application automatically creates the Stream and Consumer on startup in dev/test environments (`GO_ENV=dev` or `GO_ENV=test`). In production, you may need to create them manually or ensure they exist.
+
+   **Stream Configuration** (`[nats.stream_limits]`):
+   - `max_msgs`: Maximum number of messages in the stream (default: 100000)
+   - `max_bytes`: Maximum total size of messages (default: 64MB)
+   - `max_age`: Maximum age of messages before deletion (default: 24h)
+   - `storage`: "file" (persistent) or "memory" (ephemeral)
+   - `replicas`: Number of stream replicas for HA (default: 1, use 3+ for production)
+
+   **Consumer Configuration** (`[nats.consumer_rules]`):
+   - `max_deliver`: Maximum redelivery attempts (default: 5)
+   - `ack_wait`: Time to wait for ACK before redelivery (default: 30s)
+   - `deliver_policy`: When to start delivering messages ("all", "new", "last", etc.)
+   - `backoff`: Array of delays between retries (e.g., `["5s", "30s", "2m"]`)
+
+4. **Start the Application:**
+   ```bash
+   # Development mode (auto-creates stream/consumer)
+   GO_ENV=dev \
+   CAATSM_NATS_MODE=jetstream \
+   CAATSM_POSTGRES_URL=postgres://user:pass@localhost:5432/aviation \
+     go run ./cmd/main listen
+   
+   # Production mode (requires stream/consumer to exist)
+   GO_ENV=prod \
+   CAATSM_NATS_MODE=jetstream \
+     ./bin/receiver listen
+   ```
+
+5. **Publish Messages to JetStream:**
+   ```bash
+   # Using nats-box (included in docker-compose.dev.yml)
+   docker compose exec nats-box nats pub telegram.serial "ZCZC TEST123 150631..."
+   
+   # Or use the seed-telegrams tool with JetStream
+   go run ./cmd/seed-telegrams \
+     --nats-url nats://localhost:4222 \
+     --jetstream \
+     --stream TELEGRAM \
+     --js-subject telegram.serial \
+     --count 10
+   ```
+
+6. **Monitor JetStream:**
+   ```bash
+   # View stream info
+   docker compose exec nats-box nats stream info TELEGRAM
+   
+   # View consumer info
+   docker compose exec nats-box nats consumer info TELEGRAM telegram-consumer
+   
+   # View pending messages
+   docker compose exec nats-box nats consumer next TELEGRAM telegram-consumer
+   
+   # Or use NATS monitoring UI at http://localhost:8222
+   ```
+
+7. **Message Processing Flow:**
+   - Messages are published to the configured subject (e.g., `telegram.serial`)
+   - Stream stores messages according to retention policy
+   - Consumer pulls messages in batches (configurable via `app.batch_size`)
+   - Each message is processed and ACKed on success
+   - Failed messages are NAKed and redelivered according to `backoff` strategy
+   - After `max_deliver` attempts, permanent failures are routed to DLQ (if enabled)
+
+8. **Replay Messages:**
+   ```bash
+   # Replay from a specific sequence
+   ./bin/receiver listen --replay-from seq:12345
+   
+   # Replay from a specific time
+   ./bin/receiver listen --replay-from time:2024-11-15T08:00:00Z
+   ```
+
+9. **Dead-Letter Queue (DLQ):**
+   Enable DLQ in config to route poison messages:
+   ```toml
+   [dlq]
+   enabled = true
+   subject = "caatsm.dlq"
+   ```
+   Messages that fail after `max_deliver` attempts are published to the DLQ subject for manual inspection.
+
+10. **Troubleshooting:**
+    - **Stream not found**: Ensure `GO_ENV=dev` for auto-creation, or create manually in production
+    - **Consumer not found**: Application auto-creates consumer on startup
+    - **Messages not being consumed**: Check consumer info for pending messages and delivery status
+    - **High pending count**: Increase `batch_size` or add more consumer instances
+    - **Messages being redelivered**: Check processing logs for errors; adjust `ack_wait` if processing takes longer
+
+#### Core NATS Mode (Default for Development)
+
+**Configuration:** `nats.mode = "core"` (default in `config.dev.toml`)
+
+**Features:**
+- ⚡ **Simple Pub/Sub**: Basic publish/subscribe messaging
+- ⚡ **Queue Groups**: Load balancing across multiple consumers
+- ⚡ **Low Latency**: No persistence overhead
+- ⚡ **Fast Startup**: No stream/consumer setup required
+- ❌ **No Persistence**: Messages are lost if no consumer is available
+- ❌ **No ACK**: No delivery guarantees
+- ❌ **No Retry**: Processing failures are logged but not retried
+- ❌ **No DLQ**: Failed messages cannot be routed to a dead-letter queue
+
+**Use Cases:**
+- **Local development** (recommended default)
+- Quick testing and iteration
+- Real-time monitoring/logging where message loss is acceptable
+- Simple pub/sub scenarios without reliability requirements
+- Performance testing without persistence overhead
+
+**Configuration Requirements:**
+- Works with any NATS server (JetStream not required)
+- Only `[subscription]` settings are used (queue_group for load balancing)
+- `[nats.consumer_rules]` and `[nats.stream_limits]` are ignored
+
+**How to Use Core Mode:**
+
+1. **Start NATS Server** (JetStream not required, but can be enabled):
+   ```bash
+   # Simple NATS server
+   nats-server
+   
+   # Or with Docker Compose (JetStream enabled but not required for core mode)
+   docker compose -f docker-compose.dev.yml up -d nats
+   ```
+
+2. **Start the Application** (Core mode is default in dev config):
+   ```bash
+   # Core mode is default, no need to specify
+   GO_ENV=dev \
+   CAATSM_POSTGRES_URL=postgres://user:pass@localhost:5432/aviation \
+     go run ./cmd/main listen
+   ```
+
+3. **Publish Messages** (use standard NATS publish):
+   ```bash
+   # Using nats-box
+   docker compose exec nats-box nats pub telegram.serial "ZCZC TEST123 150631..."
+   
+   # Or use seed-telegrams without --jetstream flag
+   go run ./cmd/seed-telegrams \
+     --nats-url nats://localhost:4222 \
+     --subject telegram.serial \
+     --count 10
+   ```
+
+**Switching Modes:**
+
+```bash
+# Use Core NATS mode (default for development)
+CAATSM_NATS_MODE=core go run ./cmd/main listen
+# Or simply (core is default in config.dev.toml)
+go run ./cmd/main listen
+
+# Use JetStream mode (for production or integration testing)
+CAATSM_NATS_MODE=jetstream go run ./cmd/main listen
+```
+
+**Note:** The publisher always uses JetStream for deduplicated fan-out, regardless of the consumer mode. If you need pure Core NATS, ensure publishers also use Core NATS subjects.
+
 ## Usage
 
 ### Build
@@ -174,12 +389,12 @@ go build -o bin/receiver ./cmd/main
 
 ### Run
 
+#### Development Mode
+
 Use Make targets (binary mode):
 
 ```bash
-make run-dev    # GO_ENV=dev
-make run-prod   # GO_ENV=prod
-make run-test   # GO_ENV=test
+make run-dev    # GO_ENV=dev (uses core NATS mode by default)
 make run-local  # go run ./cmd/main listen (honors GO_ENV)
 ```
 
@@ -187,11 +402,31 @@ Task equivalents:
 
 ```bash
 task run-dev
-task run-prod
-task run-test
 task run-local         # go run ./cmd/main listen
-task dev-run           # boots docker-compose dev stack + go run
+task dev-run           # boots docker-compose dev stack + go run (core NATS mode)
 ```
+
+#### Production Mode
+
+For production deployment, see the comprehensive guide: **[Production Deployment Guide](docs/prod-guide.md)**
+
+Quick start:
+
+```bash
+# Build the binary
+make build
+
+# Run in production mode
+make run-prod   # GO_ENV=prod (requires config.prod.toml)
+```
+
+**Key requirements:**
+- JetStream mode (mandatory)
+- Stream and Consumer must be created manually
+- Production configuration file: `configs/config.prod.toml`
+- SSL/TLS for secure connections
+
+See `docs/prod-guide.md` for complete production deployment instructions.
 
 ### Command Line Options
 
@@ -295,11 +530,17 @@ docker compose -f docker-compose.dev.yml up -d postgres nats nats-box
 docker compose -f docker-compose.dev.yml up -d otel-collector jaeger prometheus grafana
 ```
 
-Run the processor locally while the infra runs in Docker (default mode is JetStream; switch to core only if you explicitly set `CAATSM_NATS_MODE=core`):
+Run the processor locally while the infra runs in Docker:
 
 ```bash
+# Core NATS mode (default for development, fast and lightweight)
 GO_ENV=dev \
-CAATSM_NATS_MODE=core \
+CAATSM_POSTGRES_URL=postgres://caatsm:caatsm@localhost:5432/aviation?sslmode=disable \
+  go run ./cmd/main listen
+
+# JetStream mode (for integration testing or production-like behavior)
+GO_ENV=dev \
+CAATSM_NATS_MODE=jetstream \
 CAATSM_POSTGRES_URL=postgres://caatsm:caatsm@localhost:5432/aviation?sslmode=disable \
   go run ./cmd/main listen
 ```
@@ -308,8 +549,13 @@ Tear everything down with `docker compose -f docker-compose.dev.yml down -v`.
 
 ## Deployment Examples
 
-- `docs/deploy-systemd.md` shows a minimal systemd unit that wires configuration via environment files and restarts on failure.
-- `docs/deploy-k8s.md` provides a reference Deployment + ConfigMap/Secret with liveness/readiness probes hitting `/healthz` and `/metrics`.
+For production deployment, see the comprehensive guide: **[Production Deployment Guide](docs/prod-guide.md)**
+
+Additional deployment-specific guides:
+
+- **`docs/prod-guide.md`** - Complete production deployment guide with configuration, setup, and operations
+- **`docs/deploy-systemd.md`** - Systemd service deployment with environment file configuration
+- **`docs/deploy-k8s.md`** - Kubernetes deployment with ConfigMap/Secret and health probes
 
 ### Project Structure
 
@@ -355,7 +601,9 @@ The project keeps tests close to the code that they exercise:
 
 ## Message Flow
 
-1. **NATS Consumer** receives raw telegram messages from NATS (JetStream durable pull by default; plain `nc.Subscribe` only when you opt into `nats.mode=core`)
+1. **NATS Consumer** receives raw telegram messages from NATS:
+   - **JetStream mode** (default): Uses durable pull consumer with batch processing, ACK/NAK, and retry logic
+   - **Core mode**: Uses `QueueSubscribe` for simple pub/sub with queue group load balancing (no persistence or retries)
 2. **MessageProcessor** orchestrates the processing:
    - Parses the message using the Parser adapter
    - Stores the parsed message in PostgreSQL via Repository
@@ -769,4 +1017,3 @@ This repository has not declared a public license yet.
 ## Contributing
 
 Contribution guidelines are not published; please coordinate changes via pull requests or direct maintainers.
-

@@ -24,19 +24,26 @@ tasks:
       - task: run-dev
 
   run-dev:
-    desc: Run the receiver in development mode
+    desc: Run the receiver in development mode (uses core NATS mode by default)
     deps:
       - build
     cmds:
-      - echo "Running receiver in development mode..."
+      - |
+        echo "Running receiver in development mode (NATS mode: core by default)..."
       - GO_ENV=dev {{.binary}} listen
 
   run-prod:
-    desc: Run the receiver in production mode
+    desc: Run the receiver in production mode (requires config.prod.toml and JetStream mode)
     deps:
       - build
     cmds:
-      - echo "Running receiver in production mode..."
+      - |
+        echo "Running receiver in production mode..."
+        echo "Note: Production mode requires:"
+        echo "  - configs/config.prod.toml file (or CAATSM_* environment variables)"
+        echo "  - NATS JetStream enabled (nats.mode = jetstream)"
+        echo "  - Stream and Consumer must exist (not auto-created in prod)"
+        echo "  - PostgreSQL connection configured"
       - GO_ENV=prod {{.binary}} listen
 
   run-test:
@@ -48,10 +55,11 @@ tasks:
       - GO_ENV=test {{.binary}} listen
 
   run-local:
-    desc: Run receiver via go run (default GO_ENV=dev)
+    desc: Run receiver via go run (default GO_ENV=dev, uses core NATS mode by default)
     cmds:
       - |
-        echo "Running receiver via go run (GO_ENV=${GO_ENV:-dev})..."
+        echo "Running receiver via go run (GO_ENV=${GO_ENV:-dev}, NATS mode: core by default in dev)..."
+      - |
         GO_ENV=${GO_ENV:-dev} go run {{.cmd}} listen
 
   test:
@@ -177,7 +185,7 @@ tasks:
       - up
     env:
       CAATSM_NATS_URL: nats://localhost:4222
-      CAATSM_NATS_MODE: jetstream
+      CAATSM_NATS_MODE: core
       CAATSM_POSTGRES_URL: postgres://caatsm:caatsm@localhost:5432/aviation?sslmode=disable
       CAATSM_TELEMETRY_ENABLED: "true"
       CAATSM_TELEMETRY_ENDPOINT: localhost:4318
@@ -195,7 +203,7 @@ tasks:
         go run ./cmd/main listen
 
   seed:
-    desc: Generate sample telegrams (publish to NATS)
+    desc: Generate sample telegrams (publishes to Core NATS by default, compatible with dev mode)
     cmds:
       - |
         GO_ENV=dev \

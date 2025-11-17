@@ -26,11 +26,11 @@ func buildAppComponents() (*appComponents, error) {
 	if err != nil {
 		return nil, err
 	}
-	pool, err := postgres.ProvideDB(configConfig)
+	logger, err := log.ProvideLogger(configConfig)
 	if err != nil {
 		return nil, err
 	}
-	logger, err := log.ProvideLogger(configConfig)
+	pool, err := postgres.ProvideDB(configConfig, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -46,7 +46,7 @@ func buildAppComponents() (*appComponents, error) {
 	if err != nil {
 		return nil, err
 	}
-	publisher, err := nats.ProvidePublisher(jetStreamContext, configConfig, logger)
+	publisher, err := nats.ProvidePublisher(jetStreamContext, conn, configConfig, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -70,11 +70,11 @@ func buildAppComponents() (*appComponents, error) {
 
 func buildAppComponentsWithConfig(cfg *config.Config) (*appComponents, error) {
 	parserParser := parser.ProvideParser()
-	pool, err := postgres.ProvideDB(cfg)
+	logger, err := log.ProvideLogger(cfg)
 	if err != nil {
 		return nil, err
 	}
-	logger, err := log.ProvideLogger(cfg)
+	pool, err := postgres.ProvideDB(cfg, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +90,7 @@ func buildAppComponentsWithConfig(cfg *config.Config) (*appComponents, error) {
 	if err != nil {
 		return nil, err
 	}
-	publisher, err := nats.ProvidePublisher(jetStreamContext, cfg, logger)
+	publisher, err := nats.ProvidePublisher(jetStreamContext, conn, cfg, logger)
 	if err != nil {
 		return nil, err
 	}

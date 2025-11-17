@@ -18,13 +18,18 @@ build: ## Build the receiver binary
 run: run-dev ## Alias for run-dev
 
 .PHONY: run-dev
-run-dev: build ## Run the receiver in development mode
-	@echo "Running receiver in development mode..."
+run-dev: build ## Run the receiver in development mode (uses core NATS mode by default)
+	@echo "Running receiver in development mode (NATS mode: core by default)..."
 	@GO_ENV=dev $(BINARY) listen
 
 .PHONY: run-prod
-run-prod: build ## Run the receiver in production mode
+run-prod: build ## Run the receiver in production mode (requires config.prod.toml and JetStream mode)
 	@echo "Running receiver in production mode..."
+	@echo "Note: Production mode requires:"
+	@echo "  - configs/config.prod.toml file (or CAATSM_* environment variables)"
+	@echo "  - NATS JetStream enabled (nats.mode = jetstream)"
+	@echo "  - Stream and Consumer must exist (not auto-created in prod)"
+	@echo "  - PostgreSQL connection configured"
 	@GO_ENV=prod $(BINARY) listen
 
 .PHONY: run-test
@@ -33,8 +38,8 @@ run-test: build ## Run the receiver in test mode
 	@GO_ENV=test $(BINARY) listen
 
 .PHONY: run-local
-run-local: ## Run receiver directly via go run
-	@echo "Running receiver via go run..."
+run-local: ## Run receiver directly via go run (uses core NATS mode by default in dev)
+	@echo "Running receiver via go run (GO_ENV=$(GO_ENV), NATS mode: core by default in dev)..."
 	@GO_ENV=$(GO_ENV) go run $(CMD) listen
 
 .PHONY: test

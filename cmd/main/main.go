@@ -13,6 +13,8 @@ import (
 	"syscall"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/urfave/cli/v2"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -181,7 +183,8 @@ func runListen(parentCtx context.Context, cfg *config.Config) error {
 	// Wait for shutdown signal or consumer error
 	select {
 	case <-ctx.Done():
-		fmt.Printf("Received shutdown signal: %v, shutting down...\n", ctx.Err())
+		zap.L().Info("Received shutdown signal, shutting down",
+			zap.Error(ctx.Err()))
 	case err := <-errChan:
 		if err != nil {
 			runErr = err
@@ -198,7 +201,8 @@ func runListen(parentCtx context.Context, cfg *config.Config) error {
 			runErr = err
 		}
 	case <-time.After(waitTimeout):
-		fmt.Printf("Timed out waiting for consumer shutdown after %s\n", waitTimeout)
+		zap.L().Warn("Timed out waiting for consumer shutdown",
+			zap.Duration("timeout", waitTimeout))
 	}
 
 	if err := consumer.Shutdown(context.Background()); err != nil {
