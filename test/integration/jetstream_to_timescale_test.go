@@ -10,13 +10,14 @@ import (
 	"testing"
 	"time"
 
+	"caatsm/internal/adapter/dto"
 	"caatsm/internal/adapter/parser"
 	"caatsm/internal/app"
-	"caatsm/internal/domain"
 	"caatsm/internal/infra/config"
 	loginfra "caatsm/internal/infra/log"
 	natsinfra "caatsm/internal/infra/nats"
 	postgresinfra "caatsm/internal/infra/postgres"
+	telemetryinfra "caatsm/internal/infra/telemetry"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/nats-io/nats.go"
@@ -80,8 +81,9 @@ func TestJetStreamToTimescaleFlow(t *testing.T) {
 		t.Fatalf("failed to init publisher: %v", err)
 	}
 
-	proc := app.NewMessageProcessor(parser.ProvideParser(), repo, publisher, logger)
-	consumer, err := natsinfra.ProvideConsumer(conn, js, proc, cfg, logger)
+	telemetryRecorder := telemetryinfra.NewNoop()
+	proc := app.NewMessageProcessor(parser.ProvideParser(), repo, publisher, telemetryRecorder, logger)
+	consumer, err := natsinfra.ProvideConsumer(conn, js, proc, cfg, telemetryRecorder, logger)
 	if err != nil {
 		t.Fatalf("failed to init consumer: %v", err)
 	}
@@ -131,7 +133,7 @@ NNNN`)
 			SELECT status FROM aviation.telegrams WHERE message_id = $1 LIMIT 1
 		`, "TMQ2526").Scan(&status)
 		if err == nil {
-			if status == string(model.MessageStatusParsed) {
+			if status == string(dto.MessageStatusParsed) {
 				return
 			}
 			t.Logf("message persisted with status=%s, waiting for parsed", status)
@@ -275,7 +277,7 @@ func buildTestConfig(natsURL, pgURL string) *config.Config {
 }
 
 func applyDDL(ctx context.Context, pool *pgxpool.Pool) error {
-	ddlPath := filepath.Join("..", "..", "internal", "repository", "telegrams.ddl")
+	ddlPath := filepath.Join("..", "..", "internal", "infra", "postgres", "telegrams.ddl")
 	bytes, err := os.ReadFile(ddlPath)
 	if err != nil {
 		return fmt.Errorf("read ddl: %w", err)

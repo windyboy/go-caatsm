@@ -1,9 +1,9 @@
 package nats
 
 import (
-	"caatsm/internal/adapter"
 	"caatsm/internal/infra/config"
-	"caatsm/internal/model"
+	"caatsm/internal/adapter/dto"
+	"caatsm/internal/port"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -25,7 +25,7 @@ func ProvidePublisher(
 	js nats.JetStreamContext,
 	cfg *config.Config,
 	logger *zap.Logger,
-) (adapter.Publisher, error) {
+) (port.Publisher, error) {
 	return &Publisher{
 		js:     js,
 		cfg:    cfg,
@@ -51,7 +51,7 @@ func (p *Publisher) Publish(message interface{}) error {
 	jsMsg.Data = messageBytes
 
 	switch typed := message.(type) {
-	case *model.ParsedTelegram:
+	case *dto.ParsedTelegram:
 		if typed != nil && typed.Uuid != "" {
 			jsMsg.Header.Set("Nats-Msg-Id", typed.Uuid)
 		} else {

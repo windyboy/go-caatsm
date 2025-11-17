@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"caatsm/internal/adapter"
 	"caatsm/internal/adapter/parser"
-	"caatsm/internal/model"
-	"caatsm/internal/observability/telemetry"
+	"caatsm/internal/adapter/dto"
+	"caatsm/internal/infra/telemetry"
+	"caatsm/internal/port"
 
 	"github.com/google/uuid"
 	. "github.com/onsi/ginkgo/v2"
@@ -52,7 +52,7 @@ var _ = Describe("MessageProcessor", func() {
 
 		It("preserves UUIDs and appends nats message id comment", func() {
 			originalUUID := uuid.NewString()
-			parserStub.value = &model.ParsedTelegram{Uuid: originalUUID, Parsed: true, Status: model.MessageStatusParsed}
+			parserStub.value = &dto.ParsedTelegram{Uuid: originalUUID, Parsed: true, Status: dto.MessageStatusParsed}
 
 			Expect(proc.Handle(ctx, []byte("payload"), "msg-123")).To(Succeed())
 
@@ -63,7 +63,7 @@ var _ = Describe("MessageProcessor", func() {
 		})
 
 		It("treats publisher failures as permanent and stores raw entries", func() {
-			parserStub.value = &model.ParsedTelegram{Parsed: true, Status: model.MessageStatusParsed}
+			parserStub.value = &dto.ParsedTelegram{Parsed: true, Status: dto.MessageStatusParsed}
 			pub.err = errors.New("publish failed")
 
 			err := proc.Handle(ctx, []byte("payload"), "id-3")
@@ -71,15 +71,15 @@ var _ = Describe("MessageProcessor", func() {
 			Expect(IsPermanent(err)).To(BeTrue())
 			Expect(repo.last()).NotTo(BeNil())
 			Expect(repo.rawCount()).To(Equal(1))
-			Expect(repo.lastRaw().Status).To(Equal(model.MessageStatusParsed))
+			Expect(repo.lastRaw().Status).To(Equal(dto.MessageStatusParsed))
 			Expect(repo.lastRaw().ErrorReason).To(ContainSubstring("publish failed"))
 		})
 
 		It("sets timestamps when missing", func() {
-			parserStub.value = &model.ParsedTelegram{
+			parserStub.value = &dto.ParsedTelegram{
 				Uuid:   uuid.NewString(),
 				Parsed: true,
-				Status: model.MessageStatusParsed,
+				Status: dto.MessageStatusParsed,
 			}
 			pub.err = nil
 
@@ -97,10 +97,10 @@ var _ = Describe("MessageProcessor", func() {
 		It("does not override provided timestamps", func() {
 			received := time.Now().Add(-2 * time.Minute)
 			parsedAt := time.Now().Add(-1 * time.Minute)
-			parserStub.value = &model.ParsedTelegram{
+			parserStub.value = &dto.ParsedTelegram{
 				Uuid:       uuid.NewString(),
 				Parsed:     true,
-				Status:     model.MessageStatusParsed,
+				Status:     dto.MessageStatusParsed,
 				ReceivedAt: received,
 				ParsedAt:   parsedAt,
 			}
@@ -114,10 +114,10 @@ var _ = Describe("MessageProcessor", func() {
 			core, logs := observer.New(zap.WarnLevel)
 			logger := zap.New(core)
 			parserStub = &stubParser{
-				value: &model.ParsedTelegram{
+				value: &dto.ParsedTelegram{
 					Content:     strings.Repeat("x", 1024),
 					Parsed:      false,
-					Status:      model.MessageStatusBodyError,
+					Status:      dto.MessageStatusBodyError,
 					ErrorReason: "parse failure",
 				},
 				err: errors.New("parse failure"),
@@ -145,27 +145,27 @@ var _ = Describe("MessageProcessor", func() {
 	})
 })
 
-func newTestProcessor(p parser.Parser, repo adapter.Repository, pub adapter.Publisher) *MessageProcessor {
+func newTestProcessor(p parser.Parser, repo port.Repository, pub port.Publisher) *MessageProcessor {
 	return NewMessageProcessor(p, repo, pub, telemetry.NewNoop(), zap.NewNop())
 }
 
 type stubParser struct {
-	value *model.ParsedTelegram
+	value *dto.ParsedTelegram
 	err   error
 }
 
-func (s *stubParser) Parse(rawText string) (*model.ParsedTelegram, error) {
+func (s *stubParser) Parse(rawText string) (*dto.ParsedTelegram, error) {
 	return s.value, s.err
 }
 
 type stubRepository struct {
-	inserted []*model.ParsedTelegram
-	raw      []*model.ParsedTelegram
+	inserted []*dto.ParsedTelegram
+	raw      []*dto.ParsedTelegram
 	err      error
 	rawErr   error
 }
 
-func (s *stubRepository) InsertOne(ctx context.Context, msg *model.ParsedTelegram) error {
+func (s *stubRepository) InsertOne(ctx context.Context, msg *dto.ParsedTelegram) error {
 	if s.err != nil {
 		return s.err
 	}
@@ -173,11 +173,11 @@ func (s *stubRepository) InsertOne(ctx context.Context, msg *model.ParsedTelegra
 	return nil
 }
 
-func (s *stubRepository) InsertBatch(ctx context.Context, msgs []*model.ParsedTelegram) error {
+func (s *stubRepository) InsertBatch(ctx context.Context, msgs []*dto.ParsedTelegram) error {
 	return errors.New("not implemented")
 }
 
-func (s *stubRepository) InsertRaw(ctx context.Context, msg *model.ParsedTelegram) error {
+func (s *stubRepository) InsertRaw(ctx context.Context, msg *dto.ParsedTelegram) error {
 	if s.rawErr != nil {
 		return s.rawErr
 	}
@@ -185,14 +185,14 @@ func (s *stubRepository) InsertRaw(ctx context.Context, msg *model.ParsedTelegra
 	return nil
 }
 
-func (s *stubRepository) last() *model.ParsedTelegram {
+func (s *stubRepository) last() *dto.ParsedTelegram {
 	if len(s.inserted) == 0 {
 		return nil
 	}
 	return s.inserted[len(s.inserted)-1]
 }
 
-func (s *stubRepository) lastRaw() *model.ParsedTelegram {
+func (s *stubRepository) lastRaw() *dto.ParsedTelegram {
 	if len(s.raw) == 0 {
 		return nil
 	}

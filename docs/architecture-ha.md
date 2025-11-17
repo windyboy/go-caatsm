@@ -12,7 +12,7 @@
 
 - **Receiver service (`caatsm`)**:
   - NATS JetStream **pull consumer** (`internal/infra/nats/consumer.go`).  
-  - Telegram parser and domain model (`internal/app`, `internal/parsers`, `internal/domain`).  
+  - Telegram parser and domain model (`internal/app`, `internal/adapter/parser`, `internal/domain`).  
   - PostgreSQL repository (`internal/infra/postgres`).  
   - Monitoring/observability server (`internal/infra/monitoring`).
 

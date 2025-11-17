@@ -12,7 +12,7 @@ docker compose -f docker-compose.dev.yml up -d postgres nats nats-box
 
 > Development mode defaults to `nats.mode = "core"`, so the processor consumes directly from the configured subject (`subscription.topic`). **However, the publisher always targets JetStream for deduplicated fan-out, so the provided Taskfile (and most examples below) override the mode to `jetstream`.** If you truly need core mode, set `CAATSM_NATS_MODE=core` manually and ensure any publishers use core subjects.
 
-- `postgres` seeds the `aviation` schema using `internal/repository/telegrams.ddl` and exposes port `5432`.
+- `postgres` seeds the `aviation` schema using `internal/infra/postgres/telegrams.ddl` and exposes port `5432`.
 - `nats` enables JetStream with client port `4222` and monitoring/UI on `8222`.
 - `nats-box` provides a toolbox container (`docker compose exec nats-box sh`) for publishing test messages or inspecting JetStream.
 - `nats-exporter` scrapes the monitoring endpoints (`/varz`, `/connz`, `/routez`, `/subz`) and exposes them as Prometheus metrics on port `7777` for the Grafana dashboards.
@@ -62,7 +62,7 @@ Use these tasks if you prefer a one-command workflow instead of invoking `docker
 
 ## Publishing Sample Telegrams
 
-Use the helper CLI in `cmd/seed-telegrams` to push realistic payloads onto NATS (mirrors the fixtures in `internal/parsers/aviation_parser_test.go`):
+Use the helper CLI in `cmd/seed-telegrams` to push realistic payloads onto NATS (mirrors the fixtures in `internal/adapter/parser/aviation_parser_test.go`):
 
 ```bash
 # Insert rows into aviation.telegrams_raw and publish to NATS simultaneously
@@ -149,7 +149,7 @@ Services:
 
 ## Troubleshooting
 
-- **PostgreSQL init errors**: ensure `internal/repository/telegrams.ddl` is valid SQL and the `postgres-data` volume is removed (`docker volume rm go-caatsm_postgres-data`) before restarting.
+- **PostgreSQL init errors**: ensure `internal/infra/postgres/telegrams.ddl` is valid SQL and the `postgres-data` volume is removed (`docker volume rm go-caatsm_postgres-data`) before restarting.
 - **NATS connection failures**: confirm ports `4222/8222` are free and JetStream is enabled; use `docker compose logs nats`.
 - **Prometheus scrape failures**: verify endpoints listed in `configs/prometheus.dev.yml` match the service names defined in Docker Compose.
 - **Grafana provisioning issues**: check container logs (`docker compose logs grafana`) to ensure the datasources file was read; correct file permissions or YAML formatting if provisioning is skipped.

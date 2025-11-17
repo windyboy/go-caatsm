@@ -1,11 +1,11 @@
 package app
 
 import (
-	"caatsm/internal/adapter"
 	"caatsm/internal/adapter/parser"
-	"caatsm/internal/model"
-	obslogging "caatsm/internal/observability/logging"
-	"caatsm/internal/observability/telemetry"
+	"caatsm/internal/adapter/dto"
+	"caatsm/internal/infra/log"
+	"caatsm/internal/infra/telemetry"
+	"caatsm/internal/port"
 	"context"
 	"fmt"
 	"strings"
@@ -21,15 +21,15 @@ import (
 // MessageProcessor handles message processing
 type MessageProcessor struct {
 	parser     parser.Parser
-	repository adapter.Repository
-	publisher  adapter.Publisher
+	repository port.Repository
+	publisher  port.Publisher
 	logger     *zap.Logger
 	telemetry  telemetry.Recorder
 }
 
 // ProcessingStatus represents the outcome of the processing pipeline
 // (persistence, publishing, etc.), independent from the parsing status
-// captured in model.MessageStatus.
+// captured in dto.MessageStatus.
 type ProcessingStatus string
 
 const (
@@ -41,8 +41,8 @@ const (
 // NewMessageProcessor creates a new message processor
 func NewMessageProcessor(
 	parser parser.Parser,
-	repository adapter.Repository,
-	publisher adapter.Publisher,
+	repository port.Repository,
+	publisher port.Publisher,
 	rec telemetry.Recorder,
 	logger *zap.Logger,
 ) *MessageProcessor {
@@ -70,10 +70,10 @@ func (p *MessageProcessor) Handle(ctx context.Context, raw []byte, msgID string)
 
 	parsed, parseErr := p.parser.Parse(string(raw))
 	if parsed == nil {
-		parsed = model.NewParsedTelegram()
+		parsed = dto.NewParsedTelegram()
 		parsed.Content = string(raw)
 		parsed.ErrorReason = "parser returned nil"
-		parsed.Status = model.MessageStatusBodyError
+		parsed.Status = dto.MessageStatusBodyError
 		parseErr = fmt.Errorf("parser returned nil")
 	}
 
@@ -90,11 +90,11 @@ func (p *MessageProcessor) Handle(ctx context.Context, raw []byte, msgID string)
 	if parsed.ParsedAt.IsZero() {
 		parsed.ParsedAt = time.Now()
 	}
-	if parsed.Status == model.MessageStatusUnknown {
+	if parsed.Status == dto.MessageStatusUnknown {
 		if parseErr == nil {
-			parsed.Status = model.MessageStatusParsed
+			parsed.Status = dto.MessageStatusParsed
 		} else {
-			parsed.Status = model.MessageStatusBodyError
+			parsed.Status = dto.MessageStatusBodyError
 		}
 	}
 
@@ -105,7 +105,7 @@ func (p *MessageProcessor) Handle(ctx context.Context, raw []byte, msgID string)
 		attribute.String("telegram.status", string(parsed.Status)),
 	)
 
-	msgLogger := obslogging.WithMessageContext(p.logger, obslogging.MessageFields{
+	msgLogger := log.WithMessageContext(p.logger, log.MessageFields{
 		Service:        "caatsm-processor",
 		TransportMsgID: msgID,
 		BusinessMsgID:  parsed.MessageID,
@@ -191,7 +191,7 @@ func (p *MessageProcessor) Handle(ctx context.Context, raw []byte, msgID string)
 	return nil
 }
 
-func (p *MessageProcessor) persistRaw(ctx context.Context, msg *model.ParsedTelegram) {
+func (p *MessageProcessor) persistRaw(ctx context.Context, msg *dto.ParsedTelegram) {
 	if msg == nil || p.repository == nil {
 		return
 	}

@@ -83,5 +83,5 @@ NeedDispatch: false.
 */
 
 // NOTE: Parsed telegram pipeline structures (ParsedTelegram, MessageStatus, etc.)
-// have been moved to the internal/model package to keep the domain layer focused
+// have been moved to the internal/adapter/dto package to keep the domain layer focused
 // purely on aviation business concepts (FPL, DEP, ARR, etc.).

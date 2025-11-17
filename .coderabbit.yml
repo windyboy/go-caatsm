@@ -1,0 +1,63 @@
+version: 1
+
+reviews:
+  auto_review:
+    enabled: true
+
+  auto_comment:
+    enabled: true
+
+  auto_approve:
+    enabled: false
+
+  profiles:
+    - profile: correctness
+      enabled: true
+    - profile: maintainability
+      enabled: true
+    - profile: security
+      enabled: true
+    - profile: performance
+      enabled: true
+
+  tools:
+    golangci-lint:
+      enabled: true
+
+global:
+  language: "zh"
+  tone_instructions: >
+    请以专业、简洁、工程化方式进行审查。
+    特别关注 Go 并发安全、context 使用、错误处理规范、资源泄漏。
+    对 NATS JetStream 消费者、pgx 连接池、数据库事务、Echo 处理器的实现进行严格检查。
+    审查 Clean Architecture 层之间的依赖是否正确。
+
+paths:
+  include:
+    - "cmd/**"
+    - "internal/**"
+    - "pkg/**"
+
+  exclude:
+    - "vendor/**"
+    - "**/*.generated.go"
+    - "**/mocks/**"
+    - "scripts/**"
+    - "deploy/**"
+    - "docs/**"
+    - "public/**"
+    - "assets/**"
+    - "web/**"
+    - "examples/**"
+    - "testdata/**"
+
+pull_requests:
+  disable_review_on_draft: true
+
+summaries:
+  enabled: true
+  format: markdown
+
+commit_messages:
+  guidance: true
+  enhanced: true

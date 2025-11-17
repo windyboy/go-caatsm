@@ -10,7 +10,7 @@ services:
       - "5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
-      - ./internal/repository/telegrams.ddl:/docker-entrypoint-initdb.d/01-telegrams.sql:ro
+      - ./internal/infra/postgres/telegrams.ddl:/docker-entrypoint-initdb.d/01-telegrams.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
@@ -31,7 +31,7 @@ services:
         psql --host=postgres --username=caatsm --dbname=aviation --file=/tmp/telegrams.ddl
       "
     volumes:
-      - ./internal/repository/telegrams.ddl:/tmp/telegrams.ddl:ro
+      - ./internal/infra/postgres/telegrams.ddl:/tmp/telegrams.ddl:ro
     restart: "no"
     networks:
       - devnet

@@ -3,7 +3,7 @@ package monitoring
 import (
 	"caatsm/internal/infra/buildinfo"
 	"caatsm/internal/infra/config"
-	obsmetrics "caatsm/internal/observability/metrics"
+	obsmetrics "caatsm/internal/infra/metrics"
 	"context"
 	"encoding/json"
 	"errors"

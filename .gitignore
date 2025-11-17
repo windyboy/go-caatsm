@@ -50,3 +50,13 @@ go.sum
 # test report
 *.report
 coverage.*
+coverage.html
+coverprofile.out
+
+# Generated files
+*_gen.go
+*.pb.go
+pkg/di/wire_gen.go
+
+# Build artifacts
+main

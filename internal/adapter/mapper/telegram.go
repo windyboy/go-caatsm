@@ -1,7 +1,7 @@
 package mapper
 
 import (
-	"caatsm/internal/model"
+	"caatsm/internal/adapter/dto"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -18,7 +18,7 @@ func NewTelegramMapper() *TelegramMapper {
 }
 
 // ToDBRow converts a ParsedTelegram to a database row representation
-func (m *TelegramMapper) ToDBRow(msg *model.ParsedTelegram) ([]interface{}, error) {
+func (m *TelegramMapper) ToDBRow(msg *dto.ParsedTelegram) ([]interface{}, error) {
 	// Parse UUID
 	var msgUUID uuid.UUID
 	var err error
@@ -45,7 +45,7 @@ func (m *TelegramMapper) ToDBRow(msg *model.ParsedTelegram) ([]interface{}, erro
 
 	status := msg.Status
 	if status == "" {
-		status = model.MessageStatusUnknown
+		status = dto.MessageStatusUnknown
 	}
 
 	return []interface{}{
@@ -70,7 +70,7 @@ func (m *TelegramMapper) ToDBRow(msg *model.ParsedTelegram) ([]interface{}, erro
 }
 
 // FromDBRow converts a database row to a ParsedTelegram
-func (m *TelegramMapper) FromDBRow(row []interface{}) (*model.ParsedTelegram, error) {
+func (m *TelegramMapper) FromDBRow(row []interface{}) (*dto.ParsedTelegram, error) {
 	const expectedColumns = 17
 	if len(row) < expectedColumns {
 		return nil, fmt.Errorf("expected %d columns, got %d", expectedColumns, len(row))
@@ -128,12 +128,12 @@ func (m *TelegramMapper) FromDBRow(row []interface{}) (*model.ParsedTelegram, er
 		}
 	}
 
-	status := model.MessageStatusUnknown
+	status := dto.MessageStatusUnknown
 	if rawStatus := toString(row[11]); rawStatus != "" {
-		status = model.MessageStatus(rawStatus)
+		status = dto.MessageStatus(rawStatus)
 	}
 
-	return &model.ParsedTelegram{
+	return &dto.ParsedTelegram{
 		Uuid:               msgUUID.String(),
 		MessageID:          toString(row[1]),
 		DateTime:           toString(row[2]),

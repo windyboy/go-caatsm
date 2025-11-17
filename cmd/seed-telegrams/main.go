@@ -260,6 +260,10 @@ func sendTelegram(iteration int, cfg SeedConfig, categories []string, statuses [
 		blob, _ := json.MarshalIndent(payload, "", "  ")
 		fmt.Println(string(blob))
 		fmt.Println("---")
+		// Still call publisher in DryRun mode for test purposes
+		if publisher != nil {
+			return publisher(payload)
+		}
 		return nil
 	}
 

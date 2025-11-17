@@ -3,9 +3,9 @@ package nats
 import (
 	"caatsm/internal/app"
 	"caatsm/internal/infra/config"
-	obslogging "caatsm/internal/observability/logging"
-	obsmetrics "caatsm/internal/observability/metrics"
-	"caatsm/internal/observability/telemetry"
+	"caatsm/internal/infra/log"
+	obsmetrics "caatsm/internal/infra/metrics"
+	"caatsm/internal/infra/telemetry"
 	"context"
 	"encoding/json"
 	"errors"
@@ -792,7 +792,7 @@ func (c *Consumer) processMessage(ctx context.Context, msg *nats.Msg) error {
 		)
 	}
 
-	msgLogger := obslogging.WithMessageContext(c.logger, obslogging.MessageFields{
+	msgLogger := log.WithMessageContext(c.logger, log.MessageFields{
 		Service:        "caatsm-consumer",
 		TransportMsgID: msgID,
 		Stream:         c.streamName,

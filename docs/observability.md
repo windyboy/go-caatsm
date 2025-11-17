@@ -177,7 +177,7 @@ Tracing is configured via the `telemetry` section:
 The receiver reports two complementary sets of metrics:
 
 - **Prometheus metrics via `/metrics`**  
-  Implemented in `internal/observability/metrics`, covering:
+  Implemented in `internal/infra/metrics`, covering:
   - End-to-end message handling (`caatsm_messages_total`,
     `caatsm_handle_latency_seconds`, `caatsm_retries_total`)
   - DB activity (`caatsm_db_queries_total`,
@@ -223,7 +223,7 @@ Important attributes:
 
 ### Structured Logging Contract
 
-Logging is done with Zap. The `internal/observability/logging` package standardises fields via `MessageFields`:
+Logging is done with Zap. The `internal/infra/log` package standardises fields via `MessageFields`:
 
 - `service` – logical component (`caatsm-consumer`, `caatsm-processor` etc.).  
 - `transport_msg_id` – NATS/envelope message ID (derived from `Nats-Msg-Id` or JetStream sequence).  

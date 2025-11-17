@@ -14,7 +14,7 @@ import (
 	"caatsm/internal/infra/monitoring"
 	"caatsm/internal/infra/nats"
 	"caatsm/internal/infra/postgres"
-	"caatsm/internal/observability/telemetry"
+	"caatsm/internal/infra/telemetry"
 	"github.com/google/wire"
 )
 

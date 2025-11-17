@@ -108,6 +108,23 @@ tasks:
       - echo "Linting code..."
       - golangci-lint run ./...
 
+  wire:
+    desc: Generate wire dependency injection code
+    cmds:
+      - |
+        if ! command -v wire >/dev/null; then
+          echo "Install wire: go install github.com/google/wire/cmd/wire@latest"
+          exit 1
+        fi
+      - echo "Generating wire code..."
+      - wire ./pkg/di
+
+  generate:
+    desc: Generate all code (wire, etc.)
+    cmds:
+      - task: wire
+      - echo "Code generation complete"
+
   deps:
     desc: Sync go.mod / go.sum
     cmds:

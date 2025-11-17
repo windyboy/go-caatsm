@@ -11,20 +11,25 @@ This project follows Clean Architecture principles with clear separation of conc
 ```
 /cmd/main/main.go              # Application entry point
 /internal
-    /app                       # Application layer (business logic orchestration)
-        processor.go           # Message processor
-    /domain                    # Domain models (pure Go types, no external dependencies)
-        aviation.go            # ParsedMessage and related types
-    /adapter                   # Adapter layer (interfaces and implementations)
-        /parser                # Message parsing adapters
-        /mapper                # Data mapping (domain ↔ infrastructure)
+    /port                      # Port layer (interfaces/contracts)
         repository.go          # Repository interface
         publisher.go           # Publisher interface
+    /domain                    # Domain models (pure Go types, no external dependencies)
+        aviation.go            # Aviation domain types (FPL, DEP, ARR, etc.)
+    /app                       # Application layer (business logic orchestration)
+        processor.go           # Message processor
+    /adapter                   # Adapter layer (implementations)
+        /parser                # Message parsing adapters
+        /mapper                # Data mapping (domain ↔ infrastructure)
+        /dto                   # Data Transfer Objects
+            telegram.go        # ParsedTelegram and MessageStatus
     /infra                     # Infrastructure layer
         /config                # Configuration management (Koanf)
         /nats                  # NATS JetStream client
         /postgres              # PostgreSQL repository (pgx)
         /log                   # Logging (Zap)
+        /metrics               # Prometheus metrics
+        /telemetry             # OpenTelemetry tracing
 /pkg/di                        # Dependency injection (Wire)
 ```
 
@@ -59,7 +64,7 @@ go mod download
 
 3. Set up PostgreSQL database:
 ```bash
-psql -U postgres -f internal/repository/telegrams.ddl
+psql -U postgres -f internal/infra/postgres/telegrams.ddl
 ```
 
 4. Configure the application:
@@ -246,7 +251,7 @@ The processor exposes three complementary observability surfaces:
    - Application code records these via a thin `telemetry.Recorder` abstraction, which fans out to OTEL and Prometheus backends as configured.
 
 2. **Prometheus metrics (`/metrics`)**
-   - Implemented in `internal/observability/metrics` and considered the primary source for SRE PromQL/SLOs.
+   - Implemented in `internal/infra/metrics` and considered the primary source for SRE PromQL/SLOs.
    - Key metric families:
      - `caatsm_messages_total{stream,consumer,result}` – per-stream/consumer throughput and results.
      - `caatsm_handle_latency_seconds_bucket{stream,consumer}` – end-to-end handling latency from NATS receive to handler completion.
@@ -541,7 +546,7 @@ Flight plan messages contain detailed flight planning information.
 生成的电报遵循与解析器相同的格式约定：
 
 - ARR / DEP：支持无 SSR、合法简单 SSR，以及刻意构造为“当前正则无法解析”的复杂 SSR。
-- CNL / DLA：与 `internal/parsers/aviation_parser_test.go` 中的测试样例同一类结构。
+- CNL / DLA：与 `internal/adapter/parser/aviation_parser_test.go` 中的测试样例同一类结构。
 - FPL：生成包含多行 route 与 `OtherInfo` 字段的完整 FPL，`OtherInfo` 中会随机组合 `PBN/`, `NAV/`, `REG/`, `EET/`, `SEL/`, `PER/`, `RIF/`, `RMK/` 等片段，以覆盖解析逻辑。
 
 ### 命令行参数
@@ -697,7 +702,7 @@ type ParsedMessage struct {
 
 ## Database Schema
 
-The application uses the `aviation.telegrams` table. See `internal/repository/telegrams.ddl` for the schema definition.
+The application uses the `aviation.telegrams` table. See `internal/infra/postgres/telegrams.ddl` for the schema definition.
 
 Key fields:
 - `uuid`: Primary key (UUID)

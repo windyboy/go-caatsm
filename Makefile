@@ -68,6 +68,16 @@ fmt: ## Format Go code
 	@echo "Formatting code..."
 	@go fmt ./...
 
+.PHONY: wire
+wire: ## Generate wire dependency injection code
+	@command -v wire >/dev/null || (echo "Please install wire (go install github.com/google/wire/cmd/wire@latest)"; exit 1)
+	@echo "Generating wire code..."
+	@wire ./pkg/di
+
+.PHONY: generate
+generate: wire ## Generate all code (wire, etc.)
+	@echo "Code generation complete"
+
 .PHONY: deps
 deps: ## Sync go.mod / go.sum
 	@echo "Tidying go modules..."
