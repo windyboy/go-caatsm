@@ -155,7 +155,7 @@ func (parser *BodyParser) createBodyData(data map[string]string) (string, interf
 		}, nil
 	case CategoryCancellation:
 		return category, &domain.CNL{
-			Category:           data[category],
+			Category:           data[Category],
 			AircraftID:         data[FlightNumber],
 			DepartureAirport:   data[DepartureCode],
 			DestinationAirport: data[ArrivalCode],
@@ -358,12 +358,27 @@ func parseRemainingLines(lines []string) (string, string, string, string) {
 			switch {
 			case line == EndHeaderMarker:
 			case strings.HasPrefix(line, "."):
+				// Validate if dot-prefixed line matches originator format: .ORIGINATOR_CODE YYMMDD
+				// Originator code should be uppercase letters, date/time should be digits
 				originatorInfo := strings.Fields(line[1:])
 				if len(originatorInfo) >= 2 {
-					originator = originatorInfo[0]
-					originatorDateTime = originatorInfo[1]
+					// Check if first token is all uppercase letters and second is all digits
+					firstToken := originatorInfo[0]
+					secondToken := originatorInfo[1]
+					if isAllUppercaseLetters(firstToken) && isAllDigits(secondToken) {
+						originator = firstToken
+						originatorDateTime = secondToken
+						headerEnded = true
+					} else {
+						// Doesn't match originator format, treat as body content
+						headerEnded = true
+						bodyAndFooter.WriteString(line + "\n")
+					}
+				} else {
+					// Not enough tokens for originator format, treat as body content
+					headerEnded = true
+					bodyAndFooter.WriteString(line + "\n")
 				}
-				headerEnded = true
 			case strings.HasPrefix(line, BeginPartMarker) || strings.HasPrefix(line, "("):
 				headerEnded = true
 				if strings.Index(line, "NNNN") > 0 {
@@ -391,6 +406,32 @@ func getOriginator(line string) (string, string) {
 	}
 	zap.S().Warnf("invalid originator line format: %s", line)
 	return "", ""
+}
+
+// isAllUppercaseLetters checks if a string contains only uppercase letters
+func isAllUppercaseLetters(s string) bool {
+	if len(s) == 0 {
+		return false
+	}
+	for _, r := range s {
+		if r < 'A' || r > 'Z' {
+			return false
+		}
+	}
+	return true
+}
+
+// isAllDigits checks if a string contains only digits
+func isAllDigits(s string) bool {
+	if len(s) == 0 {
+		return false
+	}
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
 
 func parseOther(text string) map[string]string {

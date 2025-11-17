@@ -6,14 +6,19 @@ scrape_configs:
   - job_name: "otel-collector"
     static_configs:
       - targets:
-          - "otel-collector:8888"
+          - "otel-collector:8889"
   - job_name: "nats-exporter"
     static_configs:
       - targets:
           - "nats-exporter:7777"
 
   - job_name: "caatsm-receiver"
-    static_configs:
-      - targets:
-        - 172.23.189.12:2112
+    file_sd_configs:
+      # CAATSM_MONITORING_ADDR is set via environment variable in docker-compose
+      # Default: host.docker.internal:2112 (for Docker Desktop on Mac/Windows)
+      # Can be overridden: e.g., 10.16.66.236:2112 or 172.17.0.1:2112
+      # Target file is dynamically generated in docker-compose entrypoint
+      - files:
+          - "/etc/prometheus/targets/caatsm-receiver.json"
+        refresh_interval: 5s
 

@@ -18,9 +18,14 @@ build: ## Build the receiver binary
 run: run-dev ## Alias for run-dev
 
 .PHONY: run-dev
-run-dev: build ## Run the receiver in development mode (uses core NATS mode by default)
+run-dev: build ## Run the receiver in development mode (uses core NATS mode by default). Use MONITORING_ADDR=ip:port to set monitoring address
 	@echo "Running receiver in development mode (NATS mode: core by default)..."
-	@GO_ENV=dev $(BINARY) listen
+	@if [ -n "$(MONITORING_ADDR)" ]; then \
+		echo "Monitoring address: $(MONITORING_ADDR)"; \
+		GO_ENV=dev $(BINARY) listen --monitoring-addr $(MONITORING_ADDR); \
+	else \
+		GO_ENV=dev $(BINARY) listen; \
+	fi
 
 .PHONY: run-prod
 run-prod: build ## Run the receiver in production mode (requires config.prod.toml and JetStream mode)
@@ -38,9 +43,14 @@ run-test: build ## Run the receiver in test mode
 	@GO_ENV=test $(BINARY) listen
 
 .PHONY: run-local
-run-local: ## Run receiver directly via go run (uses core NATS mode by default in dev)
+run-local: ## Run receiver directly via go run (uses core NATS mode by default in dev). Use MONITORING_ADDR=ip:port to set monitoring address
 	@echo "Running receiver via go run (GO_ENV=$(GO_ENV), NATS mode: core by default in dev)..."
-	@GO_ENV=$(GO_ENV) go run $(CMD) listen
+	@if [ -n "$(MONITORING_ADDR)" ]; then \
+		echo "Monitoring address: $(MONITORING_ADDR)"; \
+		GO_ENV=$(GO_ENV) go run $(CMD) listen --monitoring-addr $(MONITORING_ADDR); \
+	else \
+		GO_ENV=$(GO_ENV) go run $(CMD) listen; \
+	fi
 
 .PHONY: test
 test: ## Run unit tests (Ginkgo, verbose)

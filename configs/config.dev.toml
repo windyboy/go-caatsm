@@ -77,7 +77,7 @@ close = "10s"
 ack_wait = "5s"
 
 [postgres]
-url = "postgres://user:password@localhost:5432/aviation?sslmode=disable"
+url = "postgres://caatsm:caatsm@localhost:5432/aviation?sslmode=disable"
 max_conns = 10
 min_conns = 2
 

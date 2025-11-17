@@ -243,6 +243,7 @@ NNNN`
 				Expect(category).To(Equal("CNL"))
 				Expect(parsedBody).To(BeAssignableToTypeOf(&domain.CNL{}))
 				cnlMessage := parsedBody.(*domain.CNL)
+				Expect(cnlMessage.Category).To(Equal("CNL"))
 				Expect(cnlMessage.AircraftID).To(Equal("YZR7979"))
 			})
 		})

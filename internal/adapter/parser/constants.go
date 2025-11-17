@@ -69,4 +69,5 @@ var (
 	eetPattern         = regexp.MustCompile(`(?s)(-?EET\/(?P<eet>(?:[A-Z]{4}\d{4}\s*)+))`)
 	performancePattern = regexp.MustCompile(`(?s)-?PER\/(?P<per>\w)`)
 	reroutePattern     = regexp.MustCompile(`(?m)RIF\/(?P<rif>.*)[A-Z]{3}\/`)
+	cancelledPattern   = regexp.MustCompile(`\bCNL\b`)
 )

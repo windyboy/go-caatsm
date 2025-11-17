@@ -24,13 +24,22 @@ tasks:
       - task: run-dev
 
   run-dev:
-    desc: Run the receiver in development mode (uses core NATS mode by default)
+    desc: 'Run the receiver in development mode (uses core NATS mode by default). Use MONITORING_ADDR=ip:port to set monitoring address'
+    vars:
+      MONITORING_ADDR:
+        sh: echo "${MONITORING_ADDR:-}"
     deps:
       - build
     cmds:
       - |
         echo "Running receiver in development mode (NATS mode: core by default)..."
-      - GO_ENV=dev {{.binary}} listen
+      - |
+        cmd="GO_ENV=dev {{.binary}} listen"
+        if [ -n "${MONITORING_ADDR:-}" ]; then
+          echo "Monitoring address: ${MONITORING_ADDR}"
+          cmd="$cmd --monitoring-addr ${MONITORING_ADDR}"
+        fi
+        eval "$cmd"
 
   run-prod:
     desc: Run the receiver in production mode (requires config.prod.toml and JetStream mode)
@@ -55,12 +64,20 @@ tasks:
       - GO_ENV=test {{.binary}} listen
 
   run-local:
-    desc: Run receiver via go run (default GO_ENV=dev, uses core NATS mode by default)
+    desc: 'Run receiver via go run (default GO_ENV=dev, uses core NATS mode by default). Use MONITORING_ADDR=ip:port to set monitoring address'
+    vars:
+      MONITORING_ADDR:
+        sh: echo "${MONITORING_ADDR:-}"
     cmds:
       - |
         echo "Running receiver via go run (GO_ENV=${GO_ENV:-dev}, NATS mode: core by default in dev)..."
       - |
-        GO_ENV=${GO_ENV:-dev} go run {{.cmd}} listen
+        cmd="GO_ENV=${GO_ENV:-dev} go run {{.cmd}} listen"
+        if [ -n "${MONITORING_ADDR:-}" ]; then
+          echo "Monitoring address: ${MONITORING_ADDR}"
+          cmd="$cmd --monitoring-addr ${MONITORING_ADDR}"
+        fi
+        eval "$cmd"
 
   test:
     desc: Run Ginkgo unit test suites (verbose)
@@ -160,11 +177,21 @@ tasks:
       - rm -rf {{.build_dir}} coverage
 
   up:
-    desc: Start TimescaleDB + NATS dev stack (docker compose)
+    desc: 'Start TimescaleDB + NATS dev stack (docker compose). Use MONITORING_ADDR=ip:port to set Prometheus scrape target'
+    vars:
+      MONITORING_ADDR:
+        sh: echo "${MONITORING_ADDR:-host.docker.internal:2112}"
     cmds:
       - echo "Starting dev infrastructure..."
-      - docker compose -f docker-compose.dev.yml up -d postgres nats nats-box nats-exporter
-      - docker compose -f docker-compose.dev.yml up -d otel-collector jaeger prometheus grafana
+      - |
+        monitoring_addr="${MONITORING_ADDR:-host.docker.internal:2112}"
+        echo "Prometheus will scrape caatsm-receiver at: ${monitoring_addr}"
+        CAATSM_MONITORING_ADDR="${monitoring_addr}" \
+        docker compose -f docker-compose.dev.yml up -d postgres nats nats-box nats-exporter
+      - |
+        monitoring_addr="${MONITORING_ADDR:-host.docker.internal:2112}"
+        CAATSM_MONITORING_ADDR="${monitoring_addr}" \
+        docker compose -f docker-compose.dev.yml up -d otel-collector jaeger prometheus grafana
 
   down:
     desc: Stop dev compose stack and remove containers
@@ -173,14 +200,27 @@ tasks:
       - docker compose -f docker-compose.dev.yml down -v
 
   dev-run-compose:
-    desc: Run receiver inside docker-compose dev stack
+    desc: 'Run receiver inside docker-compose dev stack. Use MONITORING_ADDR=ip:port to set Prometheus scrape target'
+    vars:
+      MONITORING_ADDR:
+        sh: echo "${MONITORING_ADDR:-host.docker.internal:2112}"
     cmds:
       - echo "Starting dev stack including caatsm-receiver..."
-      - docker compose -f docker-compose.dev.yml up -d postgres nats nats-box nats-exporter
-      - docker compose -f docker-compose.dev.yml up -d otel-collector jaeger prometheus grafana caatsm-receiver
+      - |
+        monitoring_addr="${MONITORING_ADDR:-host.docker.internal:2112}"
+        echo "Prometheus will scrape caatsm-receiver at: ${monitoring_addr}"
+        CAATSM_MONITORING_ADDR="${monitoring_addr}" \
+        docker compose -f docker-compose.dev.yml up -d postgres nats nats-box nats-exporter
+      - |
+        monitoring_addr="${MONITORING_ADDR:-host.docker.internal:2112}"
+        CAATSM_MONITORING_ADDR="${monitoring_addr}" \
+        docker compose -f docker-compose.dev.yml up -d otel-collector jaeger prometheus grafana caatsm-receiver
 
   dev-run:
-    desc: Run receiver locally against dev stack
+    desc: 'Run receiver locally against dev stack. Use MONITORING_ADDR=ip:port to set monitoring address (default: 0.0.0.0:2112)'
+    vars:
+      MONITORING_ADDR:
+        sh: echo "${MONITORING_ADDR:-0.0.0.0:2112}"
     deps:
       - up
     env:
@@ -190,7 +230,6 @@ tasks:
       CAATSM_TELEMETRY_ENABLED: "true"
       CAATSM_TELEMETRY_ENDPOINT: localhost:4318
       CAATSM_TELEMETRY_INSECURE: "true"
-      CAATSM_MONITORING_ADDR: 0.0.0.0:2112
       CAATSM_MONITORING_ENABLE_METRICS: "true"
       CAATSM_MONITORING_ENABLE_HEALTH: "true"
       GO_ENV: dev
@@ -198,9 +237,12 @@ tasks:
       - |
         echo "Ensuring observability stack is healthy (Jaeger @ http://localhost:16686)"
         docker compose -f docker-compose.dev.yml ps jaeger otel-collector >/dev/null
-        echo "Running receiver with telemetry (mode=${CAATSM_NATS_MODE:-core})"
+        monitoring_addr="${MONITORING_ADDR:-0.0.0.0:2112}"
+        echo "Running receiver with telemetry (mode=${CAATSM_NATS_MODE:-core}, monitoring=${monitoring_addr})"
+        echo "Note: Ensure Prometheus is configured to scrape ${monitoring_addr}"
+        echo "      If using a different IP, restart Prometheus with: MONITORING_ADDR=${monitoring_addr} task up"
         CAATSM_NATS_MODE=${CAATSM_NATS_MODE:-core} \
-        go run ./cmd/main listen
+        go run ./cmd/main listen --monitoring-addr "${monitoring_addr}"
 
   seed:
     desc: Generate sample telegrams (publishes to Core NATS by default, compatible with dev mode)

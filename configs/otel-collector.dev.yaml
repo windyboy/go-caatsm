@@ -9,12 +9,12 @@ receivers:
 exporters:
   logging:
     loglevel: info
-  otlp/jaeger:
-    endpoint: jaeger:4317
+  otlphttp/jaeger:
+    endpoint: http://jaeger:4318
     tls:
       insecure: true
   prometheus:
-    endpoint: "0.0.0.0:8888"
+    endpoint: "0.0.0.0:8889"
     const_labels:
       source: "otel-collector"
 
@@ -22,7 +22,7 @@ service:
   pipelines:
     traces:
       receivers: [otlp]
-      exporters: [logging, otlp/jaeger]
+      exporters: [logging, otlphttp/jaeger]
     metrics:
       receivers: [otlp]
       exporters: [logging, prometheus]

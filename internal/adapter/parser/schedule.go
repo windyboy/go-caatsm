@@ -53,7 +53,7 @@ func ParseWithDef(line string, parserDef *LineParser) *domain.ScheduleLine {
 	var flightSchedule = &domain.ScheduleLine{
 		Reference: line,
 	}
-	if strings.Contains(line, CANCELLED) {
+	if cancelledPattern.MatchString(line) {
 		flightSchedule.Comments = "Cancelled"
 		return flightSchedule
 	}
@@ -88,7 +88,16 @@ func ParseWithDef(line string, parserDef *LineParser) *domain.ScheduleLine {
 		}
 	}
 	if len(words) > parserDef.WaypointStart {
-		flightSchedule.Waypoints, _ = parseWaypoints(words[parserDef.WaypointStart:])
+		waypoints, err := parseWaypoints(words[parserDef.WaypointStart:])
+		if err != nil {
+			log.Warnf("Failed to parse waypoints: %v", err)
+			if flightSchedule.Comments != "" {
+				flightSchedule.Comments += "; "
+			}
+			flightSchedule.Comments += "Waypoint parsing error: " + err.Error()
+		} else {
+			flightSchedule.Waypoints = waypoints
+		}
 	} else {
 		log.Warn("No waypoints found")
 		flightSchedule.Comments = "No waypoints found"
@@ -125,6 +134,11 @@ func ParseLine(line string) (*domain.ScheduleLine, error) {
 	} else {
 		log.Warn("No waypoints found")
 		flightSchedule.Comments = "No waypoints found"
+	}
+
+	// Validate the parsed schedule line before returning
+	if err := flightSchedule.Validate(); err != nil {
+		return nil, err
 	}
 
 	return flightSchedule, nil

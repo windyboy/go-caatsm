@@ -110,6 +110,16 @@ func setupApp() *cli.App {
 						Name:  "telemetry-insecure",
 						Usage: "Send OTLP data without TLS",
 					},
+					&cli.StringFlag{
+						Name:    "monitoring-addr",
+						Usage:   "Monitoring server address (e.g., 192.168.1.100:2112 or :2112)",
+						EnvVars: []string{"CAATSM_MONITORING_ADDR"},
+					},
+					&cli.BoolFlag{
+						Name:    "monitoring-disabled",
+						Usage:   "Disable monitoring server",
+						EnvVars: []string{"CAATSM_MONITORING_DISABLED"},
+					},
 				},
 				Action: executeListen,
 			},
@@ -262,6 +272,13 @@ func applyCLIOverrides(cfg *config.Config, c *cli.Context) {
 	}
 	if c.IsSet("telemetry-insecure") {
 		cfg.Telemetry.Insecure = c.Bool("telemetry-insecure")
+	}
+	if addr := c.String("monitoring-addr"); addr != "" {
+		cfg.Monitoring.Addr = addr
+		cfg.Monitoring.Disabled = false
+	}
+	if c.IsSet("monitoring-disabled") {
+		cfg.Monitoring.Disabled = c.Bool("monitoring-disabled")
 	}
 }
 

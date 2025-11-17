@@ -133,15 +133,26 @@ services:
 
   prometheus:
     image: prom/prometheus:v2.53.0
-    command:
-      - "--config.file=/etc/prometheus/prometheus.yml"
-      - "--storage.tsdb.path=/prometheus"
-      - "--web.enable-lifecycle"
-      - "--storage.tsdb.retention.time=1h"
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        MONITORING_ADDR=$${CAATSM_MONITORING_ADDR:-host.docker.internal:2112}
+        mkdir -p /etc/prometheus/targets
+        echo "[{\"labels\":{\"job\":\"caatsm-receiver\",\"instance\":\"$$MONITORING_ADDR\"},\"targets\":[\"$$MONITORING_ADDR\"]}]" > /etc/prometheus/targets/caatsm-receiver.json
+        exec /bin/prometheus \
+          --config.file=/etc/prometheus/prometheus.yml \
+          --storage.tsdb.path=/prometheus \
+          --web.enable-lifecycle \
+          --storage.tsdb.retention.time=1h
+    environment:
+      # Default monitoring address, can be overridden via .env file or docker-compose override
+      CAATSM_MONITORING_ADDR: ${CAATSM_MONITORING_ADDR:-host.docker.internal:2112}
     ports:
       - "9090:9090"
     volumes:
       - ./configs/prometheus.dev.yml:/etc/prometheus/prometheus.yml:ro
+      - ./configs/prometheus/targets:/etc/prometheus/targets
     networks:
       - devnet
 
