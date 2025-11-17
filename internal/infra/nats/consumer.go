@@ -713,6 +713,12 @@ func (c *Consumer) routeToDLQ(ctx context.Context, msg *nats.Msg, cause error) e
 
 	data, err := json.Marshal(payload)
 	if err != nil {
+		c.logger.Error("failed to marshal DLQ payload",
+			zap.String("stream", c.streamName),
+			zap.String("consumer", c.consumerName),
+			zap.String("dlq_subject", c.dlqSubject),
+			zap.Error(err),
+		)
 		return fmt.Errorf("marshal dlq payload: %w", err)
 	}
 
@@ -722,9 +728,23 @@ func (c *Consumer) routeToDLQ(ctx context.Context, msg *nats.Msg, cause error) e
 		// unavailable. Surface this explicitly to make operational diagnosis
 		// easier.
 		if errors.Is(err, nats.ErrNoResponders) {
+			c.logger.Error("transient DLQ publish error (no responders)",
+				zap.String("stream", c.streamName),
+				zap.String("consumer", c.consumerName),
+				zap.String("dlq_subject", c.dlqSubject),
+				zap.Int("payload_size", len(data)),
+				zap.Error(err),
+			)
 			c.telemetry.RecordDLQPublishFailure(ctx, c.streamName, c.consumerName)
 			return fmt.Errorf("publish to dlq subject %s: no JetStream stream found for subject or JetStream unavailable: %w", c.dlqSubject, err)
 		}
+		c.logger.Error("failed to publish to DLQ",
+			zap.String("stream", c.streamName),
+			zap.String("consumer", c.consumerName),
+			zap.String("dlq_subject", c.dlqSubject),
+			zap.Int("payload_size", len(data)),
+			zap.Error(err),
+		)
 		c.telemetry.RecordDLQPublishFailure(ctx, c.streamName, c.consumerName)
 		return fmt.Errorf("publish to dlq subject %s: %w", c.dlqSubject, err)
 	}

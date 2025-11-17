@@ -30,6 +30,12 @@ func ProvideNATSConn(cfg *config.Config, logger *zap.Logger) (*nats.Conn, error)
 		}),
 	)
 	if err != nil {
+		logger.Error("failed to connect to NATS",
+			zap.String("url", cfg.NATS.URL),
+			zap.Duration("timeout", cfg.Timeouts.Server),
+			zap.Duration("reconnect_wait", cfg.Timeouts.ReconnectWait),
+			zap.Error(err),
+		)
 		return nil, fmt.Errorf("failed to connect to NATS: %w", err)
 	}
 
@@ -41,6 +47,10 @@ func ProvideJetStream(nc *nats.Conn, cfg *config.Config, logger *zap.Logger) (na
 	// Get JetStream context
 	js, err := nc.JetStream()
 	if err != nil {
+		logger.Error("failed to get JetStream context",
+			zap.String("url", cfg.NATS.URL),
+			zap.Error(err),
+		)
 		nc.Close()
 		return nil, fmt.Errorf("failed to get JetStream context: %w", err)
 	}
@@ -67,6 +77,11 @@ func EnsureStream(js nats.JetStreamContext, cfg *config.Config, logger *zap.Logg
 
 	streamSubjects := dedupeSubjects([]string{consumerSubject, publisherSubject})
 	if len(streamSubjects) == 0 {
+		logger.Error("no subjects configured for JetStream stream",
+			zap.String("stream", streamName),
+			zap.String("consumer_subject", consumerSubject),
+			zap.String("publisher_subject", publisherSubject),
+		)
 		return fmt.Errorf("no subjects configured for JetStream stream %s", streamName)
 	}
 
@@ -101,6 +116,11 @@ func EnsureStream(js nats.JetStreamContext, cfg *config.Config, logger *zap.Logg
 		if errors.Is(err, nats.ErrStreamNotFound) {
 			if shouldBootstrapStream() {
 				if _, err = js.AddStream(streamConfig); err != nil {
+					logger.Error("failed to create stream",
+						zap.String("stream", streamName),
+						zap.Strings("subjects", streamSubjects),
+						zap.Error(err),
+					)
 					return fmt.Errorf("failed to create stream %s: %w", streamName, err)
 				}
 				logger.Info("Created JetStream stream",
@@ -109,8 +129,16 @@ func EnsureStream(js nats.JetStreamContext, cfg *config.Config, logger *zap.Logg
 				)
 				return nil
 			}
+			logger.Error("stream not found and auto-creation disabled",
+				zap.String("stream", streamName),
+				zap.Strings("expected_subjects", streamSubjects),
+			)
 			return fmt.Errorf("stream %s not found and auto-creation disabled", streamName)
 		}
+		logger.Error("failed to fetch stream info",
+			zap.String("stream", streamName),
+			zap.Error(err),
+		)
 		return fmt.Errorf("failed to fetch stream info for %s: %w", streamName, err)
 	}
 

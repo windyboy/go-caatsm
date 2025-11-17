@@ -150,6 +150,12 @@ func (p *MessageProcessor) Handle(ctx context.Context, raw []byte, msgID string)
 		latency := parsed.ParsedAt.Sub(receivedAt)
 		p.telemetry.RecordFailure("repository")
 		p.telemetry.RecordProcessingResult(ctx, string(parsed.Status), parsed.Category, latency)
+		// Log business layer failure with message context (Repository layer already logged technical error)
+		msgLogger.Error("Failed to persist parsed message",
+			zap.String("status", string(parsed.Status)),
+			zap.Duration("latency", latency),
+			zap.Error(err),
+		)
 		return fmt.Errorf("failed to insert message: %w", err)
 	}
 
@@ -202,11 +208,11 @@ func (p *MessageProcessor) persistRaw(ctx context.Context, msg *dto.ParsedTelegr
 		msg.ReceivedAt = time.Now()
 	}
 	if err := p.repository.InsertRaw(ctx, msg); err != nil {
-		p.logger.Error("Failed to persist raw telegram",
-			zap.String("message_id", msg.MessageID),
-			zap.String("status", string(msg.Status)),
-			zap.Error(err),
-		)
+		// Error already logged in Repository.InsertRaw, no need to log again
+		// Just add event to span if recording
+		if span := trace.SpanFromContext(ctx); span.IsRecording() {
+			span.RecordError(err)
+		}
 	} else {
 		if span := trace.SpanFromContext(ctx); span.IsRecording() {
 			span.AddEvent("raw telegram persisted",

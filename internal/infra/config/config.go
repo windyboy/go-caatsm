@@ -80,6 +80,29 @@ type AppConfig struct {
 type LogConfig struct {
 	Level  string `koanf:"level"`
 	Format string `koanf:"format"` // json or console
+
+	// Output configuration
+	Output []string `koanf:"output"` // stdout, stderr, or file path
+	File   string   `koanf:"file"`   // Log file path (if output includes file)
+
+	// File rotation settings
+	MaxSize    int  `koanf:"max_size"`    // Max size in MB before rotation
+	MaxBackups int  `koanf:"max_backups"` // Max number of old log files to keep
+	MaxAge     int  `koanf:"max_age"`     // Max days to retain old log files
+	Compress   bool `koanf:"compress"`    // Compress rotated log files
+
+	// Advanced zap options
+	DisableCaller     bool               `koanf:"disable_caller"`      // Disable caller information
+	DisableStacktrace bool               `koanf:"disable_stacktrace"`  // Disable stacktrace
+	Development       bool               `koanf:"development"`         // Enable development mode
+	Sampling          *LogSamplingConfig `koanf:"sampling"`
+}
+
+// LogSamplingConfig configures log sampling to reduce high-volume logs
+type LogSamplingConfig struct {
+	Initial    int           `koanf:"initial"`    // Log first N messages per tick
+	Thereafter int           `koanf:"thereafter"` // Then log every Nth message
+	Tick       time.Duration `koanf:"tick"`       // Sampling tick interval
 }
 
 // PublisherConfig holds publisher configuration
@@ -181,6 +204,30 @@ func LoadConfig() (*Config, error) {
 	}
 	if cfg.Log.Format == "" {
 		cfg.Log.Format = "json"
+	}
+	if len(cfg.Log.Output) == 0 {
+		cfg.Log.Output = []string{"stdout"}
+	} else {
+		// If output contains "file" but file path is empty, set default path
+		hasFile := false
+		for _, out := range cfg.Log.Output {
+			if out == "file" {
+				hasFile = true
+				break
+			}
+		}
+		if hasFile && cfg.Log.File == "" {
+			cfg.Log.File = "logs/caatsm.log"
+		}
+	}
+	if cfg.Log.MaxSize == 0 {
+		cfg.Log.MaxSize = 100 // 100 MB
+	}
+	if cfg.Log.MaxBackups == 0 {
+		cfg.Log.MaxBackups = 7
+	}
+	if cfg.Log.MaxAge == 0 {
+		cfg.Log.MaxAge = 30 // 30 days
 	}
 	if cfg.NATS.Mode == "" {
 		cfg.NATS.Mode = "jetstream"

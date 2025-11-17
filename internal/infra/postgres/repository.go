@@ -1,10 +1,10 @@
 package postgres
 
 import (
-	"caatsm/internal/adapter/mapper"
 	"caatsm/internal/adapter/dto"
-	"caatsm/internal/port"
+	"caatsm/internal/adapter/mapper"
 	obsmetrics "caatsm/internal/infra/metrics"
+	"caatsm/internal/port"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -49,6 +49,11 @@ func (r *Repository) InsertOne(ctx context.Context, msg *dto.ParsedTelegram) err
 		if err != nil {
 			span.RecordError(err)
 			span.SetStatus(codes.Error, err.Error())
+			r.logger.Error("failed to check existing message",
+				zap.String("message_id", msg.MessageID),
+				zap.String("date_time", msg.DateTime),
+				zap.Error(err),
+			)
 			return fmt.Errorf("failed to check existing message: %w", err)
 		}
 		if exists {
@@ -64,6 +69,8 @@ func (r *Repository) InsertOne(ctx context.Context, msg *dto.ParsedTelegram) err
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
+
+		r.logger.Error("failed to map message to DB row", zap.Error(err))
 		return fmt.Errorf("failed to map message to DB row: %w", err)
 	}
 
@@ -92,6 +99,12 @@ func (r *Repository) InsertOne(ctx context.Context, msg *dto.ParsedTelegram) err
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 		obsmetrics.RecordDBQuery("insert_one", result, elapsed)
+		r.logger.Error("failed to insert message",
+			zap.String("uuid", msg.Uuid),
+			zap.String("message_id", msg.MessageID),
+			zap.Duration("elapsed", elapsed),
+			zap.Error(err),
+		)
 		return fmt.Errorf("failed to insert message: %w", err)
 	}
 
@@ -128,6 +141,12 @@ func (r *Repository) InsertBatch(ctx context.Context, msgs []*dto.ParsedTelegram
 	for i, msg := range msgs {
 		row, err := r.mapper.ToDBRow(msg)
 		if err != nil {
+			r.logger.Error("failed to map message to DB row in batch",
+				zap.Int("index", i),
+				zap.Int("total", len(msgs)),
+				zap.String("message_id", msg.MessageID),
+				zap.Error(err),
+			)
 			return fmt.Errorf("failed to map message %d to DB row: %w", i, err)
 		}
 		rows[i] = row
@@ -154,6 +173,11 @@ func (r *Repository) InsertBatch(ctx context.Context, msgs []*dto.ParsedTelegram
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 		obsmetrics.RecordDBQuery("insert_batch", result, elapsed)
+		r.logger.Error("failed to batch insert messages",
+			zap.Int("attempted", len(msgs)),
+			zap.Duration("elapsed", elapsed),
+			zap.Error(err),
+		)
 		return fmt.Errorf("failed to batch insert messages: %w", err)
 	}
 
@@ -178,6 +202,7 @@ func (r *Repository) InsertRaw(ctx context.Context, msg *dto.ParsedTelegram) err
 		err := fmt.Errorf("message is nil")
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
+		r.logger.Error("message is nil in InsertRaw")
 		return fmt.Errorf("message is nil")
 	}
 	if msg.Uuid == "" {
@@ -194,6 +219,10 @@ func (r *Repository) InsertRaw(ctx context.Context, msg *dto.ParsedTelegram) err
 	}
 	metadataJSON, err := json.Marshal(metadata)
 	if err != nil {
+		r.logger.Error("failed to marshal metadata",
+			zap.String("uuid", msg.Uuid),
+			zap.Error(err),
+		)
 		return fmt.Errorf("failed to marshal metadata: %w", err)
 	}
 
@@ -227,6 +256,12 @@ func (r *Repository) InsertRaw(ctx context.Context, msg *dto.ParsedTelegram) err
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 		obsmetrics.RecordDBQuery("insert_raw", result, elapsed)
+		r.logger.Error("failed to insert raw telegram",
+			zap.String("uuid", msg.Uuid),
+			zap.String("status", string(msg.Status)),
+			zap.Duration("elapsed", elapsed),
+			zap.Error(err),
+		)
 		return fmt.Errorf("failed to insert raw telegram: %w", err)
 	}
 
@@ -261,6 +296,11 @@ func (r *Repository) messageExists(ctx context.Context, messageID, dateTime stri
 		if err == pgx.ErrNoRows {
 			return false, nil
 		}
+		r.logger.Error("failed to check message existence",
+			zap.String("message_id", messageID),
+			zap.String("date_time", dateTime),
+			zap.Error(err),
+		)
 		return false, err
 	}
 

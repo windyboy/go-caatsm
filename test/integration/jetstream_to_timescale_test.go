@@ -50,7 +50,7 @@ func TestJetStreamToTimescaleFlow(t *testing.T) {
 	}
 	defer logger.Sync()
 
-	pool, err := postgresinfra.ProvideDB(cfg)
+	pool, err := postgresinfra.ProvideDB(cfg, logger)
 	if err != nil {
 		t.Fatalf("failed to init postgres: %v", err)
 	}

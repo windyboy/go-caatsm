@@ -50,6 +50,25 @@ monitor_interval = "30s"
 [log]
 level = "info"
 format = "console"
+output = ["stdout", "file"]
+file = "logs/caatsm.log"
+
+# File rotation settings
+max_size = 100      # MB
+max_backups = 7     # Keep 7 rotated files
+max_age = 30        # Keep logs for 30 days
+compress = true     # Compress old log files
+
+# Advanced options
+disable_caller = false
+disable_stacktrace = false
+development = false
+
+# Sampling configuration (optional, for high-volume scenarios)
+# [log.sampling]
+# initial = 100       # Log first 100 messages
+# thereafter = 100    # Then log every 100th message
+# tick = "1s"         # Per second
 
 [telemetry]
 enabled = true

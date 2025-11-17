@@ -37,12 +37,17 @@ func ProvidePublisher(
 func (p *Publisher) Publish(message interface{}) error {
 	topic := p.cfg.Publisher.Topic
 	if topic == "" {
+		p.logger.Error("publisher topic is not configured")
 		return fmt.Errorf("publisher topic is not configured")
 	}
 
 	// Marshal message to JSON
 	messageBytes, err := json.Marshal(message)
 	if err != nil {
+		p.logger.Error("failed to marshal message",
+			zap.String("topic", topic),
+			zap.Error(err),
+		)
 		return fmt.Errorf("failed to marshal message: %w", err)
 	}
 
@@ -66,8 +71,18 @@ func (p *Publisher) Publish(message interface{}) error {
 	if err != nil {
 		// Distinguish temporary JetStream unavailability from permanent config errors.
 		if errors.Is(err, nats.ErrNoResponders) {
+			p.logger.Error("transient publish error (no responders)",
+				zap.String("topic", topic),
+				zap.Int("message_size", len(messageBytes)),
+				zap.Error(err),
+			)
 			return fmt.Errorf("transient publish error (no responders): %w", err)
 		}
+		p.logger.Error("failed to publish message",
+			zap.String("topic", topic),
+			zap.Int("message_size", len(messageBytes)),
+			zap.Error(err),
+		)
 		return fmt.Errorf("failed to publish message: %w", err)
 	}
 

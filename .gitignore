@@ -42,6 +42,8 @@ go.sum
 
 # Logs
 *.log
+logs/
+*.log.gz
 
 # Dependency directories (remove the comment below if you want to ignore them)
 #vendor/
