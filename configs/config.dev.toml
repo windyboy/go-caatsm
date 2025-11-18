@@ -63,6 +63,26 @@ start_sequence = 0
 #   Example: "2024-11-15T08:00:00Z"
 start_time = ""
 
+[nats.auth]
+# NATS authentication configuration (optional for development)
+# Only one authentication method can be used at a time:
+#   - token: Simple token authentication
+#   - credentials_file: Path to NATS credentials file (e.g., /path/to/user.creds)
+#   - user/password: Username and password authentication
+#
+# For development, authentication is typically not required.
+# Uncomment and configure as needed:
+# token = ""
+# credentials_file = ""
+# user = ""
+# password = ""
+#
+# TLS configuration (optional)
+# tls_enabled = false
+# tls_cert_file = ""  # Client certificate file path
+# tls_key_file = ""   # Client private key file path
+# tls_ca_file = ""    # CA certificate file for server verification
+
 [subscription]
 topic = "telegram.serial"
 queue_group = "tele-queue"

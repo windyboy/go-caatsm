@@ -374,23 +374,44 @@ CAATSM_NATS_MODE=jetstream go run ./cmd/main listen
 
 ### Build
 
+The build process automatically injects build information (version, commit, build time) into the binary. This information is available via the `/livez` and `/readyz` health endpoints.
+
 Using Make (writes `bin/receiver`):
 
 ```bash
 make build
+# Or with custom version:
+VERSION=v1.0.0 make build
 ```
 
 Using Task:
 
 ```bash
 task build
+# Or with custom version:
+VERSION=v1.0.0 task build
 ```
 
 Or directly with Go:
 
 ```bash
-go build -o bin/receiver ./cmd/main
+# With build info injection:
+go build -ldflags "-X 'caatsm/internal/infra/buildinfo.Version=dev' -X 'caatsm/internal/infra/buildinfo.Commit=$(git rev-parse --short HEAD)' -X 'caatsm/internal/infra/buildinfo.BuiltAt=$$(go run - <<'EOF'
+package main
+import (
+  \"fmt\"
+  \"time\"
+)
+func main() {
+  fmt.Print(time.Now().UTC().Format(time.RFC3339))
+}
+EOF)'" -o bin/receiver ./cmd/main
 ```
+
+Build information is automatically populated from:
+- **Version**: `VERSION` environment variable (defaults to "dev")
+- **Commit**: Git commit hash (short format)
+- **BuiltAt**: UTC timestamp of build time
 
 ### Run
 
@@ -418,8 +439,8 @@ For production deployment, see the comprehensive guide: **[Production Deployment
 Quick start:
 
 ```bash
-# Build the binary
-make build
+# Build the binary with version information
+VERSION=v1.0.0 make build
 
 # Run in production mode
 make run-prod   # GO_ENV=prod (requires config.prod.toml)
@@ -430,8 +451,13 @@ make run-prod   # GO_ENV=prod (requires config.prod.toml)
 - Stream and Consumer must be created manually
 - Production configuration file: `configs/config.prod.toml`
 - SSL/TLS for secure connections
+- NATS authentication configured (see `docs/prod-guide.md#nats-authentication`)
 
-See `docs/prod-guide.md` for complete production deployment instructions.
+See `docs/prod-guide.md` for complete production deployment instructions, including:
+- NATS authentication setup
+- Database migrations (see `docs/migrations.md`)
+- Secret management (see `docs/secret-management.md`)
+- Performance tuning (see `docs/performance.md`)
 
 ### Command Line Options
 
@@ -570,6 +596,15 @@ Additional deployment-specific guides:
 - **`docs/deploy-systemd.md`** - Systemd service deployment with environment file configuration
 - **`docs/deploy-k8s.md`** - Kubernetes deployment with ConfigMap/Secret and health probes
 
+## Additional Documentation
+
+- **`docs/migrations.md`** - Database migration strategy and best practices
+- **`docs/secret-management.md`** - Secret management best practices and integration guides
+- **`docs/performance.md`** - Performance tuning guidelines and optimization strategies
+- **`docs/observability.md`** - Observability setup and metrics documentation
+- **`docs/nats.md`** - NATS/JetStream configuration and usage guide
+- **`docs/reliability.md`** - Reliability patterns and error handling
+
 ### Project Structure
 
 - **Domain Layer** (`internal/domain`): Pure business logic and domain models
@@ -601,6 +636,17 @@ The project keeps tests close to the code that they exercise:
 - **Domain/adapter/app unit tests** live under `internal/**` and cover parsing, validation, orchestration, and adapters. Run them all with `task test` (or `make test`), which now uses the Ginkgo CLI to run unit test suites in verbose mode (`ginkgo -r -v ./cmd ./internal`).
 - **Integration tests** under `test/integration` spin up disposable TimescaleDB and NATS JetStream instances (via `testcontainers-go`) and execute a full ingestion flow. Use `task test-int` after ensuring Docker is running.
 - **Coverage goals** are tracked via `task coverage`, which produces both a coverage profile and an HTML report under `coverage/coverage.html`.
+- **Benchmark tests** are available for performance-critical components:
+  ```bash
+  # Run parser benchmarks
+  go test -bench=BenchmarkParse -benchmem ./internal/adapter/parser
+  
+  # Run repository benchmarks (requires DB connection)
+  go test -bench=BenchmarkMapper -benchmem ./internal/infra/postgres
+  
+  # Run processor benchmarks
+  go test -bench=BenchmarkHandle -benchmem ./internal/app
+  ```
 
 | Purpose                    | Make command        | Task command        |
 |----------------------------|---------------------|---------------------|

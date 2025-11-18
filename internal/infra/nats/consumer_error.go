@@ -11,6 +11,8 @@ import (
 )
 
 // handleMessageError handles errors that occur during message processing.
+//
+//nolint:unused // Reserved for potential future use or alternative implementation
 func (c *Consumer) handleMessageError(ctx context.Context, msg *nats.Msg, err error, elapsed time.Duration) {
 	c.logger.Error("Failed to process message",
 		zap.String("subject", msg.Subject),
@@ -35,6 +37,8 @@ func (c *Consumer) handleMessageError(ctx context.Context, msg *nats.Msg, err er
 }
 
 // handlePermanentError handles permanent/poison messages.
+//
+//nolint:unused // Reserved for potential future use or alternative implementation
 func (c *Consumer) handlePermanentError(ctx context.Context, msg *nats.Msg, err error) {
 	c.consecutiveProcessErrors = 0
 	// Poison/permanent message: route to DLQ if configured, then ACK
@@ -47,6 +51,8 @@ func (c *Consumer) handlePermanentError(ctx context.Context, msg *nats.Msg, err 
 }
 
 // handleTransientError handles transient errors with backpressure and redelivery.
+//
+//nolint:unused // Reserved for potential future use or alternative implementation
 func (c *Consumer) handleTransientError(ctx context.Context, msg *nats.Msg, processingResult ProcessingErrorResult) {
 	// Increment error streak
 	if c.consecutiveProcessErrors < 0 {

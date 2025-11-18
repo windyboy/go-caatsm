@@ -4,6 +4,18 @@ vars:
   build_dir: bin
   binary: '{{.build_dir}}/receiver'
   cmd: ./cmd/main
+  version:
+    sh: echo "${VERSION:-dev}"
+  git_commit:
+    sh: git rev-parse --short HEAD 2>/dev/null || echo unknown
+  build_time:
+    sh: |
+      mkdir -p .tmp
+      echo 'package main' > .tmp/build_time.go
+      echo 'import ("fmt"; "time")' >> .tmp/build_time.go
+      echo 'func main() { fmt.Print(time.Now().UTC().Format("2006-01-02T15:04:05Z")) }' >> .tmp/build_time.go
+      go run .tmp/build_time.go
+      rm -rf .tmp
 
 tasks:
   all:
@@ -16,7 +28,16 @@ tasks:
     cmds:
       - mkdir -p {{.build_dir}}
       - echo "Building receiver..."
-      - go build -o {{.binary}} {{.cmd}}
+      - |
+        echo "  Version: {{.version}}"
+        echo "  Commit: {{.git_commit}}"
+        echo "  Built: {{.build_time}}"
+      - |
+        go build \
+          -ldflags "-X 'caatsm/internal/infra/buildinfo.Version={{.version}}' \
+                    -X 'caatsm/internal/infra/buildinfo.Commit={{.git_commit}}' \
+                    -X 'caatsm/internal/infra/buildinfo.BuiltAt={{.build_time}}'" \
+          -o {{.binary}} {{.cmd}}
 
   run:
     desc: Alias for run-dev

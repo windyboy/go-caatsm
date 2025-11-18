@@ -1,6 +1,7 @@
 package main
 
 import (
+	"caatsm/internal/infra/buildinfo"
 	"caatsm/internal/infra/config"
 	"caatsm/pkg/di"
 	"context"
@@ -158,14 +159,18 @@ func runListen(parentCtx context.Context, cfg *config.Config) error {
 	ctx, stop := signal.NotifyContext(parentCtx, os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	shutdownTelemetry := func(context.Context) error { return nil }
+	var shutdownTelemetry func(context.Context) error
 	if cfg.Telemetry.Enabled {
 		var telErr error
 		shutdownTelemetry, telErr = initTelemetry(ctx, cfg)
 		if telErr != nil {
 			return fmt.Errorf("failed to initialize telemetry: %w", telErr)
 		}
-		defer shutdownTelemetry(context.Background())
+		defer func() {
+			if err := shutdownTelemetry(context.Background()); err != nil {
+				zap.L().Error("Failed to shutdown telemetry", zap.Error(err))
+			}
+		}()
 	}
 
 	// Initialize dependencies using Wire
@@ -178,7 +183,11 @@ func runListen(parentCtx context.Context, cfg *config.Config) error {
 		if err := monitorServer.Start(ctx); err != nil {
 			return fmt.Errorf("failed to start monitoring server: %w", err)
 		}
-		defer monitorServer.Shutdown(context.Background())
+		defer func() {
+			if err := monitorServer.Shutdown(context.Background()); err != nil {
+				zap.L().Error("Failed to shutdown monitoring server", zap.Error(err))
+			}
+		}()
 	}
 
 	// Start consumer in a goroutine
@@ -385,7 +394,7 @@ func initTelemetry(ctx context.Context, cfg *config.Config) (func(context.Contex
 		resource.WithContainer(),
 		resource.WithAttributes(
 			semconv.ServiceName("caatsm"),
-			semconv.ServiceVersion("dev"), // TODO: Use build info
+			semconv.ServiceVersion(buildinfo.Version),
 			semconv.ServiceNamespace("airport"),
 			attribute.String("service.component", "receiver"),
 			attribute.String("deployment.environment", env),

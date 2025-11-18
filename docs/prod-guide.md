@@ -421,6 +421,146 @@ backoff = ["5s", "30s", "2m", "5m"]  # Retry delays
    - Don't log message payloads in production
    - Use appropriate log levels
 
+## NATS Authentication
+
+The application supports multiple NATS authentication methods for secure connections. Configure authentication in the `[nats.auth]` section of your production configuration.
+
+### Authentication Methods
+
+Only one authentication method can be used at a time. Choose the method that best fits your infrastructure:
+
+#### 1. Token Authentication
+
+Simple token-based authentication suitable for service-to-service communication:
+
+```toml
+[nats.auth]
+token = "your-nats-token-here"
+tls_enabled = true
+```
+
+**When to use:**
+- Simple service-to-service authentication
+- Single token shared across services
+- Quick setup for development/staging
+
+**Security considerations:**
+- Tokens should be rotated regularly
+- Store tokens securely (use secret management)
+- Use TLS to encrypt token transmission
+
+#### 2. Credentials File (Recommended)
+
+NATS credentials file authentication provides fine-grained access control:
+
+```toml
+[nats.auth]
+credentials_file = "/etc/caatsm/nats.creds"
+tls_enabled = true
+```
+
+**When to use:**
+- Production environments requiring fine-grained permissions
+- Multiple services with different access levels
+- Integration with NATS account system
+
+**Setup:**
+1. Generate credentials file using NATS CLI:
+   ```bash
+   nats account creds -n caatsm-service > /etc/caatsm/nats.creds
+   ```
+2. Ensure the file is readable by the application user
+3. Set appropriate file permissions (e.g., `chmod 600 /etc/caatsm/nats.creds`)
+
+#### 3. User/Password Authentication
+
+Traditional username/password authentication:
+
+```toml
+[nats.auth]
+user = "caatsm-service"
+password = "secure-password-here"
+tls_enabled = true
+```
+
+**When to use:**
+- Legacy NATS server configurations
+- Simple authentication requirements
+- Integration with existing user management systems
+
+**Security considerations:**
+- Use strong, unique passwords
+- Store passwords securely (use secret management)
+- Rotate passwords regularly
+
+### TLS Configuration
+
+TLS encryption is **required** for production deployments. Configure TLS in the `[nats.auth]` section:
+
+```toml
+[nats.auth]
+credentials_file = "/etc/caatsm/nats.creds"
+tls_enabled = true
+tls_cert_file = "/etc/caatsm/tls/client.crt"  # Optional: client certificate
+tls_key_file = "/etc/caatsm/tls/client.key"   # Optional: client private key
+tls_ca_file = "/etc/caatsm/tls/ca.crt"        # Optional: CA certificate for server verification
+```
+
+**TLS Options:**
+- `tls_enabled`: Enable TLS encryption (required for production)
+- `tls_cert_file`: Client certificate file path (for mutual TLS)
+- `tls_key_file`: Client private key file path (for mutual TLS)
+- `tls_ca_file`: CA certificate file for server certificate verification
+
+**Note:** If `tls_ca_file` is not specified, the system's default CA certificates are used. For production, it's recommended to specify a CA file for explicit certificate validation. The application will load and use the CA certificate file for server verification when provided.
+
+### Environment Variable Configuration
+
+You can also configure authentication via environment variables:
+
+```bash
+# Token authentication
+export CAATSM_NATS_AUTH_TOKEN="your-token"
+
+# Credentials file
+export CAATSM_NATS_AUTH_CREDENTIALS_FILE="/etc/caatsm/nats.creds"
+
+# User/Password
+export CAATSM_NATS_AUTH_USER="caatsm-service"
+export CAATSM_NATS_AUTH_PASSWORD="secure-password"
+
+# TLS
+export CAATSM_NATS_AUTH_TLS_ENABLED="true"
+export CAATSM_NATS_AUTH_TLS_CERT_FILE="/etc/caatsm/tls/client.crt"
+export CAATSM_NATS_AUTH_TLS_KEY_FILE="/etc/caatsm/tls/client.key"
+export CAATSM_NATS_AUTH_TLS_CA_FILE="/etc/caatsm/tls/ca.crt"
+```
+
+### Testing Authentication
+
+After configuring authentication, verify the connection:
+
+```bash
+# Test connection with authentication
+./bin/receiver listen --nats-url nats://nats.prod:4222
+
+# Check logs for authentication success
+# Look for: "NATS reconnected" or connection errors
+```
+
+### Troubleshooting
+
+**Connection failures:**
+- Verify authentication credentials are correct
+- Check NATS server logs for authentication errors
+- Ensure TLS certificates are valid and accessible
+- Verify file permissions on credentials/certificate files
+
+**Common errors:**
+- `authentication failed`: Check token/credentials/user-password
+- `tls: bad certificate`: Verify TLS certificate configuration
+- `permission denied`: Check file permissions on credentials/certificate files
+
 ## Backup and Recovery
 
 ### Database Backups

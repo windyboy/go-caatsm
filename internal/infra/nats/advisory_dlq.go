@@ -85,7 +85,9 @@ func (h *AdvisoryDLQHandler) Start(ctx context.Context) error {
 	// Wait for context cancellation
 	go func() {
 		<-ctx.Done()
-		sub.Unsubscribe()
+		if err := sub.Unsubscribe(); err != nil {
+			h.logger.Error("Failed to unsubscribe advisory subscription", zap.Error(err))
+		}
 		h.logger.Info("Stopped advisory DLQ handler")
 	}()
 

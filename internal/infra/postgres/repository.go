@@ -37,6 +37,10 @@ func ProvideRepository(pool *pgxpool.Pool, logger *zap.Logger) (port.Repository,
 
 // InsertOne inserts a single telegram message
 func (r *Repository) InsertOne(ctx context.Context, msg *dto.ParsedTelegram) error {
+	if msg == nil {
+		return fmt.Errorf("message cannot be nil")
+	}
+
 	ctx, span := otel.Tracer("caatsm/postgres").Start(ctx, "Repository.InsertOne")
 	defer span.End()
 
@@ -53,7 +57,7 @@ func (r *Repository) InsertOne(ctx context.Context, msg *dto.ParsedTelegram) err
 	// Optional idempotency check based on business message identity. If we have a
 	// non-empty message ID and date/time, we can cheaply skip duplicates here to
 	// avoid applying the same business event multiple times.
-	if msg != nil && msg.MessageID != "" && msg.DateTime != "" {
+	if msg.MessageID != "" && msg.DateTime != "" {
 		exists, err := r.messageExists(ctx, msg.MessageID, msg.DateTime)
 		if err != nil {
 			span.RecordError(err)

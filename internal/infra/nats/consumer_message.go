@@ -14,6 +14,7 @@ import (
 	"go.uber.org/zap"
 )
 
+//nolint:unused // Reserved for potential future use or alternative implementation
 // processBatch processes a batch of messages, handling errors and applying backpressure.
 // It checks context cancellation between messages for faster shutdown.
 func (c *Consumer) processBatch(ctx context.Context, msgs []*nats.Msg) {
@@ -31,6 +32,7 @@ func (c *Consumer) processBatch(ctx context.Context, msgs []*nats.Msg) {
 	}
 }
 
+//nolint:unused // Reserved for potential future use or alternative implementation
 // processSingleMessage processes a single message with error handling and backpressure.
 func (c *Consumer) processSingleMessage(ctx context.Context, msg *nats.Msg) {
 	start := time.Now()

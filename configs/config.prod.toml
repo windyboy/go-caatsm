@@ -58,6 +58,32 @@ start_sequence = 0
 #   Example: "2024-11-15T08:00:00Z"
 start_time = ""
 
+[nats.auth]
+# NATS authentication configuration (REQUIRED for production)
+# Only one authentication method can be used at a time:
+#   - token: Simple token authentication (suitable for service-to-service)
+#   - credentials_file: Path to NATS credentials file (recommended for production)
+#   - user/password: Username and password authentication
+#
+# Production examples:
+#
+# Option 1: Token authentication
+# token = "your-nats-token-here"
+#
+# Option 2: Credentials file (recommended)
+# credentials_file = "/etc/caatsm/nats.creds"
+#
+# Option 3: User/Password
+# user = "caatsm-service"
+# password = "secure-password-here"
+#
+# TLS configuration (REQUIRED for production)
+# Enable TLS for encrypted communication
+tls_enabled = true
+# tls_cert_file = "/etc/caatsm/tls/client.crt"  # Client certificate file path
+# tls_key_file = "/etc/caatsm/tls/client.key"   # Client private key file path
+# tls_ca_file = "/etc/caatsm/tls/ca.crt"        # CA certificate file for server verification
+
 [subscription]
 topic = "telegram.serial"
 queue_group = "tele-queue"

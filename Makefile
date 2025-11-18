@@ -3,6 +3,14 @@ BUILD_DIR ?= bin
 BINARY := $(BUILD_DIR)/receiver
 CMD := ./cmd/main
 GO_ENV ?= dev
+VERSION ?= dev
+
+# Build info variables
+GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
+BUILD_TIME := $(shell printf 'package main\nimport ("fmt"\n"time")\nfunc main() { fmt.Print(time.Now().UTC().Format(time.RFC3339)) }' | go run -)
+LDFLAGS := -X 'caatsm/internal/infra/buildinfo.Version=$(VERSION)' \
+           -X 'caatsm/internal/infra/buildinfo.Commit=$(GIT_COMMIT)' \
+           -X 'caatsm/internal/infra/buildinfo.BuiltAt=$(BUILD_TIME)'
 
 # Default target
 .PHONY: all
@@ -12,7 +20,10 @@ all: build ## Build the application
 build: ## Build the receiver binary
 	@mkdir -p $(BUILD_DIR)
 	@echo "Building receiver..."
-	@go build -o $(BINARY) $(CMD)
+	@echo "  Version: $(VERSION)"
+	@echo "  Commit: $(GIT_COMMIT)"
+	@echo "  Built: $(BUILD_TIME)"
+	@go build -ldflags "$(LDFLAGS)" -o $(BINARY) $(CMD)
 
 .PHONY: run
 run: run-dev ## Alias for run-dev

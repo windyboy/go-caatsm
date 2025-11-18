@@ -37,7 +37,12 @@ var _ = Describe("ProvideLogger", func() {
 	Context("when file output is configured", func() {
 		It("creates the directory before writing logs", func() {
 			tmpDir := filepath.Join(os.TempDir(), "caatsm-log-test")
-			defer os.RemoveAll(tmpDir)
+			defer func() {
+				if err := os.RemoveAll(tmpDir); err != nil {
+					// Cleanup errors in tests are not critical
+					_ = err
+				}
+			}()
 			logPath := filepath.Join(tmpDir, "child", "app.log")
 			cfg := &configpkg.Config{
 				Log: configpkg.LogConfig{

@@ -32,6 +32,7 @@ func (c *Consumer) createPullSubscriptionWithRecovery() (*nats.Subscription, err
 	return c.consumerManager.CreatePullSubscriptionWithRecovery(c.streamManager, consumerConfig)
 }
 
+//nolint:unused // Reserved for potential future use or alternative implementation
 // nakWithStrategy sends a NAK with appropriate delay based on retry attempt.
 func (c *Consumer) nakWithStrategy(msg *nats.Msg) error {
 	backoff := c.cfg.NATS.ConsumerRules.Backoff
@@ -74,6 +75,7 @@ func sleepWithContext(ctx context.Context, duration time.Duration) bool {
 	}
 }
 
+//nolint:unused // Reserved for potential future use or alternative implementation
 // fetchBatch fetches a batch of messages from the subscription.
 // It respects context cancellation for faster shutdown.
 func (c *Consumer) fetchBatch(ctx context.Context, sub *nats.Subscription) ([]*nats.Msg, error) {
@@ -102,7 +104,11 @@ func (c *Consumer) handleFetchError(ctx context.Context, err error, sub **nats.S
 		if recErr := c.recoverJetStreamResources(); recErr != nil {
 			return nil, recErr
 		}
-		(*sub).Unsubscribe()
+		if *sub != nil {
+			if unsubErr := (*sub).Unsubscribe(); unsubErr != nil {
+				c.logger.Error("Failed to unsubscribe during recovery", zap.Error(unsubErr))
+			}
+		}
 		return c.createPullSubscriptionWithRecovery()
 	})
 
@@ -125,10 +131,12 @@ func (c *Consumer) startJetStream(ctx context.Context) error {
 	// Use a closure that always cleans up the current subscription.
 	// When subscription is replaced in handleFetchError, this will clean up
 	// whatever currentSub points to at shutdown time.
-	var currentSub *nats.Subscription = sub
+	var currentSub = sub
 	cleanupSubscriber := func() {
 		if currentSub != nil {
-			currentSub.Unsubscribe()
+			if err := currentSub.Unsubscribe(); err != nil {
+				c.logger.Error("Failed to unsubscribe subscription", zap.Error(err))
+			}
 			currentSub = nil
 		}
 	}
@@ -174,14 +182,14 @@ func (c *Consumer) startJetStream(ctx context.Context) error {
 		}
 
 		// Fetch messages in batch
-		msgs, err := c.fetchBatch(ctx, currentSub)
+		msgs, err := c.fetcher.FetchBatch(ctx, currentSub)
 		if err != nil {
 			// If context was cancelled, return immediately
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 				c.logger.Info("Stopping consumer due to context cancellation", zap.Error(err))
 				return err
 			}
-			shouldContinue, handleErr := c.handleFetchError(ctx, err, &currentSub, &fetchErrorStreak)
+			shouldContinue, handleErr := c.fetcher.HandleFetchError(ctx, err, &currentSub, &fetchErrorStreak)
 			if !shouldContinue {
 				return handleErr
 			}
@@ -194,6 +202,6 @@ func (c *Consumer) startJetStream(ctx context.Context) error {
 		}
 
 		// Process batch
-		c.processBatch(ctx, msgs)
+		c.batchProcessor.ProcessBatch(ctx, msgs)
 	}
 }

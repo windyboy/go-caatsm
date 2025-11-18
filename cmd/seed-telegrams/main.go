@@ -62,7 +62,7 @@ func main() {
 	duration := flag.Duration("duration", 0, "Total duration for interval/mixed modes (0 = rely on --count only)")
 	flag.Parse()
 
-	rand.Seed(time.Now().UnixNano())
+	// rand.Seed deprecated in Go 1.20+, using default source
 
 	var nc *nats.Conn
 	var js nats.JetStreamContext
@@ -73,7 +73,11 @@ func main() {
 		if err != nil {
 			log.Fatalf("connect nats: %v", err)
 		}
-		defer nc.Drain()
+		defer func() {
+			if err := nc.Drain(); err != nil {
+				log.Printf("failed to drain NATS connection: %v", err)
+			}
+		}()
 
 		if *useJetStream {
 			opts := []nats.JSOpt{}
@@ -191,10 +195,7 @@ func runIntervalMode(cfg SeedConfig, categories []string, statuses []string, pub
 	start := time.Now()
 	sent := 0
 
-	for {
-		if cfg.Count > 0 && sent >= cfg.Count {
-			break
-		}
+	for cfg.Count <= 0 || sent < cfg.Count {
 		if cfg.Duration > 0 && time.Since(start) >= cfg.Duration {
 			break
 		}

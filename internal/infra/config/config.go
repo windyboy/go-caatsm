@@ -35,9 +35,30 @@ type NATSConfig struct {
 	Consumer      string              `koanf:"consumer"`
 	StreamLimits  StreamLimitsConfig  `koanf:"stream_limits"`
 	ConsumerRules ConsumerRulesConfig `koanf:"consumer_rules"`
+	Auth          NATSAuthConfig      `koanf:"auth"`
 	// Legacy fields
 	Client  string `koanf:"client"`
 	Cluster string `koanf:"cluster"`
+}
+
+// NATSAuthConfig holds NATS authentication configuration
+type NATSAuthConfig struct {
+	// Token authentication (mutually exclusive with User/Password and CredentialsFile)
+	Token string `koanf:"token"`
+	
+	// Credentials file authentication (mutually exclusive with Token and User/Password)
+	// Path to NATS credentials file (e.g., /path/to/user.creds)
+	CredentialsFile string `koanf:"credentials_file"`
+	
+	// User/Password authentication (mutually exclusive with Token and CredentialsFile)
+	User     string `koanf:"user"`
+	Password string `koanf:"password"`
+	
+	// TLS configuration
+	TLSEnabled bool   `koanf:"tls_enabled"`
+	TLSCertFile string `koanf:"tls_cert_file"` // Client certificate file
+	TLSKeyFile  string `koanf:"tls_key_file"`  // Client private key file
+	TLSCAFile   string `koanf:"tls_ca_file"`   // CA certificate file for server verification
 }
 
 // StreamLimitsConfig defines JetStream retention controls.
@@ -173,8 +194,9 @@ func LoadConfig() (*Config, error) {
 		return strings.ToLower(strings.ReplaceAll(s, "_", "."))
 	})
 	if err := k.Load(envProvider, nil); err != nil {
-		// Environment variables are optional, so we don't fail if they're not present
-		// This allows the config to work with just the file
+		// Environment variables are optional, so we don't fail if they're not present.
+		// This allows the config to work with just the file.
+		_ = err // explicitly ignore
 	}
 
 	// Unmarshal into Config struct

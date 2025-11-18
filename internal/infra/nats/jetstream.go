@@ -2,17 +2,19 @@ package nats
 
 import (
 	"caatsm/internal/infra/config"
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/nats-io/nats.go"
 	"go.uber.org/zap"
 )
 
-// ProvideNATSConn creates a reusable NATS connection.
+// ProvideNATSConn creates a reusable NATS connection with optional authentication.
 func ProvideNATSConn(cfg *config.Config, logger *zap.Logger) (*nats.Conn, error) {
-	nc, err := nats.Connect(
-		cfg.NATS.URL,
+	opts := []nats.Option{
 		nats.RetryOnFailedConnect(true),
 		nats.Timeout(cfg.Timeouts.Server),
 		nats.ReconnectWait(cfg.Timeouts.ReconnectWait),
@@ -27,7 +29,16 @@ func ProvideNATSConn(cfg *config.Config, logger *zap.Logger) (*nats.Conn, error)
 			safeURL := sanitizeURLForLogging(nc.ConnectedUrl())
 			logger.Info("NATS reconnected", zap.String("url", safeURL))
 		}),
-	)
+	}
+
+	// Apply authentication options
+	authOpts, err := buildAuthOptions(&cfg.NATS.Auth, logger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build auth options: %w", err)
+	}
+	opts = append(opts, authOpts...)
+
+	nc, err := nats.Connect(cfg.NATS.URL, opts...)
 	if err != nil {
 		safeURL := sanitizeURLForLogging(cfg.NATS.URL)
 		logger.Error("failed to connect to NATS",
@@ -40,6 +51,78 @@ func ProvideNATSConn(cfg *config.Config, logger *zap.Logger) (*nats.Conn, error)
 	}
 
 	return nc, nil
+}
+
+// buildAuthOptions builds NATS connection options based on authentication configuration.
+func buildAuthOptions(auth *config.NATSAuthConfig, logger *zap.Logger) ([]nats.Option, error) {
+	var opts []nats.Option
+	authMethods := 0
+
+	// Token authentication (highest priority)
+	if auth.Token != "" {
+		authMethods++
+		logger.Debug("Using NATS token authentication")
+		opts = append(opts, nats.Token(auth.Token))
+	}
+
+	// Credentials file authentication
+	if auth.CredentialsFile != "" {
+		authMethods++
+		if authMethods > 1 {
+			return nil, fmt.Errorf("multiple authentication methods specified: only one of token, credentials_file, or user/password can be used")
+		}
+		logger.Debug("Using NATS credentials file authentication", zap.String("file", auth.CredentialsFile))
+		opts = append(opts, nats.UserCredentials(auth.CredentialsFile))
+	}
+
+	// User/Password authentication
+	if auth.User != "" || auth.Password != "" {
+		authMethods++
+		if authMethods > 1 {
+			return nil, fmt.Errorf("multiple authentication methods specified: only one of token, credentials_file, or user/password can be used")
+		}
+		if auth.User == "" || auth.Password == "" {
+			return nil, fmt.Errorf("both user and password must be specified for user/password authentication")
+		}
+		logger.Debug("Using NATS user/password authentication", zap.String("user", auth.User))
+		opts = append(opts, nats.UserInfo(auth.User, auth.Password))
+	}
+
+	// TLS configuration
+	if auth.TLSEnabled {
+		tlsConfig := &tls.Config{
+			MinVersion: tls.VersionTLS12,
+		}
+
+		// Load client certificate and key if provided
+		if auth.TLSCertFile != "" && auth.TLSKeyFile != "" {
+			cert, err := tls.LoadX509KeyPair(auth.TLSCertFile, auth.TLSKeyFile)
+			if err != nil {
+				return nil, fmt.Errorf("failed to load TLS certificate: %w", err)
+			}
+			tlsConfig.Certificates = []tls.Certificate{cert}
+			logger.Debug("Loaded TLS client certificate", zap.String("cert", auth.TLSCertFile))
+		}
+
+		// Load CA certificate for server verification if provided
+		if auth.TLSCAFile != "" {
+			caCert, err := os.ReadFile(auth.TLSCAFile)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read CA certificate file: %w", err)
+			}
+			caCertPool := x509.NewCertPool()
+			if !caCertPool.AppendCertsFromPEM(caCert) {
+				return nil, fmt.Errorf("failed to parse CA certificate from %s", auth.TLSCAFile)
+			}
+			tlsConfig.RootCAs = caCertPool
+			logger.Debug("Loaded TLS CA certificate", zap.String("ca_file", auth.TLSCAFile))
+		}
+
+		opts = append(opts, nats.Secure(tlsConfig))
+		logger.Debug("TLS enabled for NATS connection")
+	}
+
+	return opts, nil
 }
 
 // ProvideJetStream creates a NATS JetStream context using an existing connection.
