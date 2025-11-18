@@ -1,8 +1,8 @@
 package nats
 
 import (
-	"caatsm/internal/infra/config"
 	"caatsm/internal/adapter/dto"
+	"caatsm/internal/infra/config"
 	"caatsm/internal/port"
 	"encoding/json"
 	"errors"
@@ -59,7 +59,7 @@ func ProvideCorePublisher(
 }
 
 // Publish publishes a message using plain NATS
-func (p *CorePublisher) Publish(message interface{}) error {
+func (p *CorePublisher) Publish(message any) error {
 	topic := p.cfg.Publisher.Topic
 	if topic == "" {
 		p.logger.Error("publisher topic is not configured")
@@ -96,7 +96,7 @@ func (p *CorePublisher) Publish(message interface{}) error {
 }
 
 // Publish publishes a message
-func (p *Publisher) Publish(message interface{}) error {
+func (p *Publisher) Publish(message any) error {
 	topic := p.cfg.Publisher.Topic
 	if topic == "" {
 		p.logger.Error("publisher topic is not configured")

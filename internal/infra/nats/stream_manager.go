@@ -1,8 +1,10 @@
 package nats
 
 import (
+	"caatsm/internal/infra/config"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/nats-io/nats.go"
 	"go.uber.org/zap"
@@ -14,6 +16,7 @@ type StreamManager struct {
 	streamName string
 	subjects   []string
 	logger     *zap.Logger
+	cfg        *config.StreamLimitsConfig
 }
 
 // NewStreamManager creates a new stream manager
@@ -26,14 +29,21 @@ func NewStreamManager(js nats.JetStreamContext, streamName string, subjects []st
 	}
 }
 
+// NewStreamManagerWithConfig creates a new stream manager with full stream configuration
+func NewStreamManagerWithConfig(js nats.JetStreamContext, streamName string, subjects []string, streamLimits *config.StreamLimitsConfig, logger *zap.Logger) *StreamManager {
+	return &StreamManager{
+		js:         js,
+		streamName: streamName,
+		subjects:   subjects,
+		logger:     logger,
+		cfg:        streamLimits,
+	}
+}
+
 // EnsureStream ensures that the configured JetStream stream exists
 func (sm *StreamManager) EnsureStream() error {
-	streamConfig := &nats.StreamConfig{
-		Name:      sm.streamName,
-		Subjects:  sm.subjects,
-		Retention: nats.LimitsPolicy,
-		Storage:   nats.FileStorage,
-	}
+	// Build stream configuration
+	streamConfig := sm.buildStreamConfig()
 
 	info, err := sm.js.StreamInfo(sm.streamName)
 	if err != nil {
@@ -69,6 +79,41 @@ func (sm *StreamManager) EnsureStream() error {
 	// Stream exists: validate subjects but do not fail hard if they differ.
 	sm.validateStreamConfig(info)
 	return nil
+}
+
+// buildStreamConfig builds the stream configuration from manager settings
+func (sm *StreamManager) buildStreamConfig() *nats.StreamConfig {
+	config := &nats.StreamConfig{
+		Name:      sm.streamName,
+		Subjects:  sm.subjects,
+		Retention: nats.LimitsPolicy,
+		Storage:   nats.FileStorage,
+	}
+
+	// Apply stream limits configuration if provided
+	if sm.cfg != nil {
+		config.MaxMsgs = sm.cfg.MaxMsgs
+		config.MaxBytes = sm.cfg.MaxBytes
+		config.MaxAge = sm.cfg.MaxAge
+		config.Replicas = sm.cfg.Replicas
+
+		// Map storage type
+		switch strings.ToLower(sm.cfg.Storage) {
+		case "memory":
+			config.Storage = nats.MemoryStorage
+		case "file":
+			config.Storage = nats.FileStorage
+		}
+
+		// Map discard policy
+		if strings.EqualFold(sm.cfg.Discard, "new") {
+			config.Discard = nats.DiscardNew
+		} else {
+			config.Discard = nats.DiscardOld
+		}
+	}
+
+	return config
 }
 
 // validateStreamConfig validates the stream configuration

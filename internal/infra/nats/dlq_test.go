@@ -7,9 +7,9 @@ import (
 	configpkg "caatsm/internal/infra/config"
 	"caatsm/internal/infra/telemetry"
 
+	"github.com/nats-io/nats.go"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/nats-io/nats.go"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest"
 )
@@ -31,7 +31,9 @@ var _ = Describe("DLQ", func() {
 
 		It("returns nil when mode is not jetstream", func() {
 			c := &Consumer{
-				mode: "core",
+				config: consumerConfig{
+					mode: "core",
+				},
 				cfg: &configpkg.Config{
 					DLQ: configpkg.DLQConfig{
 						Enabled: true,
@@ -45,8 +47,10 @@ var _ = Describe("DLQ", func() {
 
 		It("clears dlqSubject when DLQ is disabled", func() {
 			c := &Consumer{
-				mode:      "jetstream",
-				dlqSubject: "caatsm.dlq",
+				config: consumerConfig{
+					mode:       "jetstream",
+					dlqSubject: "caatsm.dlq",
+				},
 				cfg: &configpkg.Config{
 					DLQ: configpkg.DLQConfig{
 						Enabled: false,
@@ -56,13 +60,15 @@ var _ = Describe("DLQ", func() {
 				logger: logger,
 			}
 			Expect(c.validateDLQ()).To(Succeed())
-			Expect(c.dlqSubject).To(Equal(""))
+			Expect(c.config.dlqSubject).To(Equal(""))
 		})
 
 		It("returns error when DLQ is enabled but subject is empty", func() {
 			c := &Consumer{
-				mode:      "jetstream",
-				dlqSubject: "",
+				config: consumerConfig{
+					mode:       "jetstream",
+					dlqSubject: "",
+				},
 				cfg: &configpkg.Config{
 					DLQ: configpkg.DLQConfig{
 						Enabled: true,
@@ -78,9 +84,11 @@ var _ = Describe("DLQ", func() {
 
 		It("returns error when DLQ is enabled but JetStream context is nil", func() {
 			c := &Consumer{
-				mode:      "jetstream",
-				dlqSubject: "caatsm.dlq",
-				js:        nil,
+				config: consumerConfig{
+					mode:       "jetstream",
+					dlqSubject: "caatsm.dlq",
+				},
+				js: nil,
 				cfg: &configpkg.Config{
 					DLQ: configpkg.DLQConfig{
 						Enabled: true,
@@ -107,7 +115,9 @@ var _ = Describe("DLQ", func() {
 
 		It("returns nil when mode is not jetstream", func() {
 			c := &Consumer{
-				mode: "core",
+				config: consumerConfig{
+					mode: "core",
+				},
 			}
 			ctx := context.Background()
 			msg := &nats.Msg{}
@@ -117,9 +127,11 @@ var _ = Describe("DLQ", func() {
 
 		It("returns nil when dlqSubject is empty", func() {
 			c := &Consumer{
-				mode:      "jetstream",
-				dlqSubject: "",
-				js:        nil, // Can be nil for this test
+				config: consumerConfig{
+					mode:       "jetstream",
+					dlqSubject: "",
+				},
+				js: nil, // Can be nil for this test
 			}
 			ctx := context.Background()
 			msg := &nats.Msg{}
@@ -128,4 +140,3 @@ var _ = Describe("DLQ", func() {
 		})
 	})
 })
-

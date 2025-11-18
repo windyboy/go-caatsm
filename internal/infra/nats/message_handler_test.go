@@ -1,9 +1,9 @@
 package nats
 
 import (
+	"github.com/nats-io/nats.go"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/nats-io/nats.go"
 	"go.uber.org/zap/zaptest"
 )
 
@@ -14,10 +14,12 @@ var _ = Describe("MessageHandler", func() {
 
 	BeforeEach(func() {
 		c = &Consumer{
-			mode:         "jetstream",
-			streamName:   "TEST_STREAM",
-			consumerName: "test-consumer",
-			logger:       zaptest.NewLogger(GinkgoT()),
+			config: consumerConfig{
+				mode:         "jetstream",
+				streamName:   "TEST_STREAM",
+				consumerName: "test-consumer",
+			},
+			logger: zaptest.NewLogger(GinkgoT()),
 		}
 	})
 
@@ -35,7 +37,7 @@ var _ = Describe("MessageHandler", func() {
 		})
 
 		It("generates UUID for core mode when header is missing", func() {
-			c.mode = "core"
+			c.config.mode = "core"
 			msg := &nats.Msg{
 				Header: nats.Header{},
 			}
@@ -47,7 +49,7 @@ var _ = Describe("MessageHandler", func() {
 		})
 
 		It("returns error for JetStream mode when header and metadata are missing", func() {
-			c.mode = "jetstream"
+			c.config.mode = "jetstream"
 			msg := &nats.Msg{
 				Header: nats.Header{},
 			}
@@ -59,4 +61,3 @@ var _ = Describe("MessageHandler", func() {
 		})
 	})
 })
-

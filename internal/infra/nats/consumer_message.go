@@ -4,6 +4,7 @@ import (
 	"caatsm/internal/infra/log"
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/nats-io/nats.go"
@@ -13,11 +14,59 @@ import (
 	"go.uber.org/zap"
 )
 
+// processBatch processes a batch of messages, handling errors and applying backpressure.
+// It checks context cancellation between messages for faster shutdown.
+func (c *Consumer) processBatch(ctx context.Context, msgs []*nats.Msg) {
+	for _, msg := range msgs {
+		// Check context before processing each message
+		select {
+		case <-ctx.Done():
+			c.logger.Info("Stopping batch processing due to cancellation",
+				zap.Int("remaining_messages", len(msgs)),
+			)
+			return
+		default:
+		}
+		c.processSingleMessage(ctx, msg)
+	}
+}
+
+// processSingleMessage processes a single message with error handling and backpressure.
+func (c *Consumer) processSingleMessage(ctx context.Context, msg *nats.Msg) {
+	start := time.Now()
+
+	if err := c.processMessage(ctx, msg); err != nil {
+		c.handleMessageError(ctx, msg, err, time.Since(start))
+		return
+	}
+
+	// Successful processing resets the error streak.
+	if c.consecutiveProcessErrors > 0 {
+		c.consecutiveProcessErrors = 0
+	}
+
+	// ACK the message
+	if ackErr := msg.Ack(); ackErr != nil {
+		c.logger.Error("Failed to ACK message", zap.Error(ackErr))
+	} else {
+		elapsed := time.Since(start)
+		c.telemetry.RecordMessageHandled(ctx, c.config.streamName, c.config.consumerName, "ok", elapsed)
+	}
+}
+
 // processMessage processes a single message.
 func (c *Consumer) processMessage(ctx context.Context, msg *nats.Msg) error {
 	ctx, span := otel.Tracer("caatsm/nats").Start(ctx, "Consumer.processMessage")
 	defer span.End()
-	span.SetAttributes(attribute.String("nats.subject", msg.Subject))
+
+	// Set semantic messaging attributes
+	span.SetAttributes(
+		attribute.String("messaging.system", "nats"),
+		attribute.String("messaging.operation.name", "receive"),
+		attribute.String("messaging.destination.name", msg.Subject),
+		attribute.String("messaging.consumer.group.name", c.config.consumerName),
+		attribute.String("caatsm.stream", c.config.streamName),
+	)
 
 	msgID, source, err := c.resolveMsgID(msg)
 	if err != nil {
@@ -46,8 +95,8 @@ func (c *Consumer) processMessage(ctx context.Context, msg *nats.Msg) error {
 	msgLogger := log.WithMessageContext(c.logger, log.MessageFields{
 		Service:        "caatsm-consumer",
 		TransportMsgID: msgID,
-		Stream:         c.streamName,
-		Consumer:       c.consumerName,
+		Stream:         c.config.streamName,
+		Consumer:       c.config.consumerName,
 		Subject:        msg.Subject,
 		JSSequence:     jsSeq,
 	})
@@ -74,7 +123,7 @@ func (c *Consumer) resolveMsgID(msg *nats.Msg) (string, string, error) {
 		return id, "header", nil
 	}
 
-	if c.mode == "core" {
+	if c.config.mode == "core" {
 		return uuid.NewString(), "generated", nil
 	}
 
@@ -85,4 +134,3 @@ func (c *Consumer) resolveMsgID(msg *nats.Msg) (string, string, error) {
 
 	return fmt.Sprintf("js-%d", meta.Sequence.Stream), "metadata", nil
 }
-

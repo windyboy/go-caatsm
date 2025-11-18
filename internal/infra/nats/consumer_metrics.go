@@ -49,12 +49,12 @@ func (c *Consumer) recordConsumerMetrics(ctx context.Context, info *nats.Consume
 
 	// Export an explicit pending messages gauge for Prometheus-based lag /
 	// backlog alerts.
-	obsmetrics.RecordNATSConsumerPending(c.streamName, c.consumerName, info.NumPending)
+	obsmetrics.RecordNATSConsumerPending(c.config.streamName, c.config.consumerName, info.NumPending)
 }
 
 // emitConsumerStats periodically emits consumer statistics.
 func (c *Consumer) emitConsumerStats(ctx context.Context) {
-	ticker := time.NewTicker(c.monitorInterval)
+	ticker := time.NewTicker(c.config.monitorInterval)
 	defer ticker.Stop()
 
 	for {
@@ -62,15 +62,15 @@ func (c *Consumer) emitConsumerStats(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			info, err := c.js.ConsumerInfo(c.streamName, c.consumerName)
+			info, err := c.js.ConsumerInfo(c.config.streamName, c.config.consumerName)
 			if err != nil {
 				c.logger.Warn("Failed to fetch consumer info", zap.Error(err))
 				continue
 			}
 
 			c.logger.Debug("JetStream consumer metrics",
-				zap.String("stream", c.streamName),
-				zap.String("consumer", c.consumerName),
+				zap.String("stream", c.config.streamName),
+				zap.String("consumer", c.config.consumerName),
 				zap.Uint64("num_ack_pending", uint64(info.NumAckPending)),
 				zap.Uint64("num_redelivered", uint64(info.NumRedelivered)),
 				zap.Uint64("num_pending", uint64(info.NumPending)),

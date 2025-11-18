@@ -21,22 +21,22 @@ func (c *Consumer) validateDLQ() error {
 	}
 
 	// DLQ routing is only active in JetStream mode.
-	if c.mode != "jetstream" {
+	if c.config.mode != "jetstream" {
 		return nil
 	}
 
 	// If DLQ is not enabled in config, make sure we don't accidentally route to it.
 	if !c.cfg.DLQ.Enabled {
-		if strings.TrimSpace(c.dlqSubject) != "" {
+		if strings.TrimSpace(c.config.dlqSubject) != "" {
 			c.logger.Info("DLQ subject configured but dlq.enabled is false; DLQ routing disabled",
-				zap.String("dlq_subject", c.dlqSubject),
+				zap.String("dlq_subject", c.config.dlqSubject),
 			)
 		}
-		c.dlqSubject = ""
+		c.config.dlqSubject = ""
 		return nil
 	}
 
-	subject := strings.TrimSpace(c.dlqSubject)
+	subject := strings.TrimSpace(c.config.dlqSubject)
 	if subject == "" {
 		return fmt.Errorf("DLQ enabled but dlq.subject is empty")
 	}
@@ -68,10 +68,10 @@ func (c *Consumer) routeToDLQ(ctx context.Context, msg *nats.Msg, cause error) e
 	if c == nil || c.js == nil {
 		return nil
 	}
-	if c.mode != "jetstream" {
+	if c.config.mode != "jetstream" {
 		return nil
 	}
-	if strings.TrimSpace(c.dlqSubject) == "" {
+	if strings.TrimSpace(c.config.dlqSubject) == "" {
 		return nil
 	}
 
@@ -83,11 +83,11 @@ func (c *Consumer) routeToDLQ(ctx context.Context, msg *nats.Msg, cause error) e
 		deliveries = meta.NumDelivered
 	}
 
-	payload := map[string]interface{}{
+	payload := map[string]any{
 		"transport_msg_id": msg.Header.Get("Nats-Msg-Id"),
 		"subject":          msg.Subject,
-		"stream":           c.streamName,
-		"consumer":         c.consumerName,
+		"stream":           c.config.streamName,
+		"consumer":         c.config.consumerName,
 		"nats_sequence":    jsSeq,
 		"deliveries":       deliveries,
 		"error":            fmt.Sprint(cause),
@@ -98,42 +98,42 @@ func (c *Consumer) routeToDLQ(ctx context.Context, msg *nats.Msg, cause error) e
 	data, err := json.Marshal(payload)
 	if err != nil {
 		c.logger.Error("failed to marshal DLQ payload",
-			zap.String("stream", c.streamName),
-			zap.String("consumer", c.consumerName),
-			zap.String("dlq_subject", c.dlqSubject),
+			zap.String("stream", c.config.streamName),
+			zap.String("consumer", c.config.consumerName),
+			zap.String("dlq_subject", c.config.dlqSubject),
 			zap.Error(err),
 		)
 		return fmt.Errorf("marshal dlq payload: %w", err)
 	}
 
-	if _, err := c.js.Publish(c.dlqSubject, data); err != nil {
+	if _, err := c.js.Publish(c.config.dlqSubject, data); err != nil {
 		// nats.ErrNoResponders typically means that no JetStream stream is
 		// configured to receive this subject, or JetStream is temporarily
 		// unavailable. Surface this explicitly to make operational diagnosis
 		// easier.
 		if errors.Is(err, nats.ErrNoResponders) {
 			c.logger.Error("transient DLQ publish error (no responders)",
-				zap.String("stream", c.streamName),
-				zap.String("consumer", c.consumerName),
-				zap.String("dlq_subject", c.dlqSubject),
+				zap.String("stream", c.config.streamName),
+				zap.String("consumer", c.config.consumerName),
+				zap.String("dlq_subject", c.config.dlqSubject),
 				zap.Int("payload_size", len(data)),
 				zap.Error(err),
 			)
-			c.telemetry.RecordDLQPublishFailure(ctx, c.streamName, c.consumerName)
-			return fmt.Errorf("publish to dlq subject %s: no JetStream stream found for subject or JetStream unavailable: %w", c.dlqSubject, err)
+			c.telemetry.RecordDLQPublishFailure(ctx, c.config.streamName, c.config.consumerName)
+			return fmt.Errorf("publish to dlq subject %s: no JetStream stream found for subject or JetStream unavailable: %w", c.config.dlqSubject, err)
 		}
 		c.logger.Error("failed to publish to DLQ",
-			zap.String("stream", c.streamName),
-			zap.String("consumer", c.consumerName),
-			zap.String("dlq_subject", c.dlqSubject),
+			zap.String("stream", c.config.streamName),
+			zap.String("consumer", c.config.consumerName),
+			zap.String("dlq_subject", c.config.dlqSubject),
 			zap.Int("payload_size", len(data)),
 			zap.Error(err),
 		)
-		c.telemetry.RecordDLQPublishFailure(ctx, c.streamName, c.consumerName)
-		return fmt.Errorf("publish to dlq subject %s: %w", c.dlqSubject, err)
+		c.telemetry.RecordDLQPublishFailure(ctx, c.config.streamName, c.config.consumerName)
+		return fmt.Errorf("publish to dlq subject %s: %w", c.config.dlqSubject, err)
 	}
 
-	c.telemetry.RecordDLQMessage(ctx, c.streamName, c.consumerName)
+	c.telemetry.RecordDLQMessage(ctx, c.config.streamName, c.config.consumerName)
 
 	return nil
 }

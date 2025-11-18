@@ -39,7 +39,16 @@ func ProvideRepository(pool *pgxpool.Pool, logger *zap.Logger) (port.Repository,
 func (r *Repository) InsertOne(ctx context.Context, msg *dto.ParsedTelegram) error {
 	ctx, span := otel.Tracer("caatsm/postgres").Start(ctx, "Repository.InsertOne")
 	defer span.End()
-	span.SetAttributes(attribute.String("db.table", "aviation.telegrams"))
+
+	// Set semantic database attributes
+	span.SetAttributes(
+		attribute.String("db.system", "postgresql"),
+		attribute.String("db.operation", "insert"),
+		attribute.String("db.name", "aviation"),
+		attribute.String("db.table", "telegrams"),
+		attribute.String("caatsm.message.id", msg.MessageID),
+		attribute.String("caatsm.message.category", msg.Category),
+	)
 
 	// Optional idempotency check based on business message identity. If we have a
 	// non-empty message ID and date/time, we can cheaply skip duplicates here to

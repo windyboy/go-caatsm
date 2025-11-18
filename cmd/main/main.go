@@ -4,6 +4,7 @@ import (
 	"caatsm/internal/infra/config"
 	"caatsm/pkg/di"
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"os"
@@ -204,7 +205,10 @@ func runListen(parentCtx context.Context, cfg *config.Config) error {
 	}
 
 	// After cancellation, give the consumer a chance to finish cleanup.
-	waitTimeout := 5 * time.Second
+	// Consumer checks context before fetch and between messages, so it should exit quickly.
+	// Worst case: finishing current message (up to 1s for slow DB) + cleanup (~100ms)
+	// 1.5s provides safe buffer while keeping shutdown responsive.
+	waitTimeout := 1500 * time.Millisecond
 	select {
 	case err := <-errChan:
 		if err != nil && !errors.Is(err, context.Canceled) {
@@ -215,7 +219,10 @@ func runListen(parentCtx context.Context, cfg *config.Config) error {
 			zap.Duration("timeout", waitTimeout))
 	}
 
-	if err := consumer.Shutdown(context.Background()); err != nil {
+	// Use a short timeout for shutdown since consumer should already be stopped
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer shutdownCancel()
+	if err := consumer.Shutdown(shutdownCtx); err != nil {
 		if runErr == nil {
 			runErr = fmt.Errorf("failed to drain NATS connection: %w", err)
 		}
@@ -329,17 +336,29 @@ func initTelemetry(ctx context.Context, cfg *config.Config) (func(context.Contex
 		return nil, fmt.Errorf("telemetry endpoint is required when telemetry.enabled=true")
 	}
 
+	// Configure TLS settings
+	var tlsConfig *tls.Config
+	if cfg.Telemetry.Insecure {
+		tlsConfig = &tls.Config{
+			InsecureSkipVerify: true,
+			MinVersion:         tls.VersionTLS12, // TLS 1.2 minimum, TLS 1.3 preferred
+		}
+	}
+
 	traceOpts := []otlptracehttp.Option{
 		otlptracehttp.WithEndpoint(cfg.Telemetry.Endpoint),
 		otlptracehttp.WithURLPath("/v1/traces"),
 	}
+	if tlsConfig != nil {
+		traceOpts = append(traceOpts, otlptracehttp.WithTLSClientConfig(tlsConfig))
+	}
+
 	metricOpts := []otlpmetrichttp.Option{
 		otlpmetrichttp.WithEndpoint(cfg.Telemetry.Endpoint),
 		otlpmetrichttp.WithURLPath("/v1/metrics"),
 	}
-	if cfg.Telemetry.Insecure {
-		traceOpts = append(traceOpts, otlptracehttp.WithInsecure())
-		metricOpts = append(metricOpts, otlpmetrichttp.WithInsecure())
+	if tlsConfig != nil {
+		metricOpts = append(metricOpts, otlpmetrichttp.WithTLSClientConfig(tlsConfig))
 	}
 
 	traceExporter, err := otlptracehttp.New(ctx, traceOpts...)
@@ -351,31 +370,53 @@ func initTelemetry(ctx context.Context, cfg *config.Config) (func(context.Contex
 		return nil, fmt.Errorf("init metric exporter: %w", err)
 	}
 
+	// Get environment for sampling configuration
 	env := os.Getenv("GO_ENV")
 	if env == "" {
 		env = "dev"
 	}
+
+	// Create comprehensive resource with service information
 	res, err := resource.New(ctx,
 		resource.WithFromEnv(),
 		resource.WithProcess(),
 		resource.WithOS(),
 		resource.WithHost(),
+		resource.WithContainer(),
 		resource.WithAttributes(
 			semconv.ServiceName("caatsm"),
+			semconv.ServiceVersion("dev"), // TODO: Use build info
+			semconv.ServiceNamespace("airport"),
+			attribute.String("service.component", "receiver"),
 			attribute.String("deployment.environment", env),
+			attribute.String("telemetry.endpoint", cfg.Telemetry.Endpoint),
+			attribute.Bool("telemetry.insecure", cfg.Telemetry.Insecure),
 		),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("build telemetry resource: %w", err)
 	}
 
+	// Configure sampling based on environment
+	sampler := getSamplerForEnvironment(env)
+
+	// Configure tracer provider with batching and sampling
 	tp := sdktrace.NewTracerProvider(
-		sdktrace.WithBatcher(traceExporter),
+		sdktrace.WithBatcher(traceExporter,
+			sdktrace.WithBatchTimeout(1*time.Second),
+			sdktrace.WithMaxExportBatchSize(512),
+			sdktrace.WithMaxQueueSize(2048),
+		),
 		sdktrace.WithResource(res),
+		sdktrace.WithSampler(sdktrace.ParentBased(sampler)),
 	)
+
+	// Configure meter provider with periodic reader
 	mp := sdkmetric.NewMeterProvider(
 		sdkmetric.WithResource(res),
-		sdkmetric.WithReader(sdkmetric.NewPeriodicReader(metricExporter)),
+		sdkmetric.WithReader(sdkmetric.NewPeriodicReader(metricExporter,
+			sdkmetric.WithInterval(30*time.Second),
+		)),
 	)
 
 	otel.SetTracerProvider(tp)
@@ -394,4 +435,22 @@ func initTelemetry(ctx context.Context, cfg *config.Config) (func(context.Contex
 	}
 
 	return shutdown, nil
+}
+
+// getSamplerForEnvironment returns appropriate sampling strategy for each environment
+func getSamplerForEnvironment(env string) sdktrace.Sampler {
+	switch env {
+	case "prod", "production":
+		// 1% sampling in production to control costs and performance
+		return sdktrace.TraceIDRatioBased(0.01)
+	case "staging":
+		// 10% sampling in staging for better observability
+		return sdktrace.TraceIDRatioBased(0.1)
+	case "test", "testing":
+		// Always sample in testing for complete coverage
+		return sdktrace.AlwaysSample()
+	default:
+		// 100% sampling in development for debugging
+		return sdktrace.AlwaysSample()
+	}
 }

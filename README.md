@@ -143,6 +143,11 @@ enabled = false
 endpoint = "http://otel-collector:4318"
 insecure = true
 
+# Production configuration example:
+# enabled = true
+# endpoint = "otel-collector.company.com:4318"
+# insecure = false  # Use TLS in production
+
 ### Timeouts and Ack Wait
 
 `[timeouts]` is optional, but if you plan to tune JetStream redelivery you should set `timeouts.ack_wait` and/or `[nats.consumer].ack_wait`. When neither is specified the application defaults both values to `30s`, ensuring predictable redelivery timing.
@@ -470,20 +475,28 @@ Critical overrides stay available through CLI flags; advanced tuning such as str
 
 ### Observability
 
-The processor exposes three complementary observability surfaces:
+The processor exposes three complementary observability surfaces with production-ready OpenTelemetry implementation:
 
 1. **OpenTelemetry (traces + metrics)**
-   - Enable via `[telemetry] enabled = true` and set `endpoint` to your OTLP/HTTP collector (e.g., `http://otel-collector:4318`).
-   - CLI overrides:
-     - `--telemetry-enabled` toggles exporters on/off.
-     - `--telemetry-endpoint` and `--telemetry-insecure` adjust the OTLP HTTP endpoint and TLS behavior.
-   - When enabled, the app emits:
-     - Traces for parser/repository/publisher spans (`caatsm/app`, `caatsm/postgres`, `caatsm/nats`).
-     - A focused set of metrics, including:
-       - `caatsm_messages_processed_total` (counter, by `message.status` / `message.category`)
-       - `caatsm_publish_failures_total` (counter)
-       - `caatsm_parse_duration_seconds` (histogram)
-   - Application code records these via a thin `telemetry.Recorder` abstraction, which fans out to OTEL and Prometheus backends as configured.
+    - **Production-ready setup** with environment-based sampling, comprehensive resource attributes, and optimized batching.
+    - Enable via `[telemetry] enabled = true` and set `endpoint` to your OTLP/HTTP collector (e.g., `http://otel-collector:4318`).
+    - **Sampling strategy**:
+      - Production: 1% sampling (cost-effective)
+      - Staging: 10% sampling (balanced observability)
+      - Development/Test: 100% sampling (full debugging)
+    - CLI overrides:
+      - `--telemetry-enabled` toggles exporters on/off.
+      - `--telemetry-endpoint` and `--telemetry-insecure` adjust the OTLP HTTP endpoint and TLS behavior.
+    - **Comprehensive traces** with semantic attributes:
+      - `caatsm/app`: Message processing spans with `messaging.system`, `messaging.operation`, `caatsm.message.category`
+      - `caatsm/postgres`: Database operations with `db.system`, `db.operation`, `db.table`
+      - `caatsm/nats`: NATS operations with `messaging.destination`, `messaging.consumer.id`
+    - **Business metrics** (focused set for OTEL):
+      - `caatsm_messages_processed_total` (counter, by `message.status` / `message.category`)
+      - `caatsm_publish_failures_total` (counter)
+      - `caatsm_parse_duration_seconds` (histogram)
+    - **Resource attributes** include service metadata, environment, build info, and infrastructure details.
+    - Application code records telemetry via a thin `telemetry.Recorder` abstraction, which fans out to OTEL and Prometheus backends as configured.
 
 2. **Prometheus metrics (`/metrics`)**
    - Implemented in `internal/infra/metrics` and considered the primary source for SRE PromQL/SLOs.

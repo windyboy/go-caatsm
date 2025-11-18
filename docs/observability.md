@@ -166,60 +166,79 @@ A non-2xx response indicates the service is not healthy/ready and should be remo
 
 ### Tracing
 
+The application implements production-ready OpenTelemetry tracing with comprehensive span coverage and semantic attributes.
+
+#### Configuration
+
 Tracing is configured via the `telemetry` section:
 
-- `telemetry.enabled` – enables OTEL exporters.  
-- `telemetry.endpoint` – OTLP HTTP endpoint (e.g. `localhost:4318`).  
-- `telemetry.insecure` – disables TLS for local/dev.
+- `telemetry.enabled` – enables OTEL exporters (default: `false` in dev, `true` in prod)
+- `telemetry.endpoint` – OTLP HTTP endpoint (e.g. `localhost:4318` for dev, `otel-collector.company.com:4318` for prod)
+- `telemetry.insecure` – disables TLS for local/dev (default: `true` in dev, `false` in prod)
 
-#### OTEL vs Prometheus metrics
+#### Sampling Strategy
 
-The receiver reports two complementary sets of metrics:
+Environment-based sampling ensures cost-effective production monitoring:
 
-- **Prometheus metrics via `/metrics`**  
-  Implemented in `internal/infra/metrics`, covering:
-  - End-to-end message handling (`caatsm_messages_total`,
-    `caatsm_handle_latency_seconds`, `caatsm_retries_total`)
-  - DB activity (`caatsm_db_queries_total`,
-    `caatsm_db_query_latency_seconds`)
-  - Legacy per-telegram metrics
+- **Production**: 1% sampling (cost-effective, maintains observability)
+- **Staging**: 10% sampling (balanced observability for testing)
+- **Development/Test**: 100% sampling (full debugging coverage)
 
-- **OpenTelemetry metrics via OTLP**  
-  Implemented using `otel.Meter` in the NATS consumer and app processor,
-  including:
-  - `caatsm_messages_processed_total`
-  - `caatsm_parse_duration_seconds`
-  - `caatsm_publish_failures_total`
-  - `caatsm_nats_consumer_ack_pending`
-  - `caatsm_nats_consumer_redelivered`
-  - `caatsm_nats_consumer_pending`
-  - `caatsm_nats_consumer_delivered`
+#### Resource Attributes
 
-Prometheus only sees the metrics exposed on `/metrics`. OTEL metrics are
-exported to the configured OTEL collector (`telemetry.endpoint`) via OTLP and
-are, by default, forwarded to Jaeger (traces) and logs (metrics) according to
-`configs/otel-collector.dev.yaml`. If you want OTEL metrics to appear in
-Prometheus as well, you can extend the collector configuration with a
-`prometheus` or `prometheusremotewrite` exporter and add a corresponding
-scrape or remote-write configuration.
+All spans include comprehensive resource metadata:
 
-Key spans:
 
-- `caatsm/nats`  
-  - `Consumer.processMessage`
-- `caatsm/app`  
-  - `MessageProcessor.Handle`  
-  - `Publisher.Publish`
-- `caatsm/postgres`  
-  - `Repository.InsertOne`  
-  - `Repository.InsertBatch`  
-  - `Repository.InsertRaw`
+#### Key Spans with Semantic Attributes
 
-Important attributes:
+**NATS Consumer (`caatsm/nats`)**:
+- `Consumer.processMessage`
+  - `messaging.system: nats`
+  - `messaging.operation: receive`
+  - `messaging.destination: <subject>`
+  - `messaging.consumer.id: <consumer-name>`
+  - `caatsm.stream: <stream-name>`
 
-- `nats.subject`, `nats.msg_id`, `nats.js.stream_seq`, `nats.js.consumer_seq`  
-- `telegram.message_id`, `telegram.category`, `telegram.status`  
-- `db.table`, `db.inserted`
+**Application Processor (`caatsm/app`)**:
+- `MessageProcessor.Handle`
+  - `messaging.system: nats`
+  - `messaging.operation: receive`
+  - `messaging.message_id: <msg-id>`
+  - `caatsm.component: processor`
+  - `caatsm.message.category: <ARR|DEP|FPL|etc>`
+
+**Database Operations (`caatsm/postgres`)**:
+- `Repository.InsertOne`, `Repository.InsertBatch`, `Repository.InsertRaw`
+  - `db.system: postgresql`
+  - `db.operation: insert`
+  - `db.name: aviation`
+  - `db.table: telegrams`
+  - `caatsm.message.id: <telegram-id>`
+
+#### OTEL vs Prometheus Metrics
+
+The receiver reports complementary metrics through both systems:
+
+**Prometheus metrics via `/metrics`** (operational focus):
+- End-to-end message handling (`caatsm_messages_total`, `caatsm_handle_latency_seconds`, `caatsm_retries_total`)
+- DB activity (`caatsm_db_queries_total`, `caatsm_db_query_latency_seconds`)
+- NATS consumer metrics (`caatsm_nats_consumer_pending_messages`)
+- DLQ operations (`caatsm_dlq_messages_total`, `caatsm_dlq_publish_failures_total`)
+
+**OpenTelemetry metrics via OTLP** (business focus):
+- Message processing results (`caatsm_messages_processed_total`)
+- Parse performance (`caatsm_parse_duration_seconds`)
+- Publish reliability (`caatsm_publish_failures_total`)
+- NATS consumer health metrics (ack pending, redelivered, delivered counts)
+
+#### Collector Integration
+
+OTEL metrics and traces are exported to the configured collector:
+
+- **Development**: `configs/otel-collector.dev.yaml` (batching, resource processing, retry logic)
+- **Production**: `configs/otel-collector.prod.yaml` (TLS, authentication, high availability)
+
+To integrate OTEL metrics with Prometheus, extend the collector configuration with a `prometheusremotewrite` exporter.
 
 ### Structured Logging Contract
 

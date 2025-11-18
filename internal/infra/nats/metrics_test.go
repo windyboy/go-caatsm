@@ -3,9 +3,9 @@ package nats
 import (
 	"context"
 
+	"github.com/nats-io/nats.go"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/nats-io/nats.go"
 	"go.uber.org/zap/zaptest"
 )
 
@@ -18,9 +18,11 @@ var _ = Describe("Metrics", func() {
 	BeforeEach(func() {
 		ctx = context.Background()
 		c = &Consumer{
-			streamName:   "TEST_STREAM",
-			consumerName: "test-consumer",
-			logger:       zaptest.NewLogger(GinkgoT()),
+			config: consumerConfig{
+				streamName:   "TEST_STREAM",
+				consumerName: "test-consumer",
+			},
+			logger: zaptest.NewLogger(GinkgoT()),
 		}
 	})
 
@@ -54,4 +56,3 @@ var _ = Describe("Metrics", func() {
 		})
 	})
 })
-

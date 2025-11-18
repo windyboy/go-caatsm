@@ -21,12 +21,14 @@ var _ = Describe("Consumer JetStream", func() {
 	BeforeEach(func() {
 		logger := zaptest.NewLogger(GinkgoT())
 		c = &Consumer{
-			mode:         "jetstream",
-			streamName:   "TEST_STREAM",
-			consumerName: "test-consumer",
-			subject:      "test.subject",
-			batchSize:    10,
-			batchTimeout: 2 * time.Second,
+			config: consumerConfig{
+				mode:         "jetstream",
+				streamName:   "TEST_STREAM",
+				consumerName: "test-consumer",
+				subject:      "test.subject",
+				batchSize:    10,
+				batchTimeout: 2 * time.Second,
+			},
 			logger:       logger,
 			errorHandler: NewErrorHandler(logger),
 			cfg: &configpkg.Config{

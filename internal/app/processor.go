@@ -1,8 +1,8 @@
 package app
 
 import (
-	"caatsm/internal/adapter/parser"
 	"caatsm/internal/adapter/dto"
+	"caatsm/internal/adapter/parser"
 	"caatsm/internal/infra/log"
 	"caatsm/internal/infra/telemetry"
 	"caatsm/internal/port"
@@ -64,7 +64,14 @@ func (p *MessageProcessor) Handle(ctx context.Context, raw []byte, msgID string)
 	tracer := otel.Tracer("caatsm/app")
 	ctx, span := tracer.Start(ctx, "MessageProcessor.Handle")
 	defer span.End()
-	span.SetAttributes(attribute.String("nats.msg_id", msgID))
+
+	// Set semantic attributes following OpenTelemetry conventions
+	span.SetAttributes(
+		attribute.String("messaging.system", "nats"),
+		attribute.String("messaging.operation", "receive"),
+		attribute.String("messaging.message_id", msgID),
+		attribute.String("caatsm.component", "processor"),
+	)
 
 	receivedAt := time.Now()
 

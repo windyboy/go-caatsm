@@ -14,7 +14,7 @@ import (
 func (c *Consumer) startCore(ctx context.Context) error {
 	queueGroup := c.cfg.Subscription.QueueGroup
 	if queueGroup == "" {
-		queueGroup = c.consumerName
+		queueGroup = c.config.consumerName
 	}
 
 	handler := func(msg *nats.Msg) {
@@ -28,16 +28,16 @@ func (c *Consumer) startCore(ctx context.Context) error {
 		}
 	}
 
-	sub, err := c.conn.QueueSubscribe(c.subject, queueGroup, handler)
+	sub, err := c.conn.QueueSubscribe(c.config.subject, queueGroup, handler)
 	if err != nil {
-		return fmt.Errorf("failed to subscribe to %s: %w", c.subject, err)
+		return fmt.Errorf("failed to subscribe to %s: %w", c.config.subject, err)
 	}
 	if err := c.conn.Flush(); err != nil {
 		return fmt.Errorf("failed to flush NATS connection: %w", err)
 	}
 
 	c.logger.Info("Started core NATS subscription",
-		zap.String("subject", c.subject),
+		zap.String("subject", c.config.subject),
 		zap.String("queue_group", queueGroup),
 	)
 

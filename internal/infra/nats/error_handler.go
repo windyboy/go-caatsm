@@ -47,9 +47,7 @@ func (h *ErrorHandler) HandleFetchError(
 	if errors.Is(err, nats.ErrNoResponders) {
 		*fetchErrorStreak++
 		backoff := time.Duration(*fetchErrorStreak) * time.Second
-		if backoff > 30*time.Second {
-			backoff = 30 * time.Second
-		}
+		backoff = min(backoff, 30*time.Second)
 		h.logger.Warn("JetStream not available, will retry with backoff",
 			zap.Error(err),
 			zap.String("stream", streamName),
@@ -91,9 +89,7 @@ func (h *ErrorHandler) HandleFetchError(
 	// Generic error path with modest backoff.
 	*fetchErrorStreak++
 	backoff := time.Duration(*fetchErrorStreak) * time.Second
-	if backoff > 10*time.Second {
-		backoff = 10 * time.Second
-	}
+	backoff = min(backoff, 10*time.Second)
 	h.logger.Error("Failed to fetch messages; backing off",
 		zap.Error(err),
 		zap.Duration("backoff", backoff),
@@ -133,9 +129,7 @@ func (h *ErrorHandler) HandleProcessingError(
 	if consecutiveErrors >= 10 {
 		result.ShouldApplyBackpressure = true
 		result.BackpressureDelay = time.Duration(consecutiveErrors) * 100 * time.Millisecond
-		if result.BackpressureDelay > 5*time.Second {
-			result.BackpressureDelay = 5 * time.Second
-		}
+		result.BackpressureDelay = min(result.BackpressureDelay, 5*time.Second)
 	}
 
 	return result
