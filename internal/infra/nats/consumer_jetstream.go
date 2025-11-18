@@ -4,7 +4,6 @@ import (
 	"caatsm/internal/app"
 	obsmetrics "caatsm/internal/infra/metrics"
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -15,17 +14,7 @@ import (
 
 // ensureConsumer creates the consumer if it doesn't exist; if it already exists, it is reused.
 func (c *Consumer) ensureConsumer() error {
-	consumerConfig := &nats.ConsumerConfig{
-		Durable:       c.consumerName,
-		DeliverPolicy: mapDeliverPolicy(c.cfg.NATS.ConsumerRules.DeliverPolicy),
-		AckPolicy:     nats.AckExplicitPolicy,
-		AckWait:       c.ackWait,
-		ReplayPolicy:  mapReplayPolicy(c.cfg.NATS.ConsumerRules.ReplayPolicy),
-		MaxDeliver:    c.cfg.NATS.ConsumerRules.MaxDeliver,
-		MaxAckPending: c.cfg.NATS.ConsumerRules.MaxAckPending,
-		FilterSubject: c.subject,
-		BackOff:       c.cfg.NATS.ConsumerRules.Backoff,
-	}
+	consumerConfig := c.buildConsumerConfig()
 	if consumerConfig.DeliverPolicy == nats.DeliverByStartSequencePolicy && c.cfg.NATS.ConsumerRules.StartSequence > 0 {
 		consumerConfig.OptStartSeq = c.cfg.NATS.ConsumerRules.StartSequence
 	}
@@ -41,35 +30,7 @@ func (c *Consumer) ensureConsumer() error {
 		}
 	}
 
-	// First check if the consumer already exists to make this initialization idempotent.
-	info, err := c.js.ConsumerInfo(c.streamName, c.consumerName)
-	if err == nil && info != nil {
-		c.logger.Info("Using existing JetStream consumer",
-			zap.String("consumer", c.consumerName),
-			zap.String("stream", c.streamName),
-			zap.String("subject", c.subject),
-		)
-		return nil
-	}
-	if err != nil && !errors.Is(err, nats.ErrConsumerNotFound) {
-		return fmt.Errorf("failed to fetch consumer info: %w", err)
-	}
-
-	// Consumer does not exist; create it.
-	if _, err := c.js.AddConsumer(c.streamName, consumerConfig); err != nil {
-		return fmt.Errorf("failed to create consumer: %w", err)
-	}
-
-	c.logger.Info("Created JetStream consumer",
-		zap.String("consumer", c.consumerName),
-		zap.String("stream", c.streamName),
-		zap.String("subject", c.subject),
-		zap.Duration("ack_wait", c.ackWait),
-		zap.String("deliver_policy", c.cfg.NATS.ConsumerRules.DeliverPolicy),
-		zap.String("replay_policy", c.cfg.NATS.ConsumerRules.ReplayPolicy),
-	)
-
-	return nil
+	return c.consumerManager.EnsureConsumer(consumerConfig)
 }
 
 // recoverJetStreamResources attempts to recreate the stream and consumer in
@@ -82,46 +43,16 @@ func (c *Consumer) recoverJetStreamResources() error {
 		return fmt.Errorf("config is nil")
 	}
 
-	// Ensure stream exists (dev/test may auto-create, prod will error).
-	if err := EnsureStream(c.js, c.cfg, c.logger); err != nil {
-		return fmt.Errorf("ensure stream %s: %w", c.streamName, err)
-	}
-
-	// Ensure durable consumer exists and is properly bound.
-	if err := c.ensureConsumer(); err != nil {
-		return fmt.Errorf("ensure consumer %s: %w", c.consumerName, err)
-	}
-
-	return nil
+	consumerConfig := c.buildConsumerConfig()
+	return c.consumerManager.RecoverResources(c.streamManager, consumerConfig)
 }
 
 // createPullSubscriptionWithRecovery creates a pull subscription and, in
 // dev/test environments, attempts to self-heal missing stream/consumer
 // by recreating them once.
 func (c *Consumer) createPullSubscriptionWithRecovery() (*nats.Subscription, error) {
-	sub, err := c.js.PullSubscribe(c.subject, c.consumerName, nats.Bind(c.streamName, c.consumerName))
-	if err == nil {
-		return sub, nil
-	}
-
-	if isJetStreamResourceNotFound(err) && isDevLikeEnv() && shouldBootstrapStream() {
-		c.logger.Warn("PullSubscribe failed due to missing JetStream resources; attempting to recreate",
-			zap.Error(err),
-			zap.String("stream", c.streamName),
-			zap.String("consumer", c.consumerName),
-		)
-		if recErr := c.recoverJetStreamResources(); recErr != nil {
-			return nil, fmt.Errorf("failed to recover JetStream resources: %w", recErr)
-		}
-		// Retry subscription after successful recovery.
-		sub, err = c.js.PullSubscribe(c.subject, c.consumerName, nats.Bind(c.streamName, c.consumerName))
-		if err != nil {
-			return nil, fmt.Errorf("failed to create pull subscription after recovery: %w", err)
-		}
-		return sub, nil
-	}
-
-	return nil, fmt.Errorf("failed to create pull subscription: %w", err)
+	consumerConfig := c.buildConsumerConfig()
+	return c.consumerManager.CreatePullSubscriptionWithRecovery(c.streamManager, consumerConfig)
 }
 
 // nakWithStrategy sends a NAK with appropriate delay based on retry attempt.
@@ -166,7 +97,6 @@ func sleepWithContext(ctx context.Context, duration time.Duration) bool {
 	}
 }
 
-
 // fetchBatch fetches a batch of messages from the subscription.
 func (c *Consumer) fetchBatch(sub *nats.Subscription) ([]*nats.Msg, error) {
 	return sub.Fetch(c.batchSize, nats.MaxWait(c.batchTimeout))
@@ -175,156 +105,112 @@ func (c *Consumer) fetchBatch(sub *nats.Subscription) ([]*nats.Msg, error) {
 // handleFetchError handles errors during message fetching, including recovery logic.
 // Returns true if the error was handled and consumption should continue, false otherwise.
 func (c *Consumer) handleFetchError(ctx context.Context, err error, sub **nats.Subscription, fetchErrorStreak *int) (bool, error) {
-	if errors.Is(err, nats.ErrTimeout) {
-		// Timeout is expected when no messages are available.
-		return true, nil
-	}
-
-	// JetStream API is currently unavailable (e.g., NATS just restarted or JetStream not ready).
-	if errors.Is(err, nats.ErrNoResponders) {
-		*fetchErrorStreak++
-		backoff := time.Duration(*fetchErrorStreak) * time.Second
-		if backoff > 30*time.Second {
-			backoff = 30 * time.Second
+	result := c.errorHandler.HandleFetchError(ctx, err, sub, fetchErrorStreak, c.streamName, c.consumerName, func() (*nats.Subscription, error) {
+		if recErr := c.recoverJetStreamResources(); recErr != nil {
+			return nil, recErr
 		}
-		c.logger.Warn("JetStream not available, will retry with backoff",
-			zap.Error(err),
-			zap.String("stream", c.streamName),
-			zap.String("consumer", c.consumerName),
-			zap.Duration("backoff", backoff),
-		)
-		// Use context-aware sleep instead of blocking time.Sleep
-		if !sleepWithContext(ctx, backoff) {
-			return false, ctx.Err()
-		}
-		return true, nil
+		(*sub).Unsubscribe()
+		return c.createPullSubscriptionWithRecovery()
+	})
+
+	if result.RecoveredSub != nil {
+		*sub = result.RecoveredSub
+		*fetchErrorStreak = 0
 	}
 
-	// Underlying consumer/stream removed while app is running.
-	if isJetStreamResourceNotFound(err) {
-		if isDevLikeEnv() && shouldBootstrapStream() {
-			c.logger.Warn("JetStream consumer or stream missing; attempting to recreate",
-				zap.Error(err),
-				zap.String("stream", c.streamName),
-				zap.String("consumer", c.consumerName),
-			)
-			if recErr := c.recoverJetStreamResources(); recErr != nil {
-				return false, recErr
-			}
-
-			// Recreate subscription after successful recovery.
-			(*sub).Unsubscribe()
-			newSub, subErr := c.createPullSubscriptionWithRecovery()
-			if subErr != nil {
-				return false, subErr
-			}
-			*sub = newSub
-			*fetchErrorStreak = 0
-			return true, nil
-		}
-
-		// Production: treat as configuration/operational error.
-		c.logger.Error("JetStream consumer or stream missing; not auto-recreating in this environment",
-			zap.Error(err),
-			zap.String("stream", c.streamName),
-			zap.String("consumer", c.consumerName),
-		)
-		return false, err
-	}
-
-	// Generic error path with modest backoff.
-	*fetchErrorStreak++
-	backoff := time.Duration(*fetchErrorStreak) * time.Second
-	if backoff > 10*time.Second {
-		backoff = 10 * time.Second
-	}
-	c.logger.Error("Failed to fetch messages; backing off",
-		zap.Error(err),
-		zap.Duration("backoff", backoff),
-	)
-	// Use context-aware sleep instead of blocking time.Sleep
-	if !sleepWithContext(ctx, backoff) {
-		return false, ctx.Err()
-	}
-	return true, nil
+	return result.ShouldContinue, result.Error
 }
 
 // processBatch processes a batch of messages, handling errors and applying backpressure.
 func (c *Consumer) processBatch(ctx context.Context, msgs []*nats.Msg) {
 	for _, msg := range msgs {
-		start := time.Now()
+		c.processSingleMessage(ctx, msg)
+	}
+}
 
-		if err := c.processMessage(ctx, msg); err != nil {
-			isPermanent := app.IsPermanent(err)
-			elapsed := time.Since(start)
+// processSingleMessage processes a single message with error handling and backpressure.
+func (c *Consumer) processSingleMessage(ctx context.Context, msg *nats.Msg) {
+	start := time.Now()
 
-			c.logger.Error("Failed to process message",
-				zap.String("subject", msg.Subject),
-				zap.Error(err),
-				zap.Bool("permanent", isPermanent),
-			)
+	if err := c.processMessage(ctx, msg); err != nil {
+		c.handleMessageError(ctx, msg, err, time.Since(start))
+		return
+	}
 
-			result := obsmetrics.ResultFail
-			if isPermanent {
-				result = obsmetrics.ResultPermanentFail
-			}
-			c.telemetry.RecordMessageHandled(ctx, c.streamName, c.consumerName, result, elapsed)
+	// Successful processing resets the error streak.
+	if c.consecutiveProcessErrors > 0 {
+		c.consecutiveProcessErrors = 0
+	}
 
-			if isPermanent {
-				c.consecutiveProcessErrors = 0
-				// Poison/permanent message: route to DLQ if configured, then ACK
-				if err := c.routeToDLQ(ctx, msg, err); err != nil {
-					c.logger.Error("Failed to route permanent-error message to DLQ", zap.Error(err))
-				}
-				if ackErr := msg.Ack(); ackErr != nil {
-					c.logger.Error("Failed to ACK permanent-error message", zap.Error(ackErr))
-				}
-				continue
-			}
+	// ACK the message
+	if ackErr := msg.Ack(); ackErr != nil {
+		c.logger.Error("Failed to ACK message", zap.Error(ackErr))
+	} else {
+		elapsed := time.Since(start)
+		c.telemetry.RecordMessageHandled(ctx, c.streamName, c.consumerName, "ok", elapsed)
+	}
+}
 
-			// Transient error: increment error streak and apply simple backpressure if needed.
-			if c.consecutiveProcessErrors < 0 {
-				c.consecutiveProcessErrors = 0
-			}
-			c.consecutiveProcessErrors++
-			if c.consecutiveProcessErrors >= 10 {
-				// Apply a brief sleep to slow down consumption when the system
-				// is failing many messages in a row (e.g. DB unavailable).
-				backoff := time.Duration(c.consecutiveProcessErrors) * 100 * time.Millisecond
-				if backoff > 5*time.Second {
-					backoff = 5 * time.Second
-				}
-				c.logger.Warn("Applying backpressure due to consecutive processing errors",
-					zap.Int("consecutive_errors", c.consecutiveProcessErrors),
-					zap.Duration("sleep", backoff),
-				)
-				// Use context-aware sleep instead of blocking time.Sleep
-				if !sleepWithContext(ctx, backoff) {
-					// Context canceled, stop processing batch
-					return
-				}
-			}
+// handleMessageError handles errors that occur during message processing.
+func (c *Consumer) handleMessageError(ctx context.Context, msg *nats.Msg, err error, elapsed time.Duration) {
+	c.logger.Error("Failed to process message",
+		zap.String("subject", msg.Subject),
+		zap.Error(err),
+		zap.Bool("permanent", app.IsPermanent(err)),
+	)
 
-			// Transient error: request redelivery with optional delay
-			c.telemetry.RecordRetry(ctx, c.streamName, c.consumerName, obsmetrics.RetryReasonProcessorError)
-			if nakErr := c.nakWithStrategy(msg); nakErr != nil {
-				c.logger.Error("Failed to NAK message", zap.Error(nakErr))
-			}
-			continue
+	result := obsmetrics.ResultFail
+	if app.IsPermanent(err) {
+		result = obsmetrics.ResultPermanentFail
+	}
+	c.telemetry.RecordMessageHandled(ctx, c.streamName, c.consumerName, result, elapsed)
+
+	processingResult := c.errorHandler.HandleProcessingError(c.consecutiveProcessErrors, err, c.logger, msg.Subject)
+
+	if processingResult.IsPermanent {
+		c.handlePermanentError(ctx, msg, err)
+		return
+	}
+
+	c.handleTransientError(ctx, msg, processingResult)
+}
+
+// handlePermanentError handles permanent/poison messages.
+func (c *Consumer) handlePermanentError(ctx context.Context, msg *nats.Msg, err error) {
+	c.consecutiveProcessErrors = 0
+	// Poison/permanent message: route to DLQ if configured, then ACK
+	if dlqErr := c.routeToDLQ(ctx, msg, err); dlqErr != nil {
+		c.logger.Error("Failed to route permanent-error message to DLQ", zap.Error(dlqErr))
+	}
+	if ackErr := msg.Ack(); ackErr != nil {
+		c.logger.Error("Failed to ACK permanent-error message", zap.Error(ackErr))
+	}
+}
+
+// handleTransientError handles transient errors with backpressure and redelivery.
+func (c *Consumer) handleTransientError(ctx context.Context, msg *nats.Msg, processingResult ProcessingErrorResult) {
+	// Increment error streak
+	if c.consecutiveProcessErrors < 0 {
+		c.consecutiveProcessErrors = 0
+	}
+	c.consecutiveProcessErrors++
+
+	if processingResult.ShouldApplyBackpressure {
+		c.logger.Warn("Applying backpressure due to consecutive processing errors",
+			zap.Int("consecutive_errors", c.consecutiveProcessErrors),
+			zap.Duration("sleep", processingResult.BackpressureDelay),
+		)
+		// Use context-aware sleep instead of blocking time.Sleep
+		if !sleepWithContext(ctx, processingResult.BackpressureDelay) {
+			// Context canceled, stop processing
+			return
 		}
+	}
 
-		// Successful processing resets the error streak.
-		if c.consecutiveProcessErrors > 0 {
-			c.consecutiveProcessErrors = 0
-		}
-
-		// ACK the message
-		if ackErr := msg.Ack(); ackErr != nil {
-			c.logger.Error("Failed to ACK message", zap.Error(ackErr))
-		} else {
-			elapsed := time.Since(start)
-			c.telemetry.RecordMessageHandled(ctx, c.streamName, c.consumerName, "ok", elapsed)
-		}
+	// Transient error: request redelivery with optional delay
+	c.telemetry.RecordRetry(ctx, c.streamName, c.consumerName, obsmetrics.RetryReasonProcessorError)
+	if nakErr := c.nakWithStrategy(msg); nakErr != nil {
+		c.logger.Error("Failed to NAK message", zap.Error(nakErr))
 	}
 }
 

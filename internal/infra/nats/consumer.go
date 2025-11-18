@@ -37,6 +37,11 @@ type Consumer struct {
 	pending         metric.Int64Histogram
 	delivered       metric.Int64Histogram
 
+	// managers for resource lifecycle
+	consumerManager *ConsumerManager
+	streamManager   *StreamManager
+	errorHandler    *ErrorHandler
+
 	// simple backpressure / degradation state
 	consecutiveProcessErrors int
 }
@@ -147,9 +152,15 @@ func ProvideConsumer(
 	}
 	consumer.initMetrics()
 
+	// Initialize managers
+	consumer.errorHandler = NewErrorHandler(logger)
 	if consumer.mode == "jetstream" {
+		consumer.consumerManager = NewConsumerManager(js, normCfg.streamName, normCfg.consumerName, normCfg.subject, logger)
+		consumer.streamManager = NewStreamManager(js, normCfg.streamName, []string{normCfg.subject}, logger)
+
 		// Create consumer if it doesn't exist
-		if err := consumer.ensureConsumer(); err != nil {
+		consumerConfig := consumer.buildConsumerConfig()
+		if err := consumer.consumerManager.EnsureConsumer(consumerConfig); err != nil {
 			return nil, fmt.Errorf("failed to ensure consumer: %w", err)
 		}
 		// Validate DLQ configuration early so misconfiguration is visible at startup
@@ -165,6 +176,21 @@ func ProvideConsumer(
 	}
 
 	return consumer, nil
+}
+
+// buildConsumerConfig builds the NATS consumer configuration
+func (c *Consumer) buildConsumerConfig() *nats.ConsumerConfig {
+	return &nats.ConsumerConfig{
+		Durable:       c.consumerName,
+		DeliverPolicy: mapDeliverPolicy(c.cfg.NATS.ConsumerRules.DeliverPolicy),
+		AckPolicy:     nats.AckExplicitPolicy,
+		AckWait:       c.ackWait,
+		ReplayPolicy:  mapReplayPolicy(c.cfg.NATS.ConsumerRules.ReplayPolicy),
+		MaxDeliver:    c.cfg.NATS.ConsumerRules.MaxDeliver,
+		MaxAckPending: c.cfg.NATS.ConsumerRules.MaxAckPending,
+		FilterSubject: c.subject,
+		BackOff:       c.cfg.NATS.ConsumerRules.Backoff,
+	}
 }
 
 // Start starts consuming messages.

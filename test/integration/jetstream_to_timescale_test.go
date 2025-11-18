@@ -76,7 +76,7 @@ func TestJetStreamToTimescaleFlow(t *testing.T) {
 		t.Fatalf("failed to init jetstream: %v", err)
 	}
 
-	publisher, err := natsinfra.ProvidePublisher(js, cfg, logger)
+	publisher, err := natsinfra.ProvidePublisher(js, conn, cfg, logger)
 	if err != nil {
 		t.Fatalf("failed to init publisher: %v", err)
 	}

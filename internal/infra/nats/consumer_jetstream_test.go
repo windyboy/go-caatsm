@@ -19,6 +19,7 @@ var _ = Describe("Consumer JetStream", func() {
 	)
 
 	BeforeEach(func() {
+		logger := zaptest.NewLogger(GinkgoT())
 		c = &Consumer{
 			mode:         "jetstream",
 			streamName:   "TEST_STREAM",
@@ -26,7 +27,8 @@ var _ = Describe("Consumer JetStream", func() {
 			subject:      "test.subject",
 			batchSize:    10,
 			batchTimeout: 2 * time.Second,
-			logger:       zaptest.NewLogger(GinkgoT()),
+			logger:       logger,
+			errorHandler: NewErrorHandler(logger),
 			cfg: &configpkg.Config{
 				NATS: configpkg.NATSConfig{
 					ConsumerRules: configpkg.ConsumerRulesConfig{
@@ -92,6 +94,24 @@ var _ = Describe("Consumer JetStream", func() {
 			Expect(shouldContinue).To(BeTrue())
 			Expect(err).NotTo(HaveOccurred())
 			Expect(fetchErrorStreak).To(Equal(1))
+		})
+	})
+
+	Describe("buildConsumerConfig", func() {
+		It("builds consumer config with correct defaults", func() {
+			config := c.buildConsumerConfig()
+			Expect(config.Durable).To(Equal("test-consumer"))
+			Expect(config.AckPolicy).To(Equal(nats.AckExplicitPolicy))
+			Expect(config.FilterSubject).To(Equal("test.subject"))
+		})
+	})
+
+	Describe("processSingleMessage", func() {
+		It("handles successful message processing", func() {
+			// This would require mocking the processor, but we can test the structure
+			// For now, we verify the method exists and can be called
+			// Note: This test would need a mock processor to fully work
+			Skip("Requires mock message processor")
 		})
 	})
 })
