@@ -27,6 +27,7 @@ const (
 	MetricDBQueryLatencySeconds = "caatsm_db_query_latency_seconds"
 	MetricDLQMessagesTotal      = "caatsm_dlq_messages_total"
 	MetricDLQPublishFailures    = "caatsm_dlq_publish_failures_total"
+	MetricPublishFailuresTotal  = "caatsm_publish_failures_total"
 	MetricNATSConsumerPending   = "caatsm_nats_consumer_pending_messages"
 
 	// Common label keys.
@@ -69,6 +70,7 @@ var (
 	jsAPICallsTotal    *prometheus.CounterVec
 	dlqMessagesTotal   *prometheus.CounterVec
 	dlqPublishFailures *prometheus.CounterVec
+	publishFailuresTotal *prometheus.CounterVec
 
 	// Database metrics.
 	dbQueriesTotal *prometheus.CounterVec
@@ -125,6 +127,11 @@ func initCollectors() {
 		Help: "Total number of failures when publishing to the DLQ, labelled by stream and consumer.",
 	}, []string{LabelStream, LabelConsumer})
 
+	publishFailuresTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: MetricPublishFailuresTotal,
+		Help: "Total number of telegram publish failures, labelled by category.",
+	}, []string{LabelCategory})
+
 	jsAPICallsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: MetricJSAPICallsTotal,
 		Help: "Count of JetStream API calls made by the receiver.",
@@ -157,6 +164,7 @@ func initCollectors() {
 		jsAPICallsTotal,
 		dlqMessagesTotal,
 		dlqPublishFailures,
+		publishFailuresTotal,
 		dbQueriesTotal,
 		dbQueryLatency,
 		natsConsumerPending,
@@ -216,6 +224,13 @@ func RecordDLQMessage(stream, consumer string) {
 func RecordDLQPublishFailure(stream, consumer string) {
 	ensureCollectors()
 	dlqPublishFailures.WithLabelValues(labelValue(stream), labelValue(consumer)).Inc()
+}
+
+// RecordPublishFailure increments the publish failure counter for the given category.
+// This tracks general publish failures (not DLQ-specific).
+func RecordPublishFailure(category string) {
+	ensureCollectors()
+	publishFailuresTotal.WithLabelValues(labelValue(category)).Inc()
 }
 
 // RecordDBQuery records metrics for a single database operation.

@@ -103,6 +103,7 @@
       "id": 3,
       "type": "timeseries",
       "title": "End-to-end handle latency (P50/P95/P99)",
+      "description": "Latency breakdown by stream and consumer for detailed analysis.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus-dev"
@@ -123,18 +124,18 @@
       "targets": [
         {
           "refId": "P50",
-          "expr": "histogram_quantile(0.50, sum by (le) (rate(caatsm_handle_latency_seconds_bucket[5m])))",
-          "legendFormat": "P50"
+          "expr": "histogram_quantile(0.50, sum by (le, stream, consumer) (rate(caatsm_handle_latency_seconds_bucket[5m])))",
+          "legendFormat": "P50 ({{stream}}/{{consumer}})"
         },
         {
           "refId": "P95",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(caatsm_handle_latency_seconds_bucket[5m])))",
-          "legendFormat": "P95"
+          "expr": "histogram_quantile(0.95, sum by (le, stream, consumer) (rate(caatsm_handle_latency_seconds_bucket[5m])))",
+          "legendFormat": "P95 ({{stream}}/{{consumer}})"
         },
         {
           "refId": "P99",
-          "expr": "histogram_quantile(0.99, sum by (le) (rate(caatsm_handle_latency_seconds_bucket[5m])))",
-          "legendFormat": "P99"
+          "expr": "histogram_quantile(0.99, sum by (le, stream, consumer) (rate(caatsm_handle_latency_seconds_bucket[5m])))",
+          "legendFormat": "P99 ({{stream}}/{{consumer}})"
         }
       ]
     },
@@ -200,6 +201,7 @@
       "id": 6,
       "type": "timeseries",
       "title": "Retries and permanent failures",
+      "description": "Retries broken down by stream, consumer, and reason. Permanent failures by stream/consumer.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus-dev"
@@ -220,13 +222,13 @@
       "targets": [
         {
           "refId": "retries",
-          "expr": "sum(rate(caatsm_retries_total[5m]))",
-          "legendFormat": "retries"
+          "expr": "sum by (stream, consumer, reason) (rate(caatsm_retries_total[5m]))",
+          "legendFormat": "retries ({{stream}}/{{consumer}}/{{reason}})"
         },
         {
           "refId": "permanent_fail",
-          "expr": "sum(rate(caatsm_messages_total{result=\"permanent_fail\"}[5m]))",
-          "legendFormat": "permanent_fail"
+          "expr": "sum by (stream, consumer) (rate(caatsm_messages_total{result=\"permanent_fail\"}[5m]))",
+          "legendFormat": "permanent_fail ({{stream}}/{{consumer}})"
         }
       ]
     },
@@ -234,6 +236,7 @@
       "id": 7,
       "type": "timeseries",
       "title": "Publish failures by category",
+      "description": "Prometheus-sourced publish failures. Panel 11 shows OTEL-sourced failures.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus-dev"
@@ -254,8 +257,8 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "sum by (message_category) (rate(caatsm_publish_failures_total[5m]))",
-          "legendFormat": "{{message_category}}"
+          "expr": "sum by (category) (rate(caatsm_publish_failures_total[5m]))",
+          "legendFormat": "{{category}}"
         }
       ]
     },
@@ -285,6 +288,107 @@
           "refId": "A",
           "expr": "caatsm_nats_consumer_pending_messages",
           "legendFormat": "{{stream}} / {{consumer}}"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Messages Processed (OTEL - by status/category)",
+      "description": "OTEL metrics exported via collector. Labels: message_status, message_category (OTEL attributes converted from message.status, message.category).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-dev"
+      },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 26 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [] }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "single" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (message_status, message_category) (rate(caatsm_messages_processed_total[5m]))",
+          "legendFormat": "{{message_status}} / {{message_category}}"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Parse Duration (OTEL - P50/P95/P99)",
+      "description": "OTEL histogram metrics for parse latency, broken down by message status and category.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-dev"
+      },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 33 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [] },
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "single" }
+      },
+      "targets": [
+        {
+          "refId": "P50",
+          "expr": "histogram_quantile(0.50, sum by (le, message_status, message_category) (rate(caatsm_parse_duration_seconds_bucket[5m])))",
+          "legendFormat": "P50 ({{message_status}}/{{message_category}})"
+        },
+        {
+          "refId": "P95",
+          "expr": "histogram_quantile(0.95, sum by (le, message_status, message_category) (rate(caatsm_parse_duration_seconds_bucket[5m])))",
+          "legendFormat": "P95 ({{message_status}}/{{message_category}})"
+        },
+        {
+          "refId": "P99",
+          "expr": "histogram_quantile(0.99, sum by (le, message_status, message_category) (rate(caatsm_parse_duration_seconds_bucket[5m])))",
+          "legendFormat": "P99 ({{message_status}}/{{message_category}})"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Publish Failures (OTEL - by category)",
+      "description": "OTEL-sourced publish failures. Panel 7 shows Prometheus-sourced failures.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus-dev"
+      },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 33 },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "mappings": [],
+          "thresholds": { "mode": "absolute", "steps": [] }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "single" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (message_category) (rate(caatsm_publish_failures_total[5m]))",
+          "legendFormat": "{{message_category}}"
         }
       ]
     }

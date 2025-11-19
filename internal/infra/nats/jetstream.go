@@ -72,7 +72,14 @@ func ProvideNATSConn(cfg *config.Config, logger *zap.Logger) (*nats.Conn, error)
 }
 
 // ProvideJetStream creates a JetStream context from a NATS connection.
-func ProvideJetStream(nc *nats.Conn, logger *zap.Logger) (nats.JetStreamContext, error) {
+// Returns nil when mode is "core" to indicate JetStream should not be used.
+func ProvideJetStream(nc *nats.Conn, cfg *config.Config, logger *zap.Logger) (nats.JetStreamContext, error) {
+	// In core mode, return nil so that publishers/consumers use core NATS
+	if cfg.NATS.Mode == "core" {
+		logger.Debug("Skipping JetStream initialization (core mode)")
+		return nil, nil
+	}
+
 	js, err := nc.JetStream()
 	if err != nil {
 		logger.Error("failed to create JetStream context", zap.Error(err))

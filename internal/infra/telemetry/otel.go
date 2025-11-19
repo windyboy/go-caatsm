@@ -4,9 +4,9 @@ import (
 	"caatsm/internal/infra/buildinfo"
 	"caatsm/internal/infra/config"
 	"context"
-	"crypto/tls"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -39,8 +39,10 @@ func InitOTEL(ctx context.Context, cfg *config.Config, logger *zap.Logger) error
 
 	// Log sensitive telemetry configuration to internal debug logs only
 	if logger != nil {
-		logger.Debug("Initializing OpenTelemetry",
-			zap.String("telemetry.endpoint", cfg.Telemetry.Endpoint),
+		normalizedEndpoint := normalizeEndpoint(cfg.Telemetry.Endpoint)
+		logger.Info("Initializing OpenTelemetry",
+			zap.String("telemetry.endpoint.original", cfg.Telemetry.Endpoint),
+			zap.String("telemetry.endpoint.normalized", normalizedEndpoint),
 			zap.Bool("telemetry.insecure", cfg.Telemetry.Insecure),
 		)
 	}
@@ -135,17 +137,33 @@ func createResource(ctx context.Context, cfg *config.Config) (*resource.Resource
 	return resource.New(ctx, resource.WithAttributes(attrs...))
 }
 
+// normalizeEndpoint removes the scheme from the endpoint, returning just host:port
+// The OpenTelemetry SDK's WithEndpoint() expects host:port, and WithInsecure() controls the protocol
+func normalizeEndpoint(endpoint string) string {
+	if endpoint == "" {
+		return endpoint
+	}
+
+	endpoint = strings.TrimSpace(endpoint)
+	
+	// Remove http:// or https:// scheme if present
+	endpoint = strings.TrimPrefix(endpoint, "http://")
+	endpoint = strings.TrimPrefix(endpoint, "https://")
+	
+	return endpoint
+}
+
 // initTracing sets up the trace provider with appropriate sampling
 func initTracing(ctx context.Context, cfg *config.Config, res *resource.Resource) error {
 	var traceExporterOptions []otlptracehttp.Option
 
-	traceExporterOptions = append(traceExporterOptions, otlptracehttp.WithEndpoint(cfg.Telemetry.Endpoint))
+	// Normalize endpoint to remove scheme (WithEndpoint expects host:port)
+	endpoint := normalizeEndpoint(cfg.Telemetry.Endpoint)
+	traceExporterOptions = append(traceExporterOptions, otlptracehttp.WithEndpoint(endpoint))
 
 	if cfg.Telemetry.Insecure {
-		traceExporterOptions = append(traceExporterOptions, otlptracehttp.WithTLSClientConfig(&tls.Config{
-			InsecureSkipVerify: true,
-			MinVersion:         tls.VersionTLS13,
-		}))
+		// Use HTTP instead of HTTPS when insecure is true
+		traceExporterOptions = append(traceExporterOptions, otlptracehttp.WithInsecure())
 	}
 
 	traceExporter, err := otlptracehttp.New(ctx, traceExporterOptions...)
@@ -174,13 +192,13 @@ func initTracing(ctx context.Context, cfg *config.Config, res *resource.Resource
 func initMetrics(ctx context.Context, cfg *config.Config, res *resource.Resource) error {
 	var metricExporterOptions []otlpmetrichttp.Option
 
-	metricExporterOptions = append(metricExporterOptions, otlpmetrichttp.WithEndpoint(cfg.Telemetry.Endpoint))
+	// Normalize endpoint to remove scheme (WithEndpoint expects host:port)
+	endpoint := normalizeEndpoint(cfg.Telemetry.Endpoint)
+	metricExporterOptions = append(metricExporterOptions, otlpmetrichttp.WithEndpoint(endpoint))
 
 	if cfg.Telemetry.Insecure {
-		metricExporterOptions = append(metricExporterOptions, otlpmetrichttp.WithTLSClientConfig(&tls.Config{
-			InsecureSkipVerify: true,
-			MinVersion:         tls.VersionTLS12,
-		}))
+		// Use HTTP instead of HTTPS when insecure is true
+		metricExporterOptions = append(metricExporterOptions, otlpmetrichttp.WithInsecure())
 	}
 
 	metricExporter, err := otlpmetrichttp.New(ctx, metricExporterOptions...)

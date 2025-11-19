@@ -183,8 +183,9 @@ func (p *promRecorder) RecordProcessingResult(ctx context.Context, status, categ
 }
 
 func (p *promRecorder) RecordPublishFailure(ctx context.Context, category string) {
-	// Prometheus metrics currently only expose failures via caatsm_failures_total,
-	// so we record the publisher failure there.
+	// Record publish failure with category label for detailed tracking.
+	obsmetrics.RecordPublishFailure(category)
+	// Also record to legacy failure counter for backward compatibility.
 	obsmetrics.RecordFailure("publisher")
 }
 

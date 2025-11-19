@@ -28,15 +28,22 @@ The service exposes Prometheus metrics via the monitoring HTTP server (default `
 - `caatsm_dlq_publish_failures_total{stream,consumer}`  
   Count of failures when attempting to publish messages to the DLQ.
 
+- `caatsm_publish_failures_total{category}`  
+  Count of general publish failures (not DLQ-specific), labelled by message category.
+
 - `caatsm_nats_consumer_pending_messages{stream,consumer}`  
   Current pending message count for each JetStream consumer (useful for lag/backlog alerts).
 
 Additional OTEL metrics are emitted via the configured OTEL endpoint, including:
 
-- `caatsm_messages_processed_total`
-- `caatsm_parse_duration_seconds`
-- `caatsm_publish_failures_total`
-- `caatsm_nats_consumer_pending_messages`
+- `caatsm_messages_processed_total{message_status,message_category}`  
+  Total number of telegrams processed, labelled by status and category.
+
+- `caatsm_parse_duration_seconds{message_status,message_category}`  
+  Latency of parsing a telegram, in seconds, labelled by status and category.
+
+- `caatsm_publish_failures_total{message_category}`  
+  Total number of telegram publish failures, labelled by category (also available in Prometheus as `caatsm_publish_failures_total{category}`).
 
 These metrics are intended to be scraped by Prometheus (either directly or via the OTEL collector) and visualised in Grafana dashboards. Recommended dashboard panels include:
 
@@ -92,12 +99,21 @@ Alternative topologies:
 
 The `caatsm-overview` Grafana dashboard (provisioned from `configs/grafana-dashboards.dev/caatsm-overview.json`) focuses on the CAATSM receiver service and surfaces:
 
+**Prometheus Metrics (operational focus):**
 - **Message throughput by result** – derived from `caatsm_messages_total{result}`.  
 - **Per stream/consumer rates** – `caatsm_messages_total{stream,consumer}`.  
 - **End-to-end handle latency** – P50/P95/P99 from `caatsm_handle_latency_seconds_bucket`.  
 - **DB query rate and latency** – from `caatsm_db_queries_total` and `caatsm_db_query_latency_seconds_bucket`.  
 - **Retry and permanent failure rates** – from `caatsm_retries_total` and `caatsm_messages_total{result="permanent_fail"}`.  
-- **Publish failures** – from `caatsm_publish_failures_total`.
+- **Publish failures (Prometheus)** – from `caatsm_publish_failures_total{category}`.
+- **NATS consumer pending messages** – from `caatsm_nats_consumer_pending_messages`.
+
+**OTEL Metrics (business focus, scraped from collector):**
+- **Messages Processed** – `caatsm_messages_processed_total` by `message_status` and `message_category`.
+- **Parse Duration** – P50/P95/P99 percentiles from `caatsm_parse_duration_seconds_bucket`.
+- **Publish Failures (OTEL)** – `caatsm_publish_failures_total` by `message_category`.
+
+All CAATSM metrics are consolidated in this dashboard for comprehensive service monitoring.
 
 To validate that the dashboard is receiving data:
 
@@ -221,12 +237,14 @@ The receiver reports complementary metrics through both systems:
 - DB activity (`caatsm_db_queries_total`, `caatsm_db_query_latency_seconds`)
 - NATS consumer metrics (`caatsm_nats_consumer_pending_messages`)
 - DLQ operations (`caatsm_dlq_messages_total`, `caatsm_dlq_publish_failures_total`)
+- Publish failures (`caatsm_publish_failures_total{category}`)
 
 **OpenTelemetry metrics via OTLP** (business focus):
-- Message processing results (`caatsm_messages_processed_total`)
-- Parse performance (`caatsm_parse_duration_seconds`)
-- Publish reliability (`caatsm_publish_failures_total`)
-- NATS consumer health metrics (ack pending, redelivered, delivered counts)
+- Message processing results (`caatsm_messages_processed_total{message_status,message_category}`)
+- Parse performance (`caatsm_parse_duration_seconds{message_status,message_category}`)
+- Publish reliability (`caatsm_publish_failures_total{message_category}`)
+
+**Note**: `caatsm_publish_failures_total` is available in both Prometheus (with `category` label) and OTEL (with `message_category` label). The OTEL version is exported via the collector and scraped by Prometheus, where attribute keys are converted to label names (dots become underscores: `message_status`, `message_category`).
 
 #### Collector Integration
 
@@ -235,7 +253,16 @@ OTEL metrics and traces are exported to the configured collector:
 - **Development**: `configs/otel-collector.dev.yaml` (batching, resource processing, retry logic)
 - **Production**: `configs/otel-collector.prod.yaml` (TLS, authentication, high availability)
 
-To integrate OTEL metrics with Prometheus, extend the collector configuration with a `prometheusremotewrite` exporter.
+The collector exports OTEL metrics to Prometheus via the `prometheus` exporter (default endpoint: `:8889`), making them available for Grafana dashboards.
+
+#### OpenTelemetry Collector Dashboard
+
+The `otel-collector-dev` Grafana dashboard (provisioned from `configs/grafana-dashboards.dev/otel-collector.json`) focuses on the OTEL collector infrastructure:
+
+- **OTEL Collector metrics** – receiver/exporter throughput, queue sizes, process metrics
+- **Collector health** – memory, CPU, uptime, and queue capacity
+
+**Note**: CAATSM application metrics exported via OTEL are displayed in the **CAATSM – Receiver Overview** dashboard for consolidated service monitoring. The OTEL collector dashboard focuses solely on collector infrastructure metrics.
 
 ### Structured Logging Contract
 

@@ -692,7 +692,7 @@ func main() {
     defer nc.Close()
 
     // 3. Get JetStream context
-    js, err := nats.ProvideJetStream(nc, zap.NewNop())
+    js, err := nats.ProvideJetStream(nc, cfg, zap.NewNop())
     if err != nil {
         panic(err)
     }

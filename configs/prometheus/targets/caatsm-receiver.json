@@ -1,1 +1,1 @@
-[{"labels":{"job":"caatsm-receiver","instance":"10.16.66.236:2112"},"targets":["10.16.66.236:2112"]}]
+[{"labels":{"job":"caatsm-receiver","instance":"host.docker.internal:2112"},"targets":["host.docker.internal:2112"]}]

@@ -42,7 +42,7 @@ func buildAppComponents() (*appComponents, error) {
 	if err != nil {
 		return nil, err
 	}
-	jetStreamContext, err := nats.ProvideJetStream(conn, logger)
+	jetStreamContext, err := nats.ProvideJetStream(conn, configConfig, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -86,7 +86,7 @@ func buildAppComponentsWithConfig(cfg *config.Config) (*appComponents, error) {
 	if err != nil {
 		return nil, err
 	}
-	jetStreamContext, err := nats.ProvideJetStream(conn, logger)
+	jetStreamContext, err := nats.ProvideJetStream(conn, cfg, logger)
 	if err != nil {
 		return nil, err
 	}

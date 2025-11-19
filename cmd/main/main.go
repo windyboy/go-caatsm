@@ -5,7 +5,6 @@ import (
 	"caatsm/internal/infra/config"
 	"caatsm/pkg/di"
 	"context"
-	"crypto/tls"
 	"errors"
 	"fmt"
 	"os"
@@ -345,29 +344,19 @@ func initTelemetry(ctx context.Context, cfg *config.Config) (func(context.Contex
 		return nil, fmt.Errorf("telemetry endpoint is required when telemetry.enabled=true")
 	}
 
-	// Configure TLS settings
-	var tlsConfig *tls.Config
-	if cfg.Telemetry.Insecure {
-		tlsConfig = &tls.Config{
-			InsecureSkipVerify: true,
-			MinVersion:         tls.VersionTLS12, // TLS 1.2 minimum, TLS 1.3 preferred
-		}
-	}
-
 	traceOpts := []otlptracehttp.Option{
 		otlptracehttp.WithEndpoint(cfg.Telemetry.Endpoint),
 		otlptracehttp.WithURLPath("/v1/traces"),
-	}
-	if tlsConfig != nil {
-		traceOpts = append(traceOpts, otlptracehttp.WithTLSClientConfig(tlsConfig))
 	}
 
 	metricOpts := []otlpmetrichttp.Option{
 		otlpmetrichttp.WithEndpoint(cfg.Telemetry.Endpoint),
 		otlpmetrichttp.WithURLPath("/v1/metrics"),
 	}
-	if tlsConfig != nil {
-		metricOpts = append(metricOpts, otlpmetrichttp.WithTLSClientConfig(tlsConfig))
+
+	if cfg.Telemetry.Insecure {
+		traceOpts = append(traceOpts, otlptracehttp.WithInsecure())
+		metricOpts = append(metricOpts, otlpmetrichttp.WithInsecure())
 	}
 
 	traceExporter, err := otlptracehttp.New(ctx, traceOpts...)
