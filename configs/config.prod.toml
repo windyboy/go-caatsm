@@ -37,26 +37,13 @@ storage = "file"
 replicas = 3
 
 [nats.consumer_rules]
-# Consumer delivery and retry rules for production
+# Consumer delivery rules (only applies when mode = "jetstream")
 # max_deliver: Maximum number of delivery attempts before giving up
-max_deliver = 5
+max_deliver = 3
 # ack_wait: Time to wait for ACK before redelivering message
 ack_wait = "30s"
 # max_ack_pending: Maximum number of unacknowledged messages before pausing delivery
-max_ack_pending = 1024
-# deliver_policy: "new" - Start from new messages after consumer creation (recommended for production)
-#   Other options: "all", "last", "last_per_subject", "sequence", "time"
-deliver_policy = "new"
-# replay_policy: How to replay messages: "instant" (as fast as possible) or "original" (preserve timing)
-replay_policy = "instant"
-# backoff: Array of delays between retry attempts
-#   First retry waits 5s, second waits 30s, third waits 2m, fourth+ wait 5m
-backoff = ["5s", "30s", "2m", "5m"]
-# start_sequence: Starting sequence number (only used when deliver_policy = "sequence")
-start_sequence = 0
-# start_time: Starting time in RFC3339 format (only used when deliver_policy = "time")
-#   Example: "2024-11-15T08:00:00Z"
-start_time = ""
+max_ack_pending = 1000
 
 [nats.auth]
 # NATS authentication configuration (REQUIRED for production)

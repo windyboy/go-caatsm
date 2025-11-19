@@ -37,51 +37,24 @@ storage = "file"
 replicas = 1
 
 [nats.consumer_rules]
-# Consumer delivery and retry rules (only applies when mode = "jetstream")
+# Consumer delivery rules (only applies when mode = "jetstream")
 # max_deliver: Maximum number of delivery attempts before giving up (0 = unlimited)
-max_deliver = 5
+max_deliver = 3
 # ack_wait: Time to wait for ACK before redelivering message (e.g., "30s", "2m")
 ack_wait = "30s"
 # max_ack_pending: Maximum number of unacknowledged messages before pausing delivery
-max_ack_pending = 1024
-# deliver_policy: When to start delivering messages:
-#   - "all": Deliver all messages from the stream
-#   - "new": Only deliver new messages after consumer creation
-#   - "last": Deliver only the last message
-#   - "last_per_subject": Deliver last message per subject
-#   - "sequence": Start from a specific sequence (requires start_sequence)
-#   - "time": Start from a specific time (requires start_time in RFC3339 format)
-deliver_policy = "all"
-# replay_policy: How to replay messages: "instant" (as fast as possible) or "original" (preserve timing)
-replay_policy = "instant"
-# backoff: Array of delays between retry attempts (e.g., ["5s", "30s", "2m"])
-#   First retry waits 5s, second waits 30s, third and beyond wait 2m
-backoff = ["5s", "30s", "2m"]
-# start_sequence: Starting sequence number (only used when deliver_policy = "sequence")
-start_sequence = 0
-# start_time: Starting time in RFC3339 format (only used when deliver_policy = "time")
-#   Example: "2024-11-15T08:00:00Z"
-start_time = ""
+max_ack_pending = 1000
 
 [nats.auth]
 # NATS authentication configuration (optional for development)
-# Only one authentication method can be used at a time:
-#   - token: Simple token authentication
-#   - credentials_file: Path to NATS credentials file (e.g., /path/to/user.creds)
-#   - user/password: Username and password authentication
-#
-# For development, authentication is typically not required.
-# Uncomment and configure as needed:
-# token = ""
-# credentials_file = ""
-# user = ""
-# password = ""
-#
-# TLS configuration (optional)
-# tls_enabled = false
-# tls_cert_file = ""  # Client certificate file path
-# tls_key_file = ""   # Client private key file path
-# tls_ca_file = ""    # CA certificate file for server verification
+# token: Simple token authentication (uncomment if needed)
+# token = "your-dev-token"
+
+# TLS configuration (optional - uncomment for secure connections)
+# tls_enabled = true
+# tls_cert_file = "/path/to/client.crt"
+# tls_key_file = "/path/to/client.key"
+# tls_ca_file = "/path/to/ca.crt"
 
 [subscription]
 topic = "telegram.serial"

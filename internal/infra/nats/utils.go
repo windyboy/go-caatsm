@@ -1,20 +1,24 @@
 package nats
 
 import (
+	"context"
 	"errors"
 	"net/url"
-	"os"
 	"strings"
+	"time"
 
 	"github.com/nats-io/nats.go"
 )
 
-// isDevLikeEnv checks if the current environment is development-like.
-func isDevLikeEnv() bool {
-	switch strings.ToLower(os.Getenv("GO_ENV")) {
-	case "", "dev", "development", "test", "testing":
+// sleepWithContext sleeps for the specified duration, but returns early if the context is canceled.
+// Returns true if the full duration was slept, false if the context was canceled.
+func sleepWithContext(ctx context.Context, duration time.Duration) bool {
+	timer := time.NewTimer(duration)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
 		return true
-	default:
+	case <-ctx.Done():
 		return false
 	}
 }
@@ -77,26 +81,6 @@ func mapReplayPolicy(value string) nats.ReplayPolicy {
 	default:
 		return nats.ReplayInstantPolicy
 	}
-}
-
-// shouldBootstrapStream checks if streams should be auto-created based on environment.
-func shouldBootstrapStream() bool {
-	switch strings.ToLower(os.Getenv("GO_ENV")) {
-	case "", "dev", "development", "test", "testing":
-		return true
-	default:
-		return false
-	}
-}
-
-// containsSubject checks if a subject exists in a list of subjects.
-func containsSubject(subjects []string, target string) bool {
-	for _, s := range subjects {
-		if s == target {
-			return true
-		}
-	}
-	return false
 }
 
 // dedupeSubjects removes duplicate and empty subjects from a list.

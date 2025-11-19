@@ -1,19 +1,18 @@
-# NATS Integration Architecture
+# NATS Integration
 
 ## Overview
 
-The NATS integration provides a robust, production-ready message processing system built on Clean Architecture principles. It supports both JetStream (persistent) and Core NATS (fire-and-forget) modes with comprehensive error handling, observability, and resilience features.
+The NATS integration provides a streamlined, production-ready message processing system focused on essential functionality. It supports JetStream persistent messaging with basic error handling, TLS security, and observability.
 
 ### Key Concepts
 
-1. **Consumer**: Pulls messages from NATS JetStream in batches, processes them, and handles ACKs/NAKs
-2. **Publisher**: Publishes messages to NATS with automatic deduplication via UUID headers
-3. **Batch Processing**: Fetches multiple messages at once (configurable size) for efficiency
-4. **Error Classification**: Distinguishes between transient (retry) and permanent (DLQ) errors
-5. **Dead Letter Queue (DLQ)**: Routes failed messages to a separate queue for analysis
-6. **Backpressure**: Automatically slows down processing when errors accumulate
-7. **Self-Healing**: Automatically recreates missing streams/consumers in development
-8. **Observability**: Built-in metrics, tracing, and structured logging
+1. **Consumer**: Pulls messages from NATS JetStream in batches and processes them
+2. **Publisher**: Publishes messages to NATS with deduplication
+3. **Batch Processing**: Fetches multiple messages for efficiency
+4. **Error Classification**: Distinguishes transient vs permanent errors
+5. **Dead Letter Queue (DLQ)**: Routes permanent errors to DLQ
+6. **TLS Support**: Secure connections with client certificates
+7. **Basic Monitoring**: Essential metrics and logging
 
 ### Quick Start Flow
 
@@ -28,54 +27,41 @@ The NATS integration provides a robust, production-ready message processing syst
 
 ## Architecture
 
-### Clean Architecture Layers
+### Architecture
 
-The NATS integration follows Clean Architecture principles, separating concerns into distinct layers:
+The NATS integration follows simplified Clean Architecture with focused components:
 
 ```
 ┌─────────────────────────────────────┐
-│         Port Interfaces             │
-│   (Publisher, Consumer contracts)   │
-│   - Define contracts, not impl      │
-│   - Enable dependency inversion     │
-├─────────────────────────────────────┤
 │         Application Layer           │
-│   (Message processing logic)        │
-│   - Business logic                  │
-│   - Use case orchestration          │
+│   (Business logic & processing)     │
 ├─────────────────────────────────────┤
 │         Infrastructure Layer        │
-│   (NATS implementation details)     │
+│   (NATS implementation)             │
 │                                     │
 │   ┌─────────────────────────────┐   │
 │   │        Consumer             │   │
 │   │   ┌─────────────────────┐   │   │
 │   │   │  MessageFetcher     │   │   │
 │   │   │  MessageProcessor   │   │   │
-│   │   │  ErrorHandler       │   │   │
 │   │   │  DLQHandler         │   │   │
 │   │   └─────────────────────┘   │   │
 │   └─────────────────────────────┘   │
 │                                     │
 │   ┌─────────────────────────────┐   │
 │   │       Publisher             │   │
-│   │   ┌─────────────────────┐   │   │
-│   │   │  MessageSerializer │   │   │
-│   │   │  HeaderEnricher    │   │   │
-│   │   └─────────────────────┘   │   │
 │   └─────────────────────────────┘   │
 └─────────────────────────────────────┘
 ```
 
-### Component Interaction Diagram
+### Component Interaction
 
 ```
 ┌──────────────┐
 │   Publisher  │
 │              │
 │ 1. Serialize │
-│ 2. Add UUID  │
-│ 3. Publish   │
+│ 2. Publish   │
 └──────┬───────┘
        │
        │ Publish to Subject
@@ -108,19 +94,12 @@ The NATS integration follows Clean Architecture principles, separating concerns 
 │  ┌──────────▼───────────────────┐   │
 │  │   MessageProcessor           │   │
 │  │   - ProcessBatch()           │   │
-│  │   - ProcessSingleMessage()   │   │
-│  └──────────┬───────────────────┘   │
-│             │                       │
-│  ┌──────────▼───────────────────┐   │
-│  │   ErrorHandler               │   │
-│  │   - Classify errors          │   │
-│  │   - Apply backpressure       │   │
+│  │   - ProcessMessage()         │   │
 │  └──────────┬───────────────────┘   │
 │             │                       │
 │  ┌──────────▼───────────────────┐   │
 │  │   DLQHandler                 │   │
 │  │   - RouteToDLQ()             │   │
-│  │   - AdvisoryDLQHandler       │   │
 │  └──────────────────────────────┘   │
 └─────────────────────────────────────┘
           │
@@ -136,10 +115,9 @@ The NATS integration follows Clean Architecture principles, separating concerns 
 
 1. **Dependency Inversion**: High-level modules (Consumer, Publisher) depend on abstractions (interfaces), not concrete implementations
 2. **Separation of Concerns**: Each component has a single responsibility:
-   - `MessageFetcher`: Handles message retrieval
-   - `MessageProcessor`: Handles message processing logic
-   - `ErrorHandler`: Handles error classification and recovery
-   - `DLQHandler`: Handles dead letter queue routing
+    - `MessageFetcher`: Handles message retrieval
+    - `MessageProcessor`: Handles message processing logic
+    - `DLQHandler`: Handles dead letter queue routing
 3. **Testability**: All components can be mocked and tested independently
 4. **Extensibility**: New implementations can be added without modifying existing code
 
@@ -147,8 +125,71 @@ The NATS integration follows Clean Architecture principles, separating concerns 
 
 ### Consumer Processing Flow
 
-The consumer follows a well-defined processing loop with error handling at each stage:
+The consumer follows a simplified processing loop:
 
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Consumer Start                           │
+│  1. Initialize components (Fetcher, Processor, DLQ)        │
+│  2. Start main processing loop                              │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    Main Loop                                │
+│                                                             │
+│  ┌──────────────────────────────────────────────────────┐  │
+│  │  Step 1: Check Context                               │  │
+│  │  - If cancelled, exit gracefully                     │  │
+│  └──────────────────┬───────────────────────────────────┘  │
+│                     │                                       │
+│  ┌──────────────────▼───────────────────────────────────┐  │
+│  │  Step 2: Fetch Batch                                 │  │
+│  │  - Fetch up to BatchSize messages                    │  │
+│  │  - Wait up to BatchTimeout                           │  │
+│  │  - Handle fetch errors with backoff                  │  │
+│  └──────────────────┬───────────────────────────────────┘  │
+│                     │                                       │
+│         ┌───────────┴───────────┐                          │
+│         │                       │                          │
+│    Success                  Error                          │
+│         │                       │                          │
+│         │              ┌────────▼────────┐                │
+│         │              │ Apply Backoff   │                │
+│         │              │ Continue Loop   │                │
+│         │              └─────────────────┘                │
+│         │                                                 │
+│         └──────────────────┬──────────────────────────────┘
+│                            │
+│  ┌─────────────────────────▼─────────────────────────────┐  │
+│  │  Step 3: Process Batch                               │  │
+│  │  - For each message in batch:                        │  │
+│  │    * Extract message ID                              │  │
+│  │    * Call processor.Handle()                         │  │
+│  │    * Handle result (ACK/NAK/DLQ)                     │  │
+│  └──────────────────┬───────────────────────────────────┘  │
+│                     │                                       │
+│         ┌───────────┴───────────┐                          │
+│         │                       │                          │
+│    Success                  Error                          │
+│         │                       │                          │
+│         │              ┌────────▼────────┐                │
+│         │              │ Classify Error  │                │
+│         │              └────────┬────────┘                │
+│         │                       │                          │
+│         │         ┌─────────────┴─────────────┐          │
+│         │         │                           │          │
+│         │    Permanent                    Transient      │
+│         │         │                           │          │
+│         │  ┌──────▼──────┐          ┌────────▼──────┐   │
+│         │  │ Route to DLQ│          │ NAK with delay│   │
+│         │  │ ACK message │          └────────────────┘   │
+│         │  └──────┬──────┘                              │
+│         │         │                                       │
+│         └─────────┴───────────────────────────────────────┘
+│                     │
+│                     └─────────── Loop ─────────────────────┘
+└─────────────────────────────────────────────────────────────┘
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    Consumer Start                           │
@@ -409,59 +450,48 @@ The consumer handles message consumption with the following features:
 - **Core Mode**: Fire-and-forget message processing for simple use cases
 
 #### Key Features
-- **Batch Processing**: Configurable batch sizes and timeouts for efficient processing
-- **Backpressure**: Automatic backpressure when processing errors accumulate
-- **Dead Letter Queue (DLQ)**: Automatic routing of failed messages to DLQ
-- **Advisory DLQ**: Handles messages that exceed MaxDeliver limits
-- **Self-Healing**: Automatic recreation of missing streams/consumers in dev environments
-- **Graceful Shutdown**: Proper cleanup and draining of connections
+- **Batch Processing**: Configurable batch sizes for efficient processing
+- **Error Handling**: Distinguishes transient vs permanent errors
+- **Dead Letter Queue (DLQ)**: Routes permanent errors to DLQ
+- **TLS Support**: Secure connections with client certificates
+- **Basic Monitoring**: Essential metrics collection
 
 #### Component Logic
 
 **MessageFetcher (`defaultMessageFetcher`)**
 - Fetches batches of messages using `sub.Fetch(batchSize, MaxWait(timeout))`
-- Handles fetch errors with exponential backoff
-- Recovers subscriptions when connection issues occur
+- Handles fetch errors with simple exponential backoff
 - Context-aware: respects cancellation signals
 
 **MessageProcessor (`defaultBatchProcessor`)**
 - Processes messages sequentially within a batch
 - Extracts message IDs (header → metadata → generated)
-- Creates OpenTelemetry spans for tracing
 - Calls application processor for business logic
 - Handles ACK/NAK based on processing results
 
-**ErrorHandler**
-- Classifies errors as transient or permanent using `app.IsPermanent()`
-- Tracks consecutive error streaks
-- Applies backpressure when streak exceeds threshold (default: 10)
-- Calculates backoff delays for retries
-
 **DLQHandler (`defaultDLQHandler`)**
-- Routes permanent errors to DLQ with enriched metadata
+- Routes permanent errors to DLQ with basic metadata
 - Validates DLQ stream exists at startup
 - Publishes DLQ messages with error context
-
-**AdvisoryDLQHandler**
-- Subscribes to JetStream advisory events: `$JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.*`
-- Handles messages that exhaust MaxDeliver attempts
-- Retrieves original message from stream using `GetMsg()`
-- Routes to DLQ with advisory metadata
 
 #### Configuration
 ```toml
 [NATS]
-Mode = "jetstream"  # or "core"
+URL = "nats://localhost:4222"
 Stream = "TELEGRAM"
 Consumer = "telegram-consumer"
+
+[NATS.Auth]
+Token = "your-token"  # Optional token authentication
+TLSEnabled = true     # Enable TLS
+TLSCertFile = "/path/to/client.crt"  # Client certificate
+TLSKeyFile = "/path/to/client.key"   # Client private key
+TLSCAFile = "/path/to/ca.crt"        # CA certificate
 
 [NATS.ConsumerRules]
 AckWait = "30s"
 MaxDeliver = 3
 MaxAckPending = 1000
-DeliverPolicy = "all"
-ReplayPolicy = "instant"
-Backoff = ["1s", "2s", "5s", "10s"]
 
 [DLQ]
 Enabled = true
@@ -470,7 +500,6 @@ Subject = "caatsm.dlq"
 [App]
 BatchSize = 50
 BatchTimeout = "2s"
-MonitorInterval = "30s"
 ```
 
 ### Publisher
@@ -508,12 +537,9 @@ The publisher handles message publishing with deduplication and observability.
 #### Error Types
 - **Transient Errors**: Network issues, temporary unavailability (retried with backoff)
 - **Permanent Errors**: Message format issues, business logic failures (routed to DLQ)
-- **Resource Errors**: Missing streams/consumers (auto-recovered in dev, fail in prod)
 
 #### Recovery Strategies
-- **Exponential Backoff**: Configurable backoff for transient failures
-- **Circuit Breaker Pattern**: Prevents cascade failures
-- **Resource Recreation**: Automatic recreation of missing JetStream resources
+- **Simple Backoff**: Exponential backoff for transient failures
 - **Graceful Degradation**: Continues processing other messages when one fails
 
 ### Dead Letter Queue (DLQ)
@@ -569,25 +595,32 @@ The publisher handles message publishing with deduplication and observability.
 - **Graceful Shutdown**: Proper draining with timeouts
 - **Resource Cleanup**: Ensures subscriptions and connections are closed
 
-### Self-Healing
-- **Development Mode**: Auto-creates missing streams/consumers
-- **Production Mode**: Fails fast on configuration issues
-- **Recovery Logic**: Attempts to recreate resources on errors
+
 
 ## Configuration
 
 ### Environment Variables
 ```bash
 CAATSM_NATS_URL=nats://localhost:4222
-CAATSM_NATS_MODE=jetstream
+CAATSM_NATS_TOKEN=your-token  # Optional
 CAATSM_DLQ_ENABLED=true
 CAATSM_DLQ_SUBJECT=caatsm.dlq
 ```
 
+### TLS Configuration
+For production deployments with TLS:
+
+```toml
+[NATS.Auth]
+TLSEnabled = true
+TLSCertFile = "/etc/ssl/certs/client.crt"
+TLSKeyFile = "/etc/ssl/private/client.key"
+TLSCAFile = "/etc/ssl/certs/ca.crt"
+```
+
 ### Runtime Configuration
-- **Hot Reload**: Configuration changes applied without restart
-- **Validation**: Comprehensive validation at startup
-- **Defaults**: Sensible defaults for all configuration options
+- **Validation**: Basic validation at startup
+- **Defaults**: Sensible defaults for essential options
 
 ## Testing Strategy
 
@@ -603,9 +636,8 @@ CAATSM_DLQ_SUBJECT=caatsm.dlq
 
 ### Test Categories
 - **Happy Path**: Normal operation scenarios
-- **Error Recovery**: Various failure and recovery scenarios
-- **Performance**: Load testing and resource usage
-- **Configuration**: Different configuration combinations
+- **Error Handling**: Basic error scenarios
+- **Configuration**: Configuration validation
 
 ## Simple Examples
 
@@ -619,7 +651,7 @@ package main
 import (
     "context"
     "time"
-    
+
     "caatsm/internal/infra/config"
     "caatsm/internal/infra/nats"
     "caatsm/internal/app"
@@ -630,14 +662,16 @@ func main() {
     // 1. Load configuration
     cfg := &config.Config{
         NATS: config.NATSConfig{
-            URL:  "nats://localhost:4222",
-            Mode: "jetstream",
+            URL:    "nats://localhost:4222",
             Stream: "TELEGRAM",
             Consumer: "telegram-consumer",
+            Auth: config.NATSAuthConfig{
+                Token: "your-token", // Optional
+            },
             ConsumerRules: config.ConsumerRules{
-                AckWait:     30 * time.Second,
-                MaxDeliver:  3,
-                Backoff:     []time.Duration{1*time.Second, 2*time.Second, 5*time.Second},
+                AckWait:    30 * time.Second,
+                MaxDeliver: 3,
+                MaxAckPending: 1000,
             },
         },
         App: config.AppConfig{
@@ -649,25 +683,31 @@ func main() {
             Subject: "caatsm.dlq",
         },
     }
-    
+
     // 2. Create NATS connection
-    nc, _ := nats.Connect(cfg.NATS.URL)
+    nc, err := nats.ProvideNATSConn(cfg, zap.NewNop())
+    if err != nil {
+        panic(err)
+    }
     defer nc.Close()
-    
+
     // 3. Get JetStream context
-    js, _ := nc.JetStream()
-    
+    js, err := nats.ProvideJetStream(nc, zap.NewNop())
+    if err != nil {
+        panic(err)
+    }
+
     // 4. Create message processor (your business logic)
     processor := app.NewMessageProcessor(/* dependencies */)
-    
+
     // 5. Create logger
-    logger, _ := zap.NewProduction()
-    
+    logger := zap.NewNop()
+
     // 6. Create telemetry recorder
     telemetry := /* your telemetry implementation */
-    
+
     // 7. Create consumer
-    consumer, err := natsinfra.ProvideConsumer(
+    consumer, err := nats.ProvideConsumer(
         nc,
         js,
         processor,
@@ -676,21 +716,13 @@ func main() {
         logger,
     )
     if err != nil {
-        logger.Fatal("Failed to create consumer", zap.Error(err))
+        panic(err)
     }
-    
+
     // 8. Start consumer with context
     ctx, cancel := context.WithCancel(context.Background())
     defer cancel()
-    
-    // Handle graceful shutdown
-    go func() {
-        // Wait for interrupt signal
-        <-ctx.Done()
-        shutdownCtx, _ := context.WithTimeout(context.Background(), 5*time.Second)
-        consumer.Shutdown(shutdownCtx)
-    }()
-    
+
     // 9. Start consuming (blocks until context cancelled)
     if err := consumer.Start(ctx); err != nil {
         logger.Error("Consumer stopped", zap.Error(err))
@@ -810,10 +842,8 @@ func processMessage(msg *nats.Msg) error {
 
 // Scenario 4: MaxDeliver Exhausted
 // When message fails MaxDeliver times (default: 3):
-// - JetStream publishes advisory event
-// - AdvisoryDLQHandler catches event
-// - Retrieves original message
-// - Routes to DLQ with metadata
+// - Message is not automatically handled
+// - Consider monitoring JetStream consumer info for failed deliveries
 ```
 
 ### Example 5: DLQ Message Structure
@@ -837,39 +867,45 @@ What a DLQ message looks like:
 
 ### Example 6: Configuration Examples
 
-Different configuration scenarios:
+Basic configuration with TLS:
 
 ```toml
-# Example 1: High Throughput Configuration
 [NATS]
-Mode = "jetstream"
+URL = "nats://secure.nats.server:4222"
 Stream = "TELEGRAM"
 Consumer = "telegram-consumer"
 
+[NATS.Auth]
+TLSEnabled = true
+TLSCertFile = "/etc/ssl/certs/client.crt"
+TLSKeyFile = "/etc/ssl/private/client.key"
+TLSCAFile = "/etc/ssl/certs/ca.crt"
+
 [NATS.ConsumerRules]
-AckWait = "60s"
-MaxDeliver = 5
-MaxAckPending = 5000
-Backoff = ["1s", "2s", "5s", "10s", "30s"]
+AckWait = "30s"
+MaxDeliver = 3
+MaxAckPending = 1000
+
+[DLQ]
+Enabled = true
+Subject = "caatsm.dlq"
 
 [App]
-BatchSize = 100        # Larger batches
-BatchTimeout = "5s"    # Longer timeout
+BatchSize = 50
+BatchTimeout = "2s"
+```
 
-# Example 2: Low Latency Configuration
-[App]
-BatchSize = 10         # Smaller batches
-BatchTimeout = "500ms" # Shorter timeout
+Development configuration:
 
-# Example 3: Development Mode (Self-Healing)
+```toml
 [NATS]
-Mode = "jetstream"
-# Missing streams/consumers auto-created
+URL = "nats://localhost:4222"
+Stream = "TELEGRAM"
+Consumer = "telegram-consumer"
 
-# Example 4: Production Mode (Fail Fast)
-[NATS]
-Mode = "jetstream"
-# Missing streams/consumers cause startup failure
+[DLQ]
+Enabled = true
+Subject = "caatsm.dlq"
 ```
 
 ### Example 7: Observability Integration
@@ -990,33 +1026,25 @@ func (p *CustomProcessor) ProcessMessage(ctx context.Context, msg *nats.Msg) err
 ## Security Considerations
 
 ### Authentication
-- **NATS Auth**: Use NATS built-in authentication mechanisms
-- **TLS**: Enable TLS for encrypted communication
-- **Token Auth**: Use NATS tokens for service authentication
+- **Token Auth**: Use NATS tokens for simple authentication
+- **TLS**: Enable TLS with client certificates for secure communication
 
-### Authorization
-- **Subject Permissions**: Restrict publish/subscribe permissions
-- **Stream Access**: Control access to specific streams
-- **DLQ Security**: Secure DLQ access to prevent data leakage
+### TLS Configuration
+```toml
+[NATS.Auth]
+TLSEnabled = true
+TLSCertFile = "/path/to/client.crt"
+TLSKeyFile = "/path/to/client.key"
+TLSCAFile = "/path/to/ca.crt"
+```
 
 ### Data Protection
-- **Message Encryption**: Encrypt sensitive message data
-- **Audit Logging**: Log all message operations for compliance
-- **PII Handling**: Avoid logging sensitive information
+- **TLS Encryption**: All communication is encrypted
+- **Basic Logging**: Avoid logging sensitive message content
 
 ## Future Enhancements
 
-### Planned Features
-- **Consumer Groups**: Horizontal scaling with multiple consumers
-- **Message Filtering**: Subject-based and header-based filtering
-- **Priority Queues**: High-priority message processing
-- **Rate Limiting**: Per-consumer and per-subject rate limits
-- **Message Transformation**: In-flight message modification
-- **Multi-Region**: Cross-region message replication
-
-### Extensibility Points
-- **Custom Serializers**: Pluggable message serialization
-- **Middleware**: Request/response middleware support
-- **Hooks**: Pre/post processing hooks
-- **Metrics Backends**: Support for additional metrics systems
-- **Storage Backends**: Alternative storage for DLQ messages
+### Future Enhancements
+- **Additional Auth Methods**: Support for more authentication mechanisms if needed
+- **Advanced Monitoring**: Enhanced metrics and tracing if required
+- **Performance Tuning**: Batch size and timeout optimizations

@@ -47,12 +47,8 @@ docker compose -f docker-compose.dev.yml up -d postgres nats nats-box
 
 - The NATS client keeps retrying the connection and automatically reconnects
   when NATS is back.
-- The JetStream consumer detects missing streams/consumers and, in dev/test
-  environments, uses shared `EnsureStream`/`ensureConsumer` logic to
-  auto-recreate them.
-- In production environments, missing streams/consumers are treated as
-  configuration/operational errors and are not auto-recreated; operators
-  should investigate and fix the underlying issue.
+- The JetStream consumer expects streams and consumers to exist.
+- In development, you may need to create them manually or ensure they exist before starting the application.
 
 ### Using Taskfile shortcuts
 

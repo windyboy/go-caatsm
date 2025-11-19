@@ -105,15 +105,13 @@ storage = "file"
 replicas = 1
 
 [nats.consumer_rules]
-# These settings only apply when mode = "jetstream"
-max_deliver = 5
+# Consumer delivery rules (only applies when mode = "jetstream")
+# max_deliver: Maximum number of delivery attempts before giving up
+max_deliver = 3
+# ack_wait: Time to wait for ACK before redelivering message
 ack_wait = "30s"
-max_ack_pending = 1024
-deliver_policy = "all"        # all,new,last,last_per_subject,sequence,time
-replay_policy = "instant"     # instant or original
-backoff = ["5s", "30s", "2m"] # optional JetStream redelivery delays
-start_sequence = 0
-start_time = ""
+# max_ack_pending: Maximum number of unacknowledged messages before pausing delivery
+max_ack_pending = 1000
 
 [subscription]
 # Optional. Defaults to "telegram.>" when omitted.
@@ -176,7 +174,7 @@ The application supports two NATS consumption modes, controlled by `nats.mode`:
 **Features:**
 - ✅ **Message Persistence**: Messages are stored in a Stream, allowing replay and recovery
 - ✅ **ACK/NAK Mechanism**: Explicit message acknowledgment ensures guaranteed delivery
-- ✅ **Automatic Retry**: Failed messages are automatically redelivered with configurable backoff
+- ✅ **Error Handling**: Failed messages are handled with simple backoff
 - ✅ **Dead-Letter Queue**: Poison messages can be routed to a DLQ for inspection
 - ✅ **Batch Processing**: Efficient batch fetching and processing
 - ✅ **Consumer Monitoring**: Real-time metrics for consumer lag and pending messages
@@ -219,10 +217,8 @@ The application supports two NATS consumption modes, controlled by `nats.mode`:
    - `replicas`: Number of stream replicas for HA (default: 1, use 3+ for production)
 
    **Consumer Configuration** (`[nats.consumer_rules]`):
-   - `max_deliver`: Maximum redelivery attempts (default: 5)
+   - `max_deliver`: Maximum delivery attempts before giving up (default: 3)
    - `ack_wait`: Time to wait for ACK before redelivery (default: 30s)
-   - `deliver_policy`: When to start delivering messages ("all", "new", "last", etc.)
-   - `backoff`: Array of delays between retries (e.g., `["5s", "30s", "2m"]`)
 
 4. **Start the Application:**
    ```bash
@@ -271,7 +267,7 @@ The application supports two NATS consumption modes, controlled by `nats.mode`:
    - Stream stores messages according to retention policy
    - Consumer pulls messages in batches (configurable via `app.batch_size`)
    - Each message is processed and ACKed on success
-   - Failed messages are NAKed and redelivered according to `backoff` strategy
+    - Failed messages are NAKed and redelivered with simple backoff
    - After `max_deliver` attempts, permanent failures are routed to DLQ (if enabled)
 
 8. **Replay Messages:**
@@ -480,7 +476,7 @@ Flags:
       --telemetry-insecure       Send OTLP traffic without TLS
 ```
 
-Critical overrides stay available through CLI flags; advanced tuning such as stream retention, consumer backoff, and copy counts are configured via the TOML file or `CAATSM_` environment variables.
+Critical overrides stay available through CLI flags; configuration is managed via the TOML file or `CAATSM_` environment variables.
 
 | CLI flag            | Config key             | Purpose                                |
 |---------------------|------------------------|----------------------------------------|
@@ -496,8 +492,7 @@ Critical overrides stay available through CLI flags; advanced tuning such as str
 #### Replay & Backoff
 
 - `--replay-from seq:12345` replays from a specific JetStream sequence, while `--replay-from time:2024-11-15T08:00:00Z` starts at a timestamp.
-- Configure server-side retry delays with `[nats.consumer].backoff = ["5s", "30s", "2m"]`; each duration becomes the delay before the next delivery attempt.
-- Combine `backoff` with `--ack-wait` to increase acknowledgement windows (e.g., `--ack-wait 2m`).
+- Configure retry behavior with `[nats.consumer_rules]` settings.
 
 ### Observability
 
@@ -673,7 +668,7 @@ The project keeps tests close to the code that they exercise:
 ### Error Handling & Retries
 
 - **Parser failures** (invalid headers/body) are treated as permanent: the raw payload is stored in `aviation.telegrams_raw`, the message is ACKed, and no JetStream retries are attempted.
-- **Repository failures** are transient: the consumer returns an error, the message is `NAK`ed, and JetStream redelivers it using `[nats.consumer_rules.backoff]` and `ack_wait` to space retries.
+- **Repository failures** are transient: the consumer returns an error, the message is `NAK`ed, and JetStream redelivers it with simple backoff.
 - **Publisher failures** are logged and persisted as raw records, but they are marked permanent to avoid hammering downstream topics; the deduplicated output can be replayed from the raw table later.
 - Tune JetStream retry behavior via `[nats.consumer_rules.max_deliver]`, `[nats.consumer_rules.backoff]`, and CLI overrides like `--ack-wait`. The monitoring server plus Prometheus counters provide visibility into each failure bucket.
 

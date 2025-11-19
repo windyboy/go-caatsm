@@ -30,8 +30,9 @@ func ExtractWaypoint(message string) *domain.WayPoint {
 }
 
 func FindDef(code string) *LineParser {
-	// fmt.Printf("Finding definition for %s\n", code)
-	// fmt.Println("ParserDef: ", parserDef)
+	if parserDef == nil {
+		return nil
+	}
 	for _, def := range *parserDef {
 		for _, airline := range def.Airlines {
 			if airline == code {
@@ -70,6 +71,9 @@ func ParseWithDef(line string, parserDef *LineParser) *domain.ScheduleLine {
 	}
 
 	for i, field := range parserDef.Fields {
+		if i >= len(words) {
+			break
+		}
 		// log.Debugf("Parsing field %v -> %s", i, field)
 		data := extract(words[i], parserMap[field])
 		if data != nil {
@@ -225,6 +229,10 @@ func getFlightNumbers(data string) []string {
 		flightNumbers := append([]string{}, baseNumber)
 		for _, number := range data[1:] {
 			length := len(number)
+			if length >= baseLength {
+				zap.S().Warnf("Flight number suffix '%s' is not shorter than base '%s'; skipping", number, baseNumber)
+				continue
+			}
 			flightNumber := baseNumber[:baseLength-length] + number
 			flightNumbers = append(flightNumbers, flightNumber)
 		}

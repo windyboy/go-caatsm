@@ -9,17 +9,15 @@ import (
 
 var _ = Describe("MessageHandler", func() {
 	var (
-		c *Consumer
+		processor *defaultBatchProcessor
 	)
 
 	BeforeEach(func() {
-		c = &Consumer{
-			config: consumerConfig{
-				mode:         "jetstream",
-				streamName:   "TEST_STREAM",
-				consumerName: "test-consumer",
-			},
-			logger: zaptest.NewLogger(GinkgoT()),
+		processor = &defaultBatchProcessor{
+			logger:       zaptest.NewLogger(GinkgoT()),
+			streamName:   "TEST_STREAM",
+			consumerName: "test-consumer",
+			mode:         "jetstream",
 		}
 	})
 
@@ -30,32 +28,32 @@ var _ = Describe("MessageHandler", func() {
 			}
 			msg.Header.Set("Nats-Msg-Id", "msg-123")
 
-			id, source, err := c.resolveMsgID(msg)
+			id, source, err := processor.resolveMsgID(msg)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(id).To(Equal("msg-123"))
 			Expect(source).To(Equal("header"))
 		})
 
 		It("generates UUID for core mode when header is missing", func() {
-			c.config.mode = "core"
+			processor.mode = "core"
 			msg := &nats.Msg{
 				Header: nats.Header{},
 			}
 
-			id, source, err := c.resolveMsgID(msg)
+			id, source, err := processor.resolveMsgID(msg)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(id).NotTo(BeEmpty())
 			Expect(source).To(Equal("generated"))
 		})
 
 		It("returns error for JetStream mode when header and metadata are missing", func() {
-			c.config.mode = "jetstream"
+			processor.mode = "jetstream"
 			msg := &nats.Msg{
 				Header: nats.Header{},
 			}
 
 			// Without metadata, this should return an error
-			_, _, err := c.resolveMsgID(msg)
+			_, _, err := processor.resolveMsgID(msg)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring("fetch metadata"))
 		})

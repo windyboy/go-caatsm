@@ -55,12 +55,9 @@ storage = "file"
 replicas = 3            # Use 3+ for HA in production
 
 [nats.consumer_rules]
-max_deliver = 5
+max_deliver = 3
 ack_wait = "30s"
-max_ack_pending = 1024
-deliver_policy = "new"  # Start from new messages in production
-replay_policy = "instant"
-backoff = ["5s", "30s", "2m", "5m"]
+max_ack_pending = 1000
 
 [subscription]
 topic = "telegram.serial"

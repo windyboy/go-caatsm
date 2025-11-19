@@ -33,13 +33,10 @@ The service exposes Prometheus metrics via the monitoring HTTP server (default `
 
 Additional OTEL metrics are emitted via the configured OTEL endpoint, including:
 
-- `caatsm_messages_processed_total`  
-- `caatsm_parse_duration_seconds`  
-- `caatsm_publish_failures_total`  
-- `caatsm_nats_consumer_ack_pending`  
-- `caatsm_nats_consumer_redelivered`  
-- `caatsm_nats_consumer_pending`  
-- `caatsm_nats_consumer_delivered`
+- `caatsm_messages_processed_total`
+- `caatsm_parse_duration_seconds`
+- `caatsm_publish_failures_total`
+- `caatsm_nats_consumer_pending_messages`
 
 These metrics are intended to be scraped by Prometheus (either directly or via the OTEL collector) and visualised in Grafana dashboards. Recommended dashboard panels include:
 

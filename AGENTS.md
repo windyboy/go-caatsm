@@ -1,38 +1,24 @@
-# Agent Guidelines for CAATSM Repository
+# Agent Guidelines for CAATSM
 
-## Build/Test Commands
-- **Build**: `make build` or `task build` (compiles to `bin/receiver`)
-- **Run dev**: `make run-dev` or `task run-dev` (uses `configs/config.dev.toml`)
-- **Lint**: `make lint` or `task lint` (golangci-lint required)
-- **Unit tests**: `make test` (Ginkgo) or `ginkgo -r -v ./path/to/package` for single test
-- **Integration tests**: `make test-int` (requires Docker)
-- **All tests**: `make test-all`
-- **Coverage**: `make coverage` (target: maintain >80% coverage)
+## Commands
+- **Build**: `make build` (bin/receiver)
+- **Run**: `make run-dev` (dev mode), `make run-prod` (prod mode)
+- **Lint**: `make lint` (golangci-lint)
+- **Test**: `make test` (Unit/Ginkgo), `make test-int` (Integration/Docker)
+- **Single Test**: `ginkgo -r -v --focus "Test Description" ./path/to/package`
+- **Coverage**: `make coverage` (>80% target)
 
-## Code Style Guidelines
-- **Formatting**: Use tabs, `go fmt ./...` or `goimports` before commits
-- **Naming**: `camelCase` for locals/unexported, `CamelCase` for exported; package names match directories
-- **Imports**: Standard library → third-party → internal (alphabetized within groups)
-- **Types**: Use interfaces for ports, appropriate Go types; avoid `any` unless necessary
-- **Error handling**: Wrap errors with context, use `errors.Is()` for checking
-- **Generated code**: Never edit `/pkg/di/wire_gen.go` or other generated files
-- **Linting**: `golangci-lint run ./...` required; fix all issues before PR
-
-## Testing & Architecture
-- **Unit tests**: Ginkgo BDD style next to implementation (`*_test.go`); declarative descriptions
-- **Integration**: Testcontainers in `test/integration`; spin up NATS/TimescaleDB
-- **Coverage**: Run `make coverage` before merging; address regressions
-- **Structure**: Clean Architecture - `domain` (business logic), `app` (use cases), `adapter` (I/O), `infra` (framework deps)
-- **Entry point**: `cmd/main`
-- **Config**: `configs/config.<env>.toml`; secrets via `CAATSM_*` env vars
+## Code Style & Architecture
+- **Structure**: Clean Architecture (`cmd/`, `internal/{domain,app,adapter,infra}`, `pkg/`).
+- **Formatting**: Run `go fmt ./...` and `goimports` before committing.
+- **Naming**: `CamelCase` (exported), `camelCase` (private). Package names match dirs.
+- **Errors**: Wrap with context (`fmt.Errorf("...: %w", err)`). Use `errors.Is`.
+- **Types**: Interface-driven development. Avoid `any`.
+- **Testing**: Ginkgo BDD style (`Describe`, `It`). Table-driven. Mock interfaces.
+- **Observability**: Propagate `context.Context`. Use OpenTelemetry (traces/metrics).
+- **Generated**: NEVER edit `wire_gen.go` or `*_gen.go`.
 
 ## Cursor Rules (.cursor/rules/do.mdc)
-- **Expertise**: Go, microservices, Clean Architecture, test-driven development
-- **Architecture**: Clean Architecture with domain-driven design, interface-driven development
-- **Project Structure**: cmd/, internal/, pkg/, api/, configs/, test/ layout
-- **Best Practices**: Short focused functions, explicit error handling, context propagation, goroutine safety
-- **Security**: Input validation, secure defaults, retries/backoff, circuit breakers
-- **Testing**: Table-driven unit tests, mock interfaces, separate fast/slow tests
-- **Observability**: Production-ready OpenTelemetry with environment-based sampling, comprehensive resource attributes, semantic span conventions, and dual telemetry (OTEL + Prometheus)
-- **Performance**: Benchmarks, minimize allocations, profile before optimization
-- **Tooling**: Go modules, linting, CI automation
+- **Expertise**: Go, Microservices, Clean Arch, TDD.
+- **Security**: Input validation, secure defaults, retries/backoff.
+- **Perf**: Benchmarks, minimize allocations.

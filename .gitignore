@@ -40,6 +40,9 @@ go.sum
 # Project-specific
 # configs/*.toml
 
+# Prometheus target files (generated dynamically)
+configs/prometheus/targets/*.json
+
 # Logs
 *.log
 logs/

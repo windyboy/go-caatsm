@@ -1,8 +1,8 @@
 package parser
 
 import (
-	"caatsm/internal/domain"
 	"caatsm/internal/adapter/dto"
+	"caatsm/internal/domain"
 	"errors"
 	"fmt"
 	"regexp"
@@ -24,7 +24,6 @@ const (
 	OtherInfo       = "other"
 
 	ReferenceData        = "reference_data"
-	Aircraft             = "aircraft"
 	CategorySurveillance = "surve"
 	Indicator            = "indicator"
 	Other                = "other"
@@ -75,7 +74,11 @@ func NewBodyParser(body string) *BodyParser {
 func (parser *BodyParser) GetBodyPatterns() map[string]BodyConfig {
 	parser.mu.Lock()
 	defer parser.mu.Unlock()
-	return parser.bodyPatterns
+	copied := make(map[string]BodyConfig, len(parser.bodyPatterns))
+	for k, v := range parser.bodyPatterns {
+		copied[k] = v
+	}
+	return copied
 }
 
 func (parser *BodyParser) SetBodyPatterns(patterns map[string]BodyConfig) {
@@ -200,6 +203,23 @@ func (parser *BodyParser) createBodyData(data map[string]string) (string, interf
 	}
 }
 
+func headerToParsedTelegram(header Header) dto.ParsedTelegram {
+	return dto.ParsedTelegram{
+		MessageID:          header.MessageID,
+		DateTime:           header.DateTime,
+		PriorityIndicator:  header.PriorityIndicator,
+		PrimaryAddress:     header.PrimaryAddress,
+		SecondaryAddresses: header.SecondaryAddresses,
+		Originator:         header.Originator,
+		OriginatorDateTime: header.OriginatorDateTime,
+		Category:           header.Category,
+		Body:               header.Body,
+		Content:            header.Content,
+		ReceivedAt:         header.ReceivedAt,
+		ParsedAt:           header.ParsedAt,
+	}
+}
+
 func Parse(rawText string) (*dto.ParsedTelegram, error) {
 	header, err := ParseHeader(rawText)
 	if err != nil {
@@ -217,48 +237,20 @@ func Parse(rawText string) (*dto.ParsedTelegram, error) {
 	header.ParsedAt = time.Now()
 
 	if bodyErr != nil {
-		return &dto.ParsedTelegram{
-			MessageID:          header.MessageID,
-			DateTime:           header.DateTime,
-			PriorityIndicator:  header.PriorityIndicator,
-			PrimaryAddress:     header.PrimaryAddress,
-			SecondaryAddresses: header.SecondaryAddresses,
-			Originator:         header.Originator,
-			OriginatorDateTime: header.OriginatorDateTime,
-			Category:           header.Category,
-			Body:               header.Body,
-			Content:            header.Content,
-			ReceivedAt:         header.ReceivedAt,
-			ParsedAt:           header.ParsedAt,
-			Parsed:             false,
-			Comments:           bodyErr.Error(),
-			Status:             dto.MessageStatusBodyError,
-			ErrorReason:        bodyErr.Error(),
-		}, fmt.Errorf("%w: %w", ErrBodyParse, bodyErr)
+		parsed := headerToParsedTelegram(header)
+		parsed.Parsed = false
+		parsed.Comments = bodyErr.Error()
+		parsed.Status = dto.MessageStatusBodyError
+		parsed.ErrorReason = bodyErr.Error()
+		return &parsed, fmt.Errorf("%w: %w", ErrBodyParse, bodyErr)
 	}
 
-	parsed := &dto.ParsedTelegram{
-		MessageID:          header.MessageID,
-		DateTime:           header.DateTime,
-		PriorityIndicator:  header.PriorityIndicator,
-		PrimaryAddress:     header.PrimaryAddress,
-		SecondaryAddresses: header.SecondaryAddresses,
-		Originator:         header.Originator,
-		OriginatorDateTime: header.OriginatorDateTime,
-		Category:           header.Category,
-		Body:               header.Body,
-		Content:            header.Content,
-		BodyData:           bodyData,
-		ReceivedAt:         header.ReceivedAt,
-		ParsedAt:           header.ParsedAt,
-		Parsed:             true,
-		Status:             dto.MessageStatusParsed,
-		ErrorReason:        "",
-	}
-
+	parsed := headerToParsedTelegram(header)
+	parsed.BodyData = bodyData
+	parsed.Parsed = true
+	parsed.Status = dto.MessageStatusParsed
 	parsed.Uuid = uuid.New().String()
-
-	return parsed, nil
+	return &parsed, nil
 }
 
 func cleanMessage(text string) string {
