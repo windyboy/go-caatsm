@@ -15,7 +15,7 @@ url = "nats://localhost:4222"
 #     * Dead-letter queue (DLQ) support
 #     * Batch processing and consumer monitoring
 #     * Recommended for production environments
-mode = "core"
+mode = "jetstream"
 client = "serial-client"
 cluster = "tele-cluster"
 stream = "TELEGRAM"

@@ -74,11 +74,19 @@ func (p *defaultBatchProcessor) processSingleMessage(ctx context.Context, msg *n
 		*p.consecutiveProcessErrors = 0
 	}
 
-	// ACK the message
-	if ackErr := msg.Ack(); ackErr != nil {
-		p.logger.Error("Failed to ACK message", zap.Error(ackErr))
+	elapsed := time.Since(start)
+
+	// ACK the message (only in JetStream mode; Core NATS doesn't support ACK)
+	if p.mode == "jetstream" {
+		if ackErr := msg.Ack(); ackErr != nil {
+			p.logger.Error("Failed to ACK message", zap.Error(ackErr))
+			// Still record metrics even if ACK fails
+			p.telemetry.RecordMessageHandled(ctx, p.streamName, p.consumerName, "ok", elapsed)
+		} else {
+			p.telemetry.RecordMessageHandled(ctx, p.streamName, p.consumerName, "ok", elapsed)
+		}
 	} else {
-		elapsed := time.Since(start)
+		// Core NATS mode: record metrics without ACK (ACK not supported)
 		p.telemetry.RecordMessageHandled(ctx, p.streamName, p.consumerName, "ok", elapsed)
 	}
 }
@@ -206,6 +214,14 @@ func (p *defaultBatchProcessor) handlePermanentError(ctx context.Context, msg *n
 	if p.consecutiveProcessErrors != nil {
 		*p.consecutiveProcessErrors = 0
 	}
+
+	if p.mode != "jetstream" {
+		p.logger.Debug("Permanent-error message in core mode; skipping DLQ/ACK (not supported)",
+			zap.String("subject", msg.Subject),
+		)
+		return
+	}
+
 	// Poison/permanent message: route to DLQ if configured, then ACK
 	if p.dlqHandler != nil {
 		if dlqErr := p.dlqHandler.RouteToDLQ(ctx, msg, err); dlqErr != nil {
@@ -241,6 +257,13 @@ func (p *defaultBatchProcessor) handleTransientError(ctx context.Context, msg *n
 			// Context canceled, stop processing
 			return
 		}
+	}
+
+	if p.mode != "jetstream" {
+		p.logger.Debug("Transient-error message in core mode; skipping retry (ACK/NAK unsupported)",
+			zap.String("subject", msg.Subject),
+		)
+		return
 	}
 
 	// Transient error: request redelivery with optional delay

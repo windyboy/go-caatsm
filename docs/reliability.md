@@ -107,14 +107,16 @@ Recommended pattern:
   restarted and returns `ErrNoResponders`), the consumer uses an exponential
   backoff when retrying `Fetch` calls (roughly `1s, 2s, 4s, ...` up to
   around `30s`) to avoid log spam while allowing the system to recover.
-- In dev/test environments, if the stream or consumer is detected as missing at
-  runtime (for example after `docker compose down -v`), the consumer calls the
-  shared `EnsureStream` and `ensureConsumer` logic to recreate them and
-  re-establish subscriptions.
-- In production environments, missing streams/consumers are treated as
-  configuration or operational errors:
-  - They are **not** auto-recreated.
-  - Errors are logged prominently so operators can diagnose and fix the issue.
+- At startup the receiver always calls `StreamManager.EnsureStream` and
+  `ConsumerManager.EnsureConsumer`. If the JetStream account allows it,
+  missing streams are created with the configured retention limits
+  (`max_msgs`, `max_bytes`, `max_age`, discard/storage policy, replicas) before
+  the durable consumer is created. This keeps dev/test clusters self-healing
+  after `docker compose down -v` and removes the race where a consumer was
+  created without its stream.
+- When the JetStream account lacks permissions to create protected resources
+  (a common production posture), the same code path fails fast with a clear
+  error message so operators know they must provision the stream out-of-band.
 - On the publishing side, JetStream `ErrNoResponders` and similar errors are
   treated as temporary by the processor:
   - Such errors cause the consumer to NAK messages and rely on the configured
@@ -141,5 +143,4 @@ Dashboards should combine:
 - Message rates, error rates, and DLQ rates.  
 - NATS consumer statistics (pending, redelivered, ack_pending).  
 - DB health indicators (latency, error counts, connection usage).
-
 

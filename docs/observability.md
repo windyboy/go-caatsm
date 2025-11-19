@@ -32,7 +32,7 @@ The service exposes Prometheus metrics via the monitoring HTTP server (default `
   Count of general publish failures (not DLQ-specific), labelled by message category.
 
 - `caatsm_nats_consumer_pending_messages{stream,consumer}`  
-  Current pending message count for each JetStream consumer (useful for lag/backlog alerts).
+  Current pending message count for each JetStream consumer (useful for lag/backlog alerts). A zero sample is emitted only once at startup so the series exists; if JetStream stats queries fail later, the last known value is preserved rather than force-setting the gauge to `0`, which prevents false “queue cleared” alerts.
 
 Additional OTEL metrics are emitted via the configured OTEL endpoint, including:
 
@@ -281,5 +281,4 @@ Logging is done with Zap. The `internal/infra/log` package standardises fields v
   - `fatal` – programming errors, schema mismatches, or configuration issues requiring operator attention.
 
 Handler and consumer logs should always be emitted through `WithMessageContext` to ensure these fields are present where applicable.
-
 

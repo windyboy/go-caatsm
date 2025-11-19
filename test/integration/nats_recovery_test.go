@@ -39,7 +39,7 @@ func TestNATSConsumerRecovery(t *testing.T) {
 
 	// Test stream recovery
 	streamManager := natsinfra.NewStreamManager(js, "TEST_STREAM", []string{"test.subject"}, nil)
-	err = streamManager.EnsureStream()
+	err = streamManager.EnsureStream(nil) // nil uses default stream configuration
 	assert.NoError(t, err)
 
 	// Test consumer recovery

@@ -76,6 +76,27 @@ func ProvideConsumer(
 	}
 	consumer.initCollaborators()
 
+	// Initialize the pending messages metric early (set to 0) so it appears in Prometheus
+	// even before the consumer starts. This ensures the metric is always visible.
+	// We do this first, before any operations that might fail, to ensure the metric exists.
+	// Initialize the metric unconditionally when in JetStream mode, even if js is nil,
+	// as it will be updated later when js becomes available.
+	if normCfg.mode == "jetstream" {
+		logger.Info("Initializing NATS consumer pending messages metric",
+			zap.String("stream", normCfg.streamName),
+			zap.String("consumer", normCfg.consumerName),
+			zap.Uint64("pending", 0),
+			zap.Bool("js_available", js != nil),
+		)
+		// Always initialize the metric in JetStream mode to ensure it appears in Prometheus
+		// The metric will be updated with actual values when the consumer starts
+		obsmetrics.RecordNATSConsumerPending(normCfg.streamName, normCfg.consumerName, 0)
+	} else {
+		logger.Debug("Skipping NATS consumer pending messages metric initialization (not JetStream mode)",
+			zap.String("mode", normCfg.mode),
+		)
+	}
+
 	// Initialize managers
 	if consumer.config.mode == "jetstream" {
 		consumer.consumerManager = NewConsumerManager(js, normCfg.streamName, normCfg.consumerName, normCfg.subject, logger)
@@ -91,6 +112,19 @@ func ProvideConsumer(
 		if fetcher, ok := consumer.fetcher.(*defaultMessageFetcher); ok {
 			fetcher.consumerManager = consumer.consumerManager
 			fetcher.streamManager = consumer.streamManager
+		}
+
+		// Ensure stream exists before creating consumer
+		streamCfg := &StreamConfig{
+			MaxMsgs:  cfg.NATS.StreamLimits.MaxMsgs,
+			MaxBytes: cfg.NATS.StreamLimits.MaxBytes,
+			MaxAge:   cfg.NATS.StreamLimits.MaxAge,
+			Discard:  cfg.NATS.StreamLimits.Discard,
+			Storage:  cfg.NATS.StreamLimits.Storage,
+			Replicas: cfg.NATS.StreamLimits.Replicas,
+		}
+		if err := consumer.streamManager.EnsureStream(streamCfg); err != nil {
+			return nil, fmt.Errorf("failed to ensure stream: %w", err)
 		}
 
 		// Create consumer if it doesn't exist
@@ -269,14 +303,9 @@ func (c *Consumer) startCore(ctx context.Context) error {
 	}
 
 	handler := func(msg *nats.Msg) {
-		if err := c.batchProcessor.ProcessMessage(ctx, msg); err != nil {
-			isPermanent := app.IsPermanent(err)
-			c.logger.Error("Failed to process message (core mode)",
-				zap.String("subject", msg.Subject),
-				zap.Error(err),
-				zap.Bool("permanent", isPermanent),
-			)
-		}
+		// Use ProcessBatch to ensure metrics are recorded via processSingleMessage
+		// ProcessBatch handles error recording and metrics for both success and failure cases
+		c.batchProcessor.ProcessBatch(ctx, []*nats.Msg{msg})
 	}
 
 	sub, err := c.conn.QueueSubscribe(c.config.subject, queueGroup, handler)
@@ -335,6 +364,23 @@ func (c *Consumer) startJetStream(ctx context.Context) error {
 		zap.String("stream", c.config.streamName),
 	)
 
+	// Record initial pending messages metric immediately
+	// This ensures the metric appears in Prometheus right away
+	if info, err := c.js.ConsumerInfo(c.config.streamName, c.config.consumerName); err == nil {
+		c.logger.Info("Recording initial NATS consumer pending messages metric",
+			zap.String("stream", c.config.streamName),
+			zap.String("consumer", c.config.consumerName),
+			zap.Uint64("pending", info.NumPending),
+		)
+		obsmetrics.RecordNATSConsumerPending(c.config.streamName, c.config.consumerName, info.NumPending)
+	} else {
+		c.logger.Warn("Failed to fetch initial consumer info for pending messages metric",
+			zap.String("stream", c.config.streamName),
+			zap.String("consumer", c.config.consumerName),
+			zap.Error(err),
+		)
+	}
+
 	statsCtx, statsCancel := context.WithCancel(ctx)
 	defer statsCancel()
 	go c.emitConsumerStats(statsCtx)
@@ -379,6 +425,14 @@ func (c *Consumer) emitConsumerStats(ctx context.Context) {
 	ticker := time.NewTicker(c.config.monitorInterval)
 	defer ticker.Stop()
 
+	// Record initial metric (0) to ensure it appears in Prometheus even before first tick
+	c.logger.Info("Starting NATS consumer stats emission goroutine, recording initial pending metric",
+		zap.String("stream", c.config.streamName),
+		zap.String("consumer", c.config.consumerName),
+		zap.Duration("interval", c.config.monitorInterval),
+	)
+	obsmetrics.RecordNATSConsumerPending(c.config.streamName, c.config.consumerName, 0)
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -386,9 +440,19 @@ func (c *Consumer) emitConsumerStats(ctx context.Context) {
 		case <-ticker.C:
 			info, err := c.js.ConsumerInfo(c.config.streamName, c.config.consumerName)
 			if err != nil {
+				c.logger.Warn("Failed to fetch consumer info for pending messages metric",
+					zap.String("stream", c.config.streamName),
+					zap.String("consumer", c.config.consumerName),
+					zap.Error(err),
+				)
 				continue
 			}
 			// Record pending messages for monitoring
+			c.logger.Debug("Recording NATS consumer pending messages metric",
+				zap.String("stream", c.config.streamName),
+				zap.String("consumer", c.config.consumerName),
+				zap.Uint64("pending", info.NumPending),
+			)
 			obsmetrics.RecordNATSConsumerPending(c.config.streamName, c.config.consumerName, info.NumPending)
 		}
 	}

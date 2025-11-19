@@ -255,7 +255,21 @@ func RecordJSAPICall(operation string) {
 // JetStream consumer as a gauge, enabling backlog / lag alerts.
 func RecordNATSConsumerPending(stream, consumer string, pending uint64) {
 	ensureCollectors()
-	natsConsumerPending.WithLabelValues(labelValue(stream), labelValue(consumer)).Set(float64(pending))
+	
+	// Validate inputs to ensure metric is recorded correctly
+	streamLabel := labelValue(stream)
+	consumerLabel := labelValue(consumer)
+	
+	// Ensure metric is always set, even with empty labels (will be "unknown")
+	if streamLabel == "" {
+		streamLabel = "unknown"
+	}
+	if consumerLabel == "" {
+		consumerLabel = "unknown"
+	}
+	
+	// Set the metric value
+	natsConsumerPending.WithLabelValues(streamLabel, consumerLabel).Set(float64(pending))
 }
 
 func labelValue(value string) string {
