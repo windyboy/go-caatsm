@@ -40,12 +40,44 @@ func NewStreamManager(js nats.JetStreamContext, streamName string, subjects []st
 // EnsureStream ensures that the configured JetStream stream exists, creating it if necessary
 func (sm *StreamManager) EnsureStream(cfg *StreamConfig) error {
 	// Check if stream already exists
-	_, err := sm.js.StreamInfo(sm.streamName)
+	info, err := sm.js.StreamInfo(sm.streamName)
 	if err == nil {
-		sm.logger.Info("JetStream stream verified",
-			zap.String("stream", sm.streamName),
-			zap.Strings("subjects", sm.subjects),
-		)
+		// Stream exists - check if we need to add any missing subjects
+		existingSubjects := make(map[string]bool)
+		for _, subj := range info.Config.Subjects {
+			existingSubjects[subj] = true
+		}
+		
+		// Check if any configured subjects are missing
+		missingSubjects := []string{}
+		for _, subj := range sm.subjects {
+			if !existingSubjects[subj] {
+				missingSubjects = append(missingSubjects, subj)
+			}
+		}
+		
+		if len(missingSubjects) > 0 {
+			// Update stream to include missing subjects
+			updatedSubjects := info.Config.Subjects
+			updatedSubjects = append(updatedSubjects, missingSubjects...)
+			info.Config.Subjects = updatedSubjects
+			
+			_, updateErr := sm.js.UpdateStream(&info.Config)
+			if updateErr != nil {
+				return fmt.Errorf("failed to update stream %s with new subjects %v: %w", sm.streamName, missingSubjects, updateErr)
+			}
+			
+			sm.logger.Info("Updated JetStream stream with new subjects",
+				zap.String("stream", sm.streamName),
+				zap.Strings("added_subjects", missingSubjects),
+				zap.Strings("all_subjects", updatedSubjects),
+			)
+		} else {
+			sm.logger.Info("JetStream stream verified",
+				zap.String("stream", sm.streamName),
+				zap.Strings("subjects", sm.subjects),
+			)
+		}
 		return nil
 	}
 

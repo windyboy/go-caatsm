@@ -174,14 +174,32 @@ func (p *defaultBatchProcessor) resolveMsgID(msg *nats.Msg) (string, string, err
 
 // handleMessageError handles errors that occur during message processing.
 func (p *defaultBatchProcessor) handleMessageError(ctx context.Context, msg *nats.Msg, err error, elapsed time.Duration) {
+	// Check if context is cancelled before processing
+	select {
+	case <-ctx.Done():
+		p.logger.Warn("Skipping error handling due to context cancellation",
+			zap.String("subject", msg.Subject),
+		)
+		return
+	default:
+	}
+
+	// Extract message ID for better error logging
+	msgID, _, _ := p.resolveMsgID(msg)
+	if msgID == "" {
+		msgID = "unknown"
+	}
+
+	isPermanent := app.IsPermanent(err)
 	p.logger.Error("Failed to process message",
 		zap.String("subject", msg.Subject),
+		zap.String("msg_id", msgID),
 		zap.Error(err),
-		zap.Bool("permanent", app.IsPermanent(err)),
+		zap.Bool("permanent", isPermanent),
 	)
 
 	result := obsmetrics.ResultFail
-	if app.IsPermanent(err) {
+	if isPermanent {
 		result = obsmetrics.ResultPermanentFail
 	}
 	p.telemetry.RecordMessageHandled(ctx, p.streamName, p.consumerName, result, elapsed)
@@ -191,7 +209,6 @@ func (p *defaultBatchProcessor) handleMessageError(ctx context.Context, msg *nat
 		consecutiveErrors = *p.consecutiveProcessErrors
 	}
 
-	isPermanent := app.IsPermanent(err)
 	processingResult := ProcessingErrorResult{IsPermanent: isPermanent}
 	if !isPermanent && consecutiveErrors >= 10 {
 		processingResult.ShouldApplyBackpressure = true
@@ -222,14 +239,48 @@ func (p *defaultBatchProcessor) handlePermanentError(ctx context.Context, msg *n
 		return
 	}
 
+	// Extract message ID for better logging
+	msgID, _, _ := p.resolveMsgID(msg)
+	if msgID == "" {
+		msgID = "unknown"
+	}
+
 	// Poison/permanent message: route to DLQ if configured, then ACK
+	dlqRouted := false
 	if p.dlqHandler != nil {
 		if dlqErr := p.dlqHandler.RouteToDLQ(ctx, msg, err); dlqErr != nil {
-			p.logger.Error("Failed to route permanent-error message to DLQ", zap.Error(dlqErr))
+			p.logger.Error("Failed to route permanent-error message to DLQ",
+				zap.String("subject", msg.Subject),
+				zap.String("msg_id", msgID),
+				zap.Error(dlqErr),
+				zap.NamedError("original_error", err),
+			)
+			// Note: We still ACK the message even if DLQ routing fails to prevent
+			// infinite redelivery of poison messages. The error is logged for manual investigation.
+		} else {
+			dlqRouted = true
+			p.logger.Info("Permanent-error message routed to DLQ",
+				zap.String("subject", msg.Subject),
+				zap.String("msg_id", msgID),
+			)
 		}
+	} else {
+		p.logger.Warn("Permanent-error message but DLQ handler not configured - message will be ACKed without DLQ routing",
+			zap.String("subject", msg.Subject),
+			zap.String("msg_id", msgID),
+			zap.String("hint", "Enable DLQ by setting dlq.enabled=true and dlq.subject in config to route poison messages for inspection"),
+		)
 	}
+
+	// ACK the message to prevent redelivery
+	// Even if DLQ routing failed, we ACK to avoid infinite retries of poison messages
 	if ackErr := msg.Ack(); ackErr != nil {
-		p.logger.Error("Failed to ACK permanent-error message", zap.Error(ackErr))
+		p.logger.Error("Failed to ACK permanent-error message",
+			zap.String("subject", msg.Subject),
+			zap.String("msg_id", msgID),
+			zap.Bool("dlq_routed", dlqRouted),
+			zap.Error(ackErr),
+		)
 	}
 }
 

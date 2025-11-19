@@ -123,6 +123,6 @@ health_timeout = "2s"
 [dlq]
 # Dead-Letter Queue configuration (only applies when mode = "jetstream")
 # enabled: Enable DLQ routing for poison messages (messages that fail after max_deliver attempts)
-enabled = false  # Set to true when switching to JetStream mode
+enabled = true  # Set to true when switching to JetStream mode
 # subject: NATS subject where failed messages will be published for manual inspection
 subject = "caatsm.dlq"

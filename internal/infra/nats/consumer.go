@@ -105,6 +105,10 @@ func ProvideConsumer(
 		if publisherSubject := strings.TrimSpace(cfg.Publisher.Topic); publisherSubject != "" {
 			streamSubjects = append(streamSubjects, publisherSubject)
 		}
+		// Add DLQ subject to stream if DLQ is enabled
+		if normCfg.dlqSubject != "" {
+			streamSubjects = append(streamSubjects, normCfg.dlqSubject)
+		}
 		streamSubjects = dedupeSubjects(streamSubjects)
 		consumer.streamManager = NewStreamManager(js, normCfg.streamName, streamSubjects, logger)
 
