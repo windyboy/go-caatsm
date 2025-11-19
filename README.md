@@ -918,6 +918,31 @@ go run ./cmd/seed-telegrams \
   --category=FPL
 ```
 
+#### 5. 持续缓慢发送（直到 Ctrl-C）
+
+```bash
+# 使用 Makefile/Taskfile 任务（推荐）
+make seed-slow
+# 或
+task seed-slow
+
+# 自定义间隔时间
+make seed-slow INTERVAL_MIN=3s INTERVAL_MAX=8s
+
+# 直接使用命令行
+go run ./cmd/seed-telegrams \
+  --nats-url nats://localhost:4222 \
+  --jetstream \
+  --stream TELEGRAM \
+  --js-subject telegram.serial \
+  --mode interval \
+  --interval-min 2s \
+  --interval-max 5s \
+  --count 0
+```
+
+**注意**：设置 `--count 0` 会持续发送直到手动停止（Ctrl-C）。这对于长时间测试和监控系统行为非常有用。
+
 该工具专门为开发与测试设计，不影响生产服务逻辑，推荐在本地或测试环境配合解析与存储流水线一起使用，用于回归测试、吞吐量观察和错误场景演练。
 
 **Parsed Fields:**

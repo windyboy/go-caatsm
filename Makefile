@@ -120,6 +120,63 @@ clean: ## Clean build artifacts and coverage files
 	@echo "Cleaning build artifacts..."
 	@rm -rf $(BUILD_DIR) coverage
 
+.PHONY: seed
+seed: ## Generate sample telegrams (publishes to Core NATS by default)
+	@GO_ENV=dev \
+	NATS_URL=$${CAATSM_NATS_URL:-nats://localhost:4222} \
+	SUBJECT=$${CAATSM_NATS_SUBJECT:-telegram.serial} \
+	COUNT=$${COUNT:-10} \
+	CATEGORY=$${CATEGORY:-mixed} \
+	STATUS=$${STATUS:-random} \
+	bash -c ' \
+		set -euo pipefail; \
+		cmd=(go run ./cmd/seed-telegrams); \
+		if [ -n "$$NATS_URL" ]; then \
+			cmd+=("--nats-url" "$$NATS_URL"); \
+		fi; \
+		cmd+=("--subject" "$$SUBJECT" "--count" "$$COUNT" "--category" "$$CATEGORY" "--status" "$$STATUS"); \
+		exec "$${cmd[@]}" \
+	'
+
+.PHONY: seed-slow
+seed-slow: ## Continuously send telegrams slowly (until Ctrl-C). Uses JetStream by default. Configurable interval.
+	@echo "Starting slow continuous telegram seeding..."
+	@echo "  Mode: $${MODE:-interval}"
+	@echo "  Interval: $${INTERVAL_MIN:-2s} - $${INTERVAL_MAX:-5s}"
+	@echo "  Category: $${CATEGORY:-mixed}"
+	@echo "  Status: $${STATUS:-random}"
+	@echo "  Press Ctrl-C to stop"
+	@echo ""
+	@GO_ENV=dev \
+	NATS_URL=$${CAATSM_NATS_URL:-nats://localhost:4222} \
+	SUBJECT=$${CAATSM_NATS_SUBJECT:-telegram.serial} \
+	CATEGORY=$${CATEGORY:-mixed} \
+	STATUS=$${STATUS:-random} \
+	MODE=$${MODE:-interval} \
+	INTERVAL_MIN=$${INTERVAL_MIN:-2s} \
+	INTERVAL_MAX=$${INTERVAL_MAX:-5s} \
+	USE_JS=$${USE_JS:-true} \
+	JS_STREAM=$${JS_STREAM:-TELEGRAM} \
+	JS_SUBJECT=$${JS_SUBJECT:-} \
+	bash -c ' \
+		set -euo pipefail; \
+		cmd=(go run ./cmd/seed-telegrams); \
+		if [ -n "$$NATS_URL" ]; then \
+			cmd+=("--nats-url" "$$NATS_URL"); \
+		fi; \
+		if [ "$$USE_JS" = "true" ]; then \
+			cmd+=("--jetstream"); \
+			if [ -n "$$JS_STREAM" ]; then \
+				cmd+=("--stream" "$$JS_STREAM"); \
+			fi; \
+			if [ -n "$$JS_SUBJECT" ]; then \
+				cmd+=("--js-subject" "$$JS_SUBJECT"); \
+			fi; \
+		fi; \
+		cmd+=("--subject" "$$SUBJECT" "--count" "0" "--category" "$$CATEGORY" "--status" "$$STATUS" "--mode" "$$MODE" "--interval-min" "$$INTERVAL_MIN" "--interval-max" "$$INTERVAL_MAX"); \
+		exec "$${cmd[@]}" \
+	'
+
 .PHONY: help
 help: ## Show this help
 	@printf "Makefile targets:\n"

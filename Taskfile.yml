@@ -290,6 +290,55 @@ tasks:
           exec "${cmd[@]}"
         '
 
+  seed-slow:
+    desc: Continuously send telegrams slowly (until Ctrl-C). Uses JetStream by default. Configurable interval.
+    cmds:
+      - |
+        GO_ENV=dev \
+        NATS_URL=${CAATSM_NATS_URL:-nats://localhost:4222} \
+        SUBJECT=${CAATSM_NATS_SUBJECT:-telegram.serial} \
+        CATEGORY={{.CATEGORY | default "mixed"}} \
+        STATUS={{.STATUS | default "random"}} \
+        MODE={{.MODE | default "interval"}} \
+        INTERVAL_MIN={{.INTERVAL_MIN | default "2s"}} \
+        INTERVAL_MAX={{.INTERVAL_MAX | default "5s"}} \
+        USE_JS={{.USE_JS | default "true"}} \
+        JS_STREAM={{.JS_STREAM | default "TELEGRAM"}} \
+        JS_SUBJECT={{.JS_SUBJECT | default ""}} \
+        bash -c '
+          set -euo pipefail
+          echo "Starting slow continuous telegram seeding..."
+          echo "  Mode: $MODE"
+          echo "  Interval: $INTERVAL_MIN - $INTERVAL_MAX"
+          echo "  Category: $CATEGORY"
+          echo "  Status: $STATUS"
+          echo "  Press Ctrl-C to stop"
+          echo ""
+          cmd=(go run ./cmd/seed-telegrams)
+          if [ -n "$NATS_URL" ]; then
+            cmd+=("--nats-url" "$NATS_URL")
+          fi
+          if [ "$USE_JS" = "true" ]; then
+            cmd+=("--jetstream")
+            if [ -n "$JS_STREAM" ]; then
+              cmd+=("--stream" "$JS_STREAM")
+            fi
+            if [ -n "$JS_SUBJECT" ]; then
+              cmd+=("--js-subject" "$JS_SUBJECT")
+            fi
+          fi
+          cmd+=(
+            --subject "$SUBJECT"
+            --count 0
+            --category "$CATEGORY"
+            --status "$STATUS"
+            --mode "$MODE"
+            --interval-min "$INTERVAL_MIN"
+            --interval-max "$INTERVAL_MAX"
+          )
+          exec "${cmd[@]}"
+        '
+
   help:
     desc: Show this help message
     cmds:

@@ -94,6 +94,56 @@ GO_ENV=dev go run ./cmd/seed-telegrams \
   --status random
 ```
 
+### Using Makefile/Taskfile Tasks
+
+For convenience, you can use the provided tasks:
+
+```bash
+# Quick seed (10 messages, Core NATS)
+make seed
+# or
+task seed
+
+# Continuous slow seeding (until Ctrl-C, JetStream by default)
+make seed-slow
+# or
+task seed-slow
+
+# Customize slow seeding
+make seed-slow INTERVAL_MIN=3s INTERVAL_MAX=8s CATEGORY=ARR
+task seed-slow INTERVAL_MIN=1s INTERVAL_MAX=2s STATUS=parsed
+```
+
+### Continuous Slow Seeding
+
+For long-running tests and monitoring, use the `seed-slow` task to continuously send messages at a configurable interval until you press Ctrl-C:
+
+```bash
+# Default: 2-5 second intervals, JetStream mode
+make seed-slow
+
+# Custom interval and category
+make seed-slow INTERVAL_MIN=5s INTERVAL_MAX=10s CATEGORY=DEP
+
+# Use Core NATS instead of JetStream
+make seed-slow USE_JS=false INTERVAL_MIN=1s INTERVAL_MAX=3s
+```
+
+This is equivalent to running:
+```bash
+go run ./cmd/seed-telegrams \
+  --nats-url nats://localhost:4222 \
+  --jetstream \
+  --stream TELEGRAM \
+  --js-subject telegram.serial \
+  --mode interval \
+  --interval-min 2s \
+  --interval-max 5s \
+  --count 0
+```
+
+Setting `--count 0` makes it run indefinitely until interrupted.
+
 ### Common Options
 
 - `--postgres-url`: Insert rows into `aviation.telegrams_raw` (omit to skip DB writes)
@@ -104,6 +154,9 @@ GO_ENV=dev go run ./cmd/seed-telegrams \
 - `--jetstream`: Enable JetStream publishing (requires `--stream` and `--js-subject`)
 - `--stream`: JetStream stream name (default: `TELEGRAM`)
 - `--js-subject`: Subject within the JetStream stream
+- `--mode`: Seed mode (`burst|interval|mixed`)
+- `--interval-min` / `--interval-max`: Time interval between messages in interval/mixed modes
+- `--count`: Number of messages to send (0 = infinite, until Ctrl-C)
 
 ### Inspecting Messages
 
