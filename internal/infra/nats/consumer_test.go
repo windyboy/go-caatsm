@@ -62,7 +62,6 @@ var _ = Describe("Consumer helpers", func() {
 			normCfg := normalizeConsumerConfig(cfg)
 
 			Expect(normCfg.consumerName).To(Equal("telegram-consumer"))
-			Expect(normCfg.mode).To(Equal("jetstream"))
 			Expect(normCfg.streamName).To(Equal("TELEGRAM"))
 			Expect(normCfg.batchSize).To(Equal(50))
 			Expect(normCfg.batchTimeout).To(Equal(2 * time.Second))
@@ -74,7 +73,6 @@ var _ = Describe("Consumer helpers", func() {
 			cfg := &configpkg.Config{
 				NATS: configpkg.NATSConfig{
 					Consumer: "custom-consumer",
-					Mode:     "core",
 					Stream:   "CUSTOM_STREAM",
 					ConsumerRules: configpkg.ConsumerRulesConfig{
 						AckWait: 60 * time.Second,
@@ -93,7 +91,6 @@ var _ = Describe("Consumer helpers", func() {
 			normCfg := normalizeConsumerConfig(cfg)
 
 			Expect(normCfg.consumerName).To(Equal("custom-consumer"))
-			Expect(normCfg.mode).To(Equal("core"))
 			Expect(normCfg.streamName).To(Equal("CUSTOM_STREAM"))
 			Expect(normCfg.batchSize).To(Equal(100))
 			Expect(normCfg.batchTimeout).To(Equal(5 * time.Second))

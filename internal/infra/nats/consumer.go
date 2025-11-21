@@ -45,7 +45,6 @@ type Consumer struct {
 type consumerConfig struct {
 	subject         string
 	consumerName    string
-	mode            string
 	streamName      string
 	dlqSubject      string
 	ackWait         time.Duration
@@ -78,75 +77,56 @@ func ProvideConsumer(
 
 	// Initialize the pending messages metric early (set to 0) so it appears in Prometheus
 	// even before the consumer starts. This ensures the metric is always visible.
-	// We do this first, before any operations that might fail, to ensure the metric exists.
-	// Initialize the metric unconditionally when in JetStream mode, even if js is nil,
-	// as it will be updated later when js becomes available.
-	if normCfg.mode == "jetstream" {
-		logger.Info("Initializing NATS consumer pending messages metric",
-			zap.String("stream", normCfg.streamName),
-			zap.String("consumer", normCfg.consumerName),
-			zap.Uint64("pending", 0),
-			zap.Bool("js_available", js != nil),
-		)
-		// Always initialize the metric in JetStream mode to ensure it appears in Prometheus
-		// The metric will be updated with actual values when the consumer starts
-		obsmetrics.RecordNATSConsumerPending(normCfg.streamName, normCfg.consumerName, 0)
-	} else {
-		logger.Debug("Skipping NATS consumer pending messages metric initialization (not JetStream mode)",
-			zap.String("mode", normCfg.mode),
-		)
-	}
+	logger.Info("Initializing NATS consumer pending messages metric",
+		zap.String("stream", normCfg.streamName),
+		zap.String("consumer", normCfg.consumerName),
+		zap.Uint64("pending", 0),
+		zap.Bool("js_available", js != nil),
+	)
+	obsmetrics.RecordNATSConsumerPending(normCfg.streamName, normCfg.consumerName, 0)
 
 	// Initialize managers
-	if consumer.config.mode == "jetstream" {
-		consumer.consumerManager = NewConsumerManager(js, normCfg.streamName, normCfg.consumerName, normCfg.subject, logger)
-		// Use StreamManager with full configuration
-		streamSubjects := []string{normCfg.subject}
-		if publisherSubject := strings.TrimSpace(cfg.Publisher.Topic); publisherSubject != "" {
-			streamSubjects = append(streamSubjects, publisherSubject)
-		}
-		// Add DLQ subject to stream if DLQ is enabled
-		if normCfg.dlqSubject != "" {
-			streamSubjects = append(streamSubjects, normCfg.dlqSubject)
-		}
-		streamSubjects = dedupeSubjects(streamSubjects)
-		consumer.streamManager = NewStreamManager(js, normCfg.streamName, streamSubjects, logger)
+	consumer.consumerManager = NewConsumerManager(js, normCfg.streamName, normCfg.consumerName, normCfg.subject, logger)
+	// Use StreamManager with full configuration
+	streamSubjects := []string{normCfg.subject}
+	if publisherSubject := strings.TrimSpace(cfg.Publisher.Topic); publisherSubject != "" {
+		streamSubjects = append(streamSubjects, publisherSubject)
+	}
+	// Add DLQ subject to stream if DLQ is enabled
+	if normCfg.dlqSubject != "" {
+		streamSubjects = append(streamSubjects, normCfg.dlqSubject)
+	}
+	streamSubjects = dedupeSubjects(streamSubjects)
+	consumer.streamManager = NewStreamManager(js, normCfg.streamName, streamSubjects, logger)
 
-		// Update fetcher with managers now that they're initialized
-		if fetcher, ok := consumer.fetcher.(*defaultMessageFetcher); ok {
-			fetcher.consumerManager = consumer.consumerManager
-			fetcher.streamManager = consumer.streamManager
-		}
+	// Update fetcher with managers now that they're initialized
+	if fetcher, ok := consumer.fetcher.(*defaultMessageFetcher); ok {
+		fetcher.consumerManager = consumer.consumerManager
+		fetcher.streamManager = consumer.streamManager
+	}
 
-		// Ensure stream exists before creating consumer
-		streamCfg := &StreamConfig{
-			MaxMsgs:  cfg.NATS.StreamLimits.MaxMsgs,
-			MaxBytes: cfg.NATS.StreamLimits.MaxBytes,
-			MaxAge:   cfg.NATS.StreamLimits.MaxAge,
-			Discard:  cfg.NATS.StreamLimits.Discard,
-			Storage:  cfg.NATS.StreamLimits.Storage,
-			Replicas: cfg.NATS.StreamLimits.Replicas,
-		}
-		if err := consumer.streamManager.EnsureStream(streamCfg); err != nil {
-			return nil, fmt.Errorf("failed to ensure stream: %w", err)
-		}
+	// Ensure stream exists before creating consumer
+	streamCfg := &StreamConfig{
+		MaxMsgs:  cfg.NATS.StreamLimits.MaxMsgs,
+		MaxBytes: cfg.NATS.StreamLimits.MaxBytes,
+		MaxAge:   cfg.NATS.StreamLimits.MaxAge,
+		Discard:  cfg.NATS.StreamLimits.Discard,
+		Storage:  cfg.NATS.StreamLimits.Storage,
+		Replicas: cfg.NATS.StreamLimits.Replicas,
+	}
+	if err := consumer.streamManager.EnsureStream(streamCfg); err != nil {
+		return nil, fmt.Errorf("failed to ensure stream: %w", err)
+	}
 
-		// Create consumer if it doesn't exist
-		consumerConfig := consumer.buildConsumerConfig()
-		if err := consumer.consumerManager.EnsureConsumer(consumerConfig); err != nil {
-			return nil, fmt.Errorf("failed to ensure consumer: %w", err)
-		}
-		// Validate DLQ configuration early so misconfiguration is visible at startup
-		// rather than only when the first poison message appears.
-		if err := consumer.validateDLQ(); err != nil {
-			return nil, fmt.Errorf("DLQ validation failed: %w", err)
-		}
-
-	} else {
-		logger.Info("Running consumer in core NATS mode",
-			zap.String("subject", normCfg.subject),
-			zap.String("queue_group", cfg.Subscription.QueueGroup),
-		)
+	// Create consumer if it doesn't exist
+	consumerConfig := consumer.buildConsumerConfig()
+	if err := consumer.consumerManager.EnsureConsumer(consumerConfig); err != nil {
+		return nil, fmt.Errorf("failed to ensure consumer: %w", err)
+	}
+	// Validate DLQ configuration early so misconfiguration is visible at startup
+	// rather than only when the first poison message appears.
+	if err := consumer.validateDLQ(); err != nil {
+		return nil, fmt.Errorf("DLQ validation failed: %w", err)
 	}
 
 	return consumer, nil
@@ -185,7 +165,6 @@ func (c *Consumer) initCollaborators() {
 		telemetry:                c.telemetry,
 		streamName:               c.config.streamName,
 		consumerName:             c.config.consumerName,
-		mode:                     c.config.mode,
 		backoff:                  c.cfg.NATS.ConsumerRules.Backoff,
 		consecutiveProcessErrors: &c.consecutiveProcessErrors,
 	}
@@ -199,11 +178,6 @@ func normalizeConsumerConfig(cfg *config.Config) *consumerConfig {
 	consumerName := cfg.NATS.Consumer
 	if consumerName == "" {
 		consumerName = "telegram-consumer"
-	}
-
-	mode := strings.ToLower(cfg.NATS.Mode)
-	if mode == "" {
-		mode = "jetstream"
 	}
 
 	streamName := cfg.NATS.Stream
@@ -244,7 +218,6 @@ func normalizeConsumerConfig(cfg *config.Config) *consumerConfig {
 	return &consumerConfig{
 		subject:         subject,
 		consumerName:    consumerName,
-		mode:            mode,
 		streamName:      streamName,
 		dlqSubject:      dlqSubject,
 		ackWait:         ackWait,
@@ -269,12 +242,8 @@ func (c *Consumer) buildConsumerConfig() *nats.ConsumerConfig {
 	}
 }
 
-// Start starts consuming messages.
+// Start starts consuming messages from JetStream.
 func (c *Consumer) Start(ctx context.Context) error {
-	if c.config.mode == "core" {
-		return c.startCore(ctx)
-	}
-
 	return c.startJetStream(ctx)
 }
 
@@ -297,42 +266,6 @@ func (c *Consumer) ValidateDLQ() error {
 // validateDLQ is a helper for internal use (lowercase)
 func (c *Consumer) validateDLQ() error {
 	return c.ValidateDLQ()
-}
-
-// startCore starts the Core NATS consumer loop.
-func (c *Consumer) startCore(ctx context.Context) error {
-	queueGroup := c.cfg.Subscription.QueueGroup
-	if queueGroup == "" {
-		queueGroup = c.config.consumerName
-	}
-
-	handler := func(msg *nats.Msg) {
-		// Use ProcessBatch to ensure metrics are recorded via processSingleMessage
-		// ProcessBatch handles error recording and metrics for both success and failure cases
-		c.batchProcessor.ProcessBatch(ctx, []*nats.Msg{msg})
-	}
-
-	sub, err := c.conn.QueueSubscribe(c.config.subject, queueGroup, handler)
-	if err != nil {
-		return fmt.Errorf("failed to subscribe to %s: %w", c.config.subject, err)
-	}
-	if err := c.conn.Flush(); err != nil {
-		return fmt.Errorf("failed to flush NATS connection: %w", err)
-	}
-
-	c.logger.Info("Started core NATS subscription",
-		zap.String("subject", c.config.subject),
-		zap.String("queue_group", queueGroup),
-	)
-
-	<-ctx.Done()
-	c.logger.Info("Stopping core NATS consumer", zap.Error(ctx.Err()))
-
-	if err := sub.Drain(); err != nil && !errors.Is(err, nats.ErrConnectionClosed) {
-		return fmt.Errorf("failed to drain core subscription: %w", err)
-	}
-
-	return ctx.Err()
 }
 
 // createPullSubscription creates a pull subscription

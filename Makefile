@@ -29,8 +29,8 @@ build: ## Build the receiver binary
 run: run-dev ## Alias for run-dev
 
 .PHONY: run-dev
-run-dev: build ## Run the receiver in development mode (uses core NATS mode by default). Use MONITORING_ADDR=ip:port to set monitoring address
-	@echo "Running receiver in development mode (NATS mode: core by default)..."
+run-dev: build ## Run the receiver in development mode (uses JetStream mode). Use MONITORING_ADDR=ip:port to set monitoring address
+	@echo "Running receiver in development mode (NATS mode: JetStream)..."
 	@if [ -n "$(MONITORING_ADDR)" ]; then \
 		echo "Monitoring address: $(MONITORING_ADDR)"; \
 		GO_ENV=dev $(BINARY) listen --monitoring-addr $(MONITORING_ADDR); \
@@ -54,8 +54,8 @@ run-test: build ## Run the receiver in test mode
 	@GO_ENV=test $(BINARY) listen
 
 .PHONY: run-local
-run-local: ## Run receiver directly via go run (uses core NATS mode by default in dev). Use MONITORING_ADDR=ip:port to set monitoring address
-	@echo "Running receiver via go run (GO_ENV=$(GO_ENV), NATS mode: core by default in dev)..."
+run-local: ## Run receiver directly via go run (uses JetStream mode). Use MONITORING_ADDR=ip:port to set monitoring address
+	@echo "Running receiver via go run (GO_ENV=$(GO_ENV), NATS mode: JetStream)..."
 	@if [ -n "$(MONITORING_ADDR)" ]; then \
 		echo "Monitoring address: $(MONITORING_ADDR)"; \
 		GO_ENV=$(GO_ENV) go run $(CMD) listen --monitoring-addr $(MONITORING_ADDR); \
@@ -121,7 +121,7 @@ clean: ## Clean build artifacts and coverage files
 	@rm -rf $(BUILD_DIR) coverage
 
 .PHONY: seed
-seed: ## Generate sample telegrams (publishes to Core NATS by default)
+seed: ## Generate sample telegrams (publishes to JetStream)
 	@GO_ENV=dev \
 	NATS_URL=$${CAATSM_NATS_URL:-nats://localhost:4222} \
 	SUBJECT=$${CAATSM_NATS_SUBJECT:-telegram.serial} \

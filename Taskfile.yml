@@ -85,13 +85,13 @@ tasks:
       - GO_ENV=test {{.binary}} listen
 
   run-local:
-    desc: 'Run receiver via go run (default GO_ENV=dev, uses core NATS mode by default). Use MONITORING_ADDR=ip:port to set monitoring address'
+    desc: 'Run receiver via go run (default GO_ENV=dev, uses JetStream mode). Use MONITORING_ADDR=ip:port to set monitoring address'
     vars:
       MONITORING_ADDR:
         sh: echo "${MONITORING_ADDR:-}"
     cmds:
       - |
-        echo "Running receiver via go run (GO_ENV=${GO_ENV:-dev}, NATS mode: core by default in dev)..."
+        echo "Running receiver via go run (GO_ENV=${GO_ENV:-dev}, NATS mode: JetStream)..."
       - |
         cmd="GO_ENV=${GO_ENV:-dev} go run {{.cmd}} listen"
         if [ -n "${MONITORING_ADDR:-}" ]; then

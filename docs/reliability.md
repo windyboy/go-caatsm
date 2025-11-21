@@ -15,11 +15,7 @@ subject = "caatsm.dlq"
 - When `dlq.enabled` is `true` and `dlq.subject` is non-empty, **permanent** failures are routed to the DLQ subject.  
 - A permanent failure is indicated by wrapping an error with `app.Permanent` and is treated as a **poison message**.
 
-> Note: DLQ routing only applies when the NATS mode is `jetstream`. In `core`
-> mode, the consumer does not attempt to publish to the DLQ even if it is
-> configured.
-
-Behaviour (JetStream mode):
+Behaviour:
 
 1. The NATS consumer calls `processor.Handle`.  
 2. If an error is returned and `app.IsPermanent(err)` is true:

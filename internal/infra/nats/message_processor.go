@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/nats-io/nats.go"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -39,7 +38,6 @@ type defaultBatchProcessor struct {
 	// Configuration needed for processing
 	streamName   string
 	consumerName string
-	mode         string
 	backoff      []time.Duration
 	// Pointer to consecutive errors counter (shared with Consumer)
 	consecutiveProcessErrors *int
@@ -76,19 +74,12 @@ func (p *defaultBatchProcessor) processSingleMessage(ctx context.Context, msg *n
 
 	elapsed := time.Since(start)
 
-	// ACK the message (only in JetStream mode; Core NATS doesn't support ACK)
-	if p.mode == "jetstream" {
-		if ackErr := msg.Ack(); ackErr != nil {
-			p.logger.Error("Failed to ACK message", zap.Error(ackErr))
-			// Still record metrics even if ACK fails
-			p.telemetry.RecordMessageHandled(ctx, p.streamName, p.consumerName, "ok", elapsed)
-		} else {
-			p.telemetry.RecordMessageHandled(ctx, p.streamName, p.consumerName, "ok", elapsed)
-		}
-	} else {
-		// Core NATS mode: record metrics without ACK (ACK not supported)
-		p.telemetry.RecordMessageHandled(ctx, p.streamName, p.consumerName, "ok", elapsed)
+	// ACK the message
+	if ackErr := msg.Ack(); ackErr != nil {
+		p.logger.Error("Failed to ACK message", zap.Error(ackErr))
+		// Still record metrics even if ACK fails
 	}
+	p.telemetry.RecordMessageHandled(ctx, p.streamName, p.consumerName, "ok", elapsed)
 }
 
 // ProcessMessage processes a single message.
@@ -160,10 +151,6 @@ func (p *defaultBatchProcessor) resolveMsgID(msg *nats.Msg) (string, string, err
 		return id, "header", nil
 	}
 
-	if p.mode == "core" {
-		return uuid.NewString(), "generated", nil
-	}
-
 	meta, err := msg.Metadata()
 	if err != nil {
 		return "", "", fmt.Errorf("fetch metadata: %w", err)
@@ -230,13 +217,6 @@ func (p *defaultBatchProcessor) handleMessageError(ctx context.Context, msg *nat
 func (p *defaultBatchProcessor) handlePermanentError(ctx context.Context, msg *nats.Msg, err error) {
 	if p.consecutiveProcessErrors != nil {
 		*p.consecutiveProcessErrors = 0
-	}
-
-	if p.mode != "jetstream" {
-		p.logger.Debug("Permanent-error message in core mode; skipping DLQ/ACK (not supported)",
-			zap.String("subject", msg.Subject),
-		)
-		return
 	}
 
 	// Extract message ID for better logging
@@ -308,13 +288,6 @@ func (p *defaultBatchProcessor) handleTransientError(ctx context.Context, msg *n
 			// Context canceled, stop processing
 			return
 		}
-	}
-
-	if p.mode != "jetstream" {
-		p.logger.Debug("Transient-error message in core mode; skipping retry (ACK/NAK unsupported)",
-			zap.String("subject", msg.Subject),
-		)
-		return
 	}
 
 	// Transient error: request redelivery with optional delay

@@ -17,7 +17,6 @@ var _ = Describe("MessageHandler", func() {
 			logger:       zaptest.NewLogger(GinkgoT()),
 			streamName:   "TEST_STREAM",
 			consumerName: "test-consumer",
-			mode:         "jetstream",
 		}
 	})
 
@@ -34,20 +33,7 @@ var _ = Describe("MessageHandler", func() {
 			Expect(source).To(Equal("header"))
 		})
 
-		It("generates UUID for core mode when header is missing", func() {
-			processor.mode = "core"
-			msg := &nats.Msg{
-				Header: nats.Header{},
-			}
-
-			id, source, err := processor.resolveMsgID(msg)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(id).NotTo(BeEmpty())
-			Expect(source).To(Equal("generated"))
-		})
-
-		It("returns error for JetStream mode when header and metadata are missing", func() {
-			processor.mode = "jetstream"
+		It("returns error when header and metadata are missing", func() {
 			msg := &nats.Msg{
 				Header: nats.Header{},
 			}

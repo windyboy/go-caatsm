@@ -330,10 +330,10 @@ func (c *Config) Validate() error {
 	if c.NATS.URL == "" {
 		return fmt.Errorf("nats.url is required")
 	}
-	switch strings.ToLower(c.NATS.Mode) {
-	case "", "jetstream", "core":
-	default:
-		return fmt.Errorf("nats.mode must be 'jetstream' or 'core'")
+	// Validate NATS mode - only JetStream is supported
+	mode := strings.ToLower(c.NATS.Mode)
+	if mode != "" && mode != "jetstream" {
+		return fmt.Errorf("nats.mode must be 'jetstream' or empty (defaults to 'jetstream'), got: %s", c.NATS.Mode)
 	}
 	if c.NATS.Stream == "" {
 		return fmt.Errorf("nats.stream is required")

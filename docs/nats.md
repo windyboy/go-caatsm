@@ -445,9 +445,7 @@ Success
 
 The consumer handles message consumption with the following features:
 
-#### Modes
-- **JetStream Mode**: Persistent, durable message processing with acknowledgments
-- **Core Mode**: Fire-and-forget message processing for simple use cases
+The consumer uses JetStream mode exclusively for persistent, durable message processing with acknowledgments.
 
 #### Key Features
 - **Batch Processing**: Configurable batch sizes for efficient processing
@@ -508,7 +506,7 @@ The publisher handles message publishing with deduplication and observability.
 
 #### Features
 - **Message Deduplication**: Automatic UUID-based deduplication headers
-- **JetStream/Core Mode Support**: Adapts based on available JetStream context
+- **JetStream Publishing**: Uses JetStream for reliable message delivery
 - **Structured Logging**: Comprehensive logging of publish operations
 - **Error Classification**: Distinguishes between transient and permanent errors
 

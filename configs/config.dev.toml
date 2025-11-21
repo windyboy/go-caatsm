@@ -1,20 +1,12 @@
 [nats]
 url = "nats://localhost:4222"
-# mode: "core" (default for dev) or "jetstream" (recommended for production)
-#   - "core": Uses Core NATS for simple pub/sub messaging with:
-#     * No message persistence (messages lost if consumer offline)
-#     * No ACK mechanism (fire-and-forget delivery)
-#     * No automatic retry on processing failures
-#     * Queue groups for load balancing only
-#     * Suitable for development/testing or real-time scenarios where message loss is acceptable
-#     * Recommended for local development and testing
-#   - "jetstream": Uses NATS JetStream for persistent message streaming with:
+# mode: "jetstream" (required - only JetStream mode is supported)
+#   JetStream provides:
 #     * Message persistence and replay capability
 #     * ACK/NAK mechanism for guaranteed delivery
 #     * Automatic retry with configurable backoff
 #     * Dead-letter queue (DLQ) support
 #     * Batch processing and consumer monitoring
-#     * Recommended for production environments
 mode = "jetstream"
 client = "serial-client"
 cluster = "tele-cluster"
@@ -22,7 +14,7 @@ stream = "TELEGRAM"
 consumer = "telegram-consumer"
 
 [nats.stream_limits]
-# Stream retention and storage limits (only applies when mode = "jetstream")
+# Stream retention and storage limits
 # max_msgs: Maximum number of messages to keep in the stream (0 = unlimited)
 max_msgs = 100000
 # max_bytes: Maximum total size of messages in bytes (0 = unlimited, 67108864 = 64MB)
@@ -37,7 +29,7 @@ storage = "file"
 replicas = 1
 
 [nats.consumer_rules]
-# Consumer delivery rules (only applies when mode = "jetstream")
+# Consumer delivery rules
 # max_deliver: Maximum number of delivery attempts before giving up (0 = unlimited)
 max_deliver = 3
 # ack_wait: Time to wait for ACK before redelivering message (e.g., "30s", "2m")
@@ -75,7 +67,7 @@ max_conns = 10
 min_conns = 2
 
 [app]
-# Batch processing configuration (applies to both core and jetstream modes)
+# Batch processing configuration
 # batch_size: Number of messages to fetch in each batch (JetStream pull batch size)
 batch_size = 50
 # batch_timeout: Maximum time to wait when fetching a batch (e.g., "2s")
@@ -121,7 +113,7 @@ write_timeout = "5s"
 health_timeout = "2s"
 
 [dlq]
-# Dead-Letter Queue configuration (only applies when mode = "jetstream")
+# Dead-Letter Queue configuration
 # enabled: Enable DLQ routing for poison messages (messages that fail after max_deliver attempts)
 enabled = true  # Set to true when switching to JetStream mode
 # subject: NATS subject where failed messages will be published for manual inspection
