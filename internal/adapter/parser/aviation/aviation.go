@@ -2,7 +2,6 @@ package aviation
 
 import (
 	"caatsm/internal/adapter/dto"
-	"caatsm/internal/domain"
 	"errors"
 	"fmt"
 	"regexp"
@@ -68,13 +67,26 @@ func (parser *BodyParser) Parse() (string, interface{}, error) {
 		return "", nil, fmt.Errorf("no category found in body text")
 	}
 
-	if patternConfig, exists := parser.bodyPatterns[category]; exists && patternConfig.Patterns != nil {
-		for _, p := range patternConfig.Patterns {
-			if data := extract(parser.body, p.Expression); data != nil {
-				return parser.createBodyData(data)
+	patternConfig, exists := parser.bodyPatterns[category]
+	if !exists || patternConfig.Patterns == nil {
+		return "", nil, fmt.Errorf("no matching pattern found for body: %s", parser.body)
+	}
+
+	ctx := ParseContext{
+		Body:   parser.body,
+		Tokens: Tokenizer{}.Tokenize(parser.body),
+	}
+
+	for _, p := range patternConfig.Patterns {
+		if data := extract(parser.body, p.Expression); data != nil {
+			parsed, err := parseCategory(category, ctx, data)
+			if err != nil {
+				return "", nil, err
 			}
+			return category, parsed, nil
 		}
 	}
+
 	return "", nil, fmt.Errorf("no matching pattern found for body: %s", parser.body)
 }
 
@@ -105,73 +117,6 @@ func extractData(match []string, re *regexp.Regexp) map[string]string {
 		}
 	}
 	return data
-}
-
-func (parser *BodyParser) createBodyData(data map[string]string) (string, interface{}, error) {
-	switch category := data["category"]; category {
-	case CategoryArrival:
-		return category, &domain.ARR{
-			Category:         data[Category],
-			AircraftID:       data[FlightNumber],
-			SSRModeAndCode:   data[SSR],
-			DepartureAirport: data[DepartureCode],
-			ArrivalAirport:   data[ArrivalCode],
-			ArrivalTime:      data[ArrivalTime],
-		}, nil
-	case CategoryDeparture:
-		return category, &domain.DEP{
-			Category:         data[Category],
-			AircraftID:       data[FlightNumber],
-			SSRModeAndCode:   data[SSR],
-			DepartureAirport: data[DepartureCode],
-			DepartureTime:    data[DepartureTime],
-			Destination:      data[ArrivalCode],
-		}, nil
-	case CategoryCancellation:
-		return category, &domain.CNL{
-			Category:           data[Category],
-			AircraftID:         data[FlightNumber],
-			DepartureAirport:   data[DepartureCode],
-			DestinationAirport: data[ArrivalCode],
-		}, nil
-	case CategoryDelay:
-		return category, &domain.DLA{
-			Category:         data[Category],
-			AircraftID:       data[FlightNumber],
-			DepartureAirport: data[DepartureCode],
-			NewDepartureTime: data[DepartureTime],
-			ArrivalAirport:   data[ArrivalCode],
-			ArrivalTime:      data[ArrivalTime],
-		}, nil
-	case CategoryFlightPlan:
-		otherData := parseOther(data[OtherInfo])
-		return category, &domain.FPL{
-			Category:                data[Category],
-			FlightNumber:            data[FlightNumber],
-			ReferenceData:           data[ReferenceData],
-			AircraftID:              data[AircraftID],
-			SSRModeAndCode:          data[Surveillance],
-			FlightRulesAndType:      data[Indicator],
-			CruisingSpeedAndLevel:   data[Speed] + data[Level],
-			DepartureAirport:        data[DepartureCode],
-			DepartureTime:           data[DepartureTime],
-			Route:                   data[Route],
-			DestinationAndTotalTime: data[DestinationCode] + data[EstimatedTime],
-			AlternateAirport:        data[AlternateAirport],
-			OtherInfo:               data[OtherInfo],
-			Register:                otherData[Register],
-			EstimatedArrivalTime:    data[EstimatedTime],
-			PBN:                     otherData[PBN],
-			NavigationEquipment:     otherData[NavigationEquipment],
-			EstimatedElapsedTime:    otherData[EstimatedElapsedTime],
-			SELCALCode:              otherData[SELCALCode],
-			PerformanceCategory:     otherData[PerformanceCategory],
-			RerouteInformation:      otherData[RerouteInformation],
-			Remarks:                 otherData[Remarks],
-		}, nil
-	default:
-		return category, nil, fmt.Errorf("invalid message type: %s", category)
-	}
 }
 
 func headerToParsedTelegram(header Header) dto.ParsedTelegram {

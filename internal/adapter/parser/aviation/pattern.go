@@ -15,59 +15,8 @@ type PatternConfig struct {
 }
 
 var (
-	bodyPatterns = map[string]BodyConfig{}
+	bodyPatterns = buildBodyPatterns()
 )
-
-func init() {
-	// Initialize body patterns.
-	bodyPatterns = map[string]BodyConfig{
-		"ARR": {
-			Patterns: []PatternConfig{
-				{
-					Pattern:    ArrPatternString,
-					Comments:   "Pattern for ARR message",
-					Expression: ArrPatternExpression,
-				},
-			},
-		},
-		"DEP": {
-			Patterns: []PatternConfig{
-				{
-					Pattern:    DepPatternString,
-					Comments:   "Pattern for DEP message",
-					Expression: DepPatternExpression,
-				},
-			},
-		},
-		"FPL": {
-			Patterns: []PatternConfig{
-				{
-					Pattern:    FplPatternString,
-					Comments:   "Pattern for FPL message",
-					Expression: FplPatternExpression,
-				},
-			},
-		},
-		"CNL": {
-			Patterns: []PatternConfig{
-				{
-					Pattern:    CnlPatternString,
-					Comments:   "Pattern for CNL message",
-					Expression: CnlPatternExpression,
-				},
-			},
-		},
-		"DLA": {
-			Patterns: []PatternConfig{
-				{
-					Pattern:    DlaPatternString,
-					Comments:   "Pattern for DLA message",
-					Expression: DlaPatternExpression,
-				},
-			},
-		},
-	}
-}
 
 // FindPatterns finds the matching body configuration based on the message body.
 func FindPatterns(messageBody string) *BodyConfig {
