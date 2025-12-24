@@ -1,6 +1,7 @@
 package weather
 
 import (
+	domainweather "caatsm/internal/domain/weather"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -22,6 +23,52 @@ var _ = Describe("TAF Parser", func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(len(taf.Periods)).To(BeNumerically(">=", 2))
 			Expect(taf.Periods[1].Type).To(Equal("FM"))
+		})
+
+		It("should set final FM validTo to the TAF validity end", func() {
+			raw := "TAF KJFK 251200Z 2512/2612 35012KT 10SM FEW020 FM251800 36015KT 10SM SCT030="
+			taf, err := parseTaf(raw)
+			Expect(err).ToNot(HaveOccurred())
+			var fmPeriod *domainweather.TafPeriod
+			for i := range taf.Periods {
+				if taf.Periods[i].Type == "FM" {
+					fmPeriod = &taf.Periods[i]
+					break
+				}
+			}
+			Expect(fmPeriod).ToNot(BeNil())
+			Expect(fmPeriod.ValidTo).To(BeTemporally("==", taf.ValidTo))
+		})
+
+		It("should truncate main period at the first FM", func() {
+			raw := "TAF KJFK 251200Z 2512/2612 35012KT 10SM FEW020 FM251800 36015KT 10SM SCT030="
+			taf, err := parseTaf(raw)
+			Expect(err).ToNot(HaveOccurred())
+			var fmPeriod *domainweather.TafPeriod
+			for i := range taf.Periods {
+				if taf.Periods[i].Type == "FM" {
+					fmPeriod = &taf.Periods[i]
+					break
+				}
+			}
+			Expect(fmPeriod).ToNot(BeNil())
+			Expect(taf.Periods[0].Type).To(Equal("MAIN"))
+			Expect(taf.Periods[0].ValidTo).To(BeTemporally("==", fmPeriod.ValidFrom))
+		})
+
+		It("should roll FM into next month when day precedes validity start", func() {
+			raw := "TAF KJFK 301200Z 3012/0112 35012KT 10SM FEW020 FM010600 36015KT 10SM SCT030="
+			taf, err := parseTaf(raw)
+			Expect(err).ToNot(HaveOccurred())
+			var fmPeriod *domainweather.TafPeriod
+			for i := range taf.Periods {
+				if taf.Periods[i].Type == "FM" {
+					fmPeriod = &taf.Periods[i]
+					break
+				}
+			}
+			Expect(fmPeriod).ToNot(BeNil())
+			Expect(fmPeriod.ValidFrom).To(BeTemporally(">", taf.ValidFrom))
 		})
 
 		It("should parse TAF with TEMPO period", func() {
@@ -55,6 +102,36 @@ var _ = Describe("TAF Parser", func() {
 				}
 			}
 			Expect(found).To(BeTrue())
+		})
+
+		It("should roll TEMPO into next month when day precedes validity start", func() {
+			raw := "TAF KJFK 301200Z 3012/0112 35012KT 10SM FEW020 TEMPO0102/0106 5SM -RA="
+			taf, err := parseTaf(raw)
+			Expect(err).ToNot(HaveOccurred())
+			var tempoPeriod *domainweather.TafPeriod
+			for i := range taf.Periods {
+				if taf.Periods[i].Type == "TEMPO" {
+					tempoPeriod = &taf.Periods[i]
+					break
+				}
+			}
+			Expect(tempoPeriod).ToNot(BeNil())
+			Expect(tempoPeriod.ValidFrom).To(BeTemporally(">", taf.ValidFrom))
+		})
+
+		It("should roll BECMG into next month when day precedes validity start", func() {
+			raw := "TAF KJFK 301200Z 3012/0112 35012KT 10SM FEW020 BECMG0102/0106 36015KT="
+			taf, err := parseTaf(raw)
+			Expect(err).ToNot(HaveOccurred())
+			var becmgPeriod *domainweather.TafPeriod
+			for i := range taf.Periods {
+				if taf.Periods[i].Type == "BECMG" {
+					becmgPeriod = &taf.Periods[i]
+					break
+				}
+			}
+			Expect(becmgPeriod).ToNot(BeNil())
+			Expect(becmgPeriod.ValidFrom).To(BeTemporally(">", taf.ValidFrom))
 		})
 
 		It("should parse TAF with PROB", func() {
@@ -95,4 +172,3 @@ var _ = Describe("TAF Parser", func() {
 		})
 	})
 })
-

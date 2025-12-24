@@ -14,87 +14,9 @@ func parseMetar(raw string, reportType string) (*weather.Metar, error) {
 		return nil, weather.ErrInvalidFormat
 	}
 
-	metar := &weather.Metar{
-		ReportType: weather.ReportType(reportType),
-		RawTextVal: raw,
-		Warnings:   []string{},
-		Clouds:     []weather.Cloud{},
-		Phenomena:  []weather.Phenomenon{},
-	}
-
-	// Track current position in tokens
-	pos := 0
-
-	// Skip report type (METAR/SPECI) - first token
-	if pos >= len(tokens) {
-		return nil, weather.ErrMissingStation
-	}
-	pos++
-
-	// Parse station (second token)
-	if pos >= len(tokens) {
-		return nil, weather.ErrMissingStation
-	}
-	metar.StationID = tokens[pos]
-	pos++
-
-	// Parse issue time (DDHHmmZ) - third token
-	if pos >= len(tokens) {
-		return nil, weather.ErrMissingTime
-	}
-	issueTime, err := ParseTime(tokens[pos])
+	metar, pos, err := parseMetarHeader(tokens, raw, reportType)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse issue time: %w", err)
-	}
-	metar.IssueTimeVal = issueTime
-	metar.ObsTime = issueTime
-	pos++
-
-	// Check for modifier (AUTO, COR)
-	if pos < len(tokens) {
-		if match := modifierPattern.FindStringSubmatch(tokens[pos]); match != nil {
-			metar.Modifier = match[1]
-			pos++
-		}
-	}
-
-	// Parse wind
-	if pos < len(tokens) {
-		if wind := parseWind(tokens[pos]); wind != nil {
-			metar.Wind = wind
-			pos++
-
-			// Check for variable wind (e.g., 180V240)
-			if pos < len(tokens) {
-				if match := variableWindPattern.FindStringSubmatch(tokens[pos]); match != nil {
-					from, _ := strconv.Atoi(match[1])
-					to, _ := strconv.Atoi(match[2])
-					metar.Wind.Variable = true
-					metar.Wind.VariableFrom = from
-					metar.Wind.VariableTo = to
-					pos++
-				}
-			}
-		}
-	}
-
-	// Parse visibility
-	if pos < len(tokens) {
-		if vis := parseVisibility(tokens[pos]); vis != nil {
-			metar.Visibility = vis
-			pos++
-
-			// Check for directional visibility (e.g., 2000NE)
-			if pos < len(tokens) {
-				if match := directionalVisibilityPattern.FindStringSubmatch(tokens[pos]); match != nil {
-					dist, _ := strconv.ParseFloat(match[1], 64)
-					metar.Visibility.Distance = dist
-					metar.Visibility.Direction = match[2]
-					metar.Visibility.Unit = "M"
-					pos++
-				}
-			}
-		}
+		return nil, err
 	}
 
 	// Parse runway visual range (RVR) - skip for now, add to warnings
@@ -103,43 +25,13 @@ func parseMetar(raw string, reportType string) (*weather.Metar, error) {
 		pos++
 	}
 
-	// Parse weather phenomena
-	for pos < len(tokens) {
-		if match := phenomenonPattern.FindStringSubmatch(tokens[pos]); match != nil {
-			phenom := weather.Phenomenon{
-				Intensity:  match[1],
-				Descriptor: match[2],
-				Weather:    match[3],
-			}
-			metar.Phenomena = append(metar.Phenomena, phenom)
-			pos++
-		} else {
-			break
-		}
-	}
+	phenomConsumed, phenomena := parsePhenomena(tokens[pos:])
+	metar.Phenomena = append(metar.Phenomena, phenomena...)
+	pos += phenomConsumed
 
-	// Parse clouds
-	for pos < len(tokens) {
-		// Check for special cloud codes first
-		if match := skyClearPattern.FindStringSubmatch(tokens[pos]); match != nil {
-			// SKC, CLR, NSC - no clouds
-			pos++
-			break
-		}
-
-		if match := cloudPattern.FindStringSubmatch(tokens[pos]); match != nil {
-			alt, _ := strconv.Atoi(match[2])
-			cloud := weather.Cloud{
-				Type:     match[1],
-				Altitude: alt * 100, // Convert to feet
-				Modifier: match[3],
-			}
-			metar.Clouds = append(metar.Clouds, cloud)
-			pos++
-		} else {
-			break
-		}
-	}
+	cloudConsumed, clouds := parseClouds(tokens[pos:])
+	metar.Clouds = append(metar.Clouds, clouds...)
+	pos += cloudConsumed
 
 	// Parse temperature/dewpoint
 	if pos < len(tokens) {
@@ -211,6 +103,53 @@ func parseMetar(raw string, reportType string) (*weather.Metar, error) {
 	}
 
 	return metar, nil
+}
+
+func parseMetarHeader(tokens []string, raw string, reportType string) (*weather.Metar, int, error) {
+	metar := &weather.Metar{
+		ReportType: weather.ReportType(reportType),
+		RawTextVal: raw,
+		Warnings:   []string{},
+		Clouds:     []weather.Cloud{},
+		Phenomena:  []weather.Phenomenon{},
+	}
+
+	pos := 0
+	if pos >= len(tokens) {
+		return nil, 0, weather.ErrMissingStation
+	}
+	pos++
+
+	if pos >= len(tokens) {
+		return nil, 0, weather.ErrMissingStation
+	}
+	metar.StationID = tokens[pos]
+	pos++
+
+	if pos >= len(tokens) {
+		return nil, 0, weather.ErrMissingTime
+	}
+	issueTime, err := ParseTime(tokens[pos])
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to parse issue time: %w", err)
+	}
+	metar.IssueTimeVal = issueTime
+	metar.ObsTime = issueTime
+	pos++
+
+	if pos < len(tokens) {
+		if match := modifierPattern.FindStringSubmatch(tokens[pos]); match != nil {
+			metar.Modifier = match[1]
+			pos++
+		}
+	}
+
+	consumed, wind, visibility := parseWindAndVisibility(tokens[pos:])
+	metar.Wind = wind
+	metar.Visibility = visibility
+	pos += consumed
+
+	return metar, pos, nil
 }
 
 // parseWind parses wind information
@@ -302,4 +241,3 @@ func parseVisibility(token string) *weather.Visibility {
 
 	return vis
 }
-

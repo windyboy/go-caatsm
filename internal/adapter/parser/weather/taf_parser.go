@@ -15,56 +15,16 @@ func parseTaf(raw string) (*weather.Taf, error) {
 		return nil, weather.ErrInvalidFormat
 	}
 
-	taf := &weather.Taf{
-		ReportType: weather.ReportTypeTAF,
-		RawTextVal: raw,
-		Warnings:   []string{},
-		Periods:    []weather.TafPeriod{},
-	}
-
-	pos := 0
-
-	// Skip TAF - first token
-	if pos >= len(tokens) {
-		return nil, weather.ErrMissingStation
-	}
-	pos++
-
-	// Parse station (second token)
-	if pos >= len(tokens) {
-		return nil, weather.ErrMissingStation
-	}
-	taf.StationID = tokens[pos]
-	pos++
-
-	// Parse issue time (DDHHmmZ) - third token
-	if pos >= len(tokens) {
-		return nil, weather.ErrMissingTime
-	}
-	issueTime, err := ParseTime(tokens[pos])
+	taf, pos, err := parseTafHeader(tokens, raw)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse issue time: %w", err)
+		return nil, err
 	}
-	taf.IssueTimeVal = issueTime
-	pos++
-
-	// Parse validity period (DDHH/DDHH)
-	if pos >= len(tokens) {
-		return nil, fmt.Errorf("missing validity period")
-	}
-	validFrom, validTo, err := ParseTAFValidity(tokens[pos], taf.IssueTimeVal)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse validity period: %w", err)
-	}
-	taf.ValidFrom = validFrom
-	taf.ValidTo = validTo
-	pos++
 
 	// Parse main forecast period (before any FM/TEMPO/BECMG)
 	mainPeriod := weather.TafPeriod{
 		Type:      "MAIN",
-		ValidFrom: validFrom,
-		ValidTo:   validTo,
+		ValidFrom: taf.ValidFrom,
+		ValidTo:   taf.ValidTo,
 	}
 
 	// Find first special section
@@ -83,8 +43,23 @@ func parseTaf(raw string) (*weather.Taf, error) {
 
 	// Parse main period tokens
 	if firstSpecialIdx > pos {
+		if firstSpecialIdx < len(tokens) {
+			upperToken := strings.ToUpper(tokens[firstSpecialIdx])
+			if strings.HasPrefix(upperToken, "FM") {
+				if match := tafFMPattern.FindStringSubmatch(tokens[firstSpecialIdx]); match != nil {
+					day, _ := strconv.Atoi(match[1])
+					hour, _ := strconv.Atoi(match[2])
+					min, _ := strconv.Atoi(match[3])
+					fmStart := resolveDayTime(taf.ValidFrom, day, hour, min)
+					if fmStart.Before(mainPeriod.ValidTo) {
+						mainPeriod.ValidTo = fmStart
+					}
+				}
+			}
+		}
+
 		mainTokens := tokens[pos:firstSpecialIdx]
-		parsePeriodElements(mainTokens, &mainPeriod, taf)
+		parsePeriodElements(mainTokens, &mainPeriod, &taf.Warnings)
 		taf.Periods = append(taf.Periods, mainPeriod)
 		pos = firstSpecialIdx
 	}
@@ -102,7 +77,7 @@ func parseTaf(raw string) (*weather.Taf, error) {
 			pos++
 
 		case strings.HasPrefix(upperToken, "FM"):
-			period, newPos, err := parseFMPeriod(tokens, pos, taf.IssueTimeVal)
+			period, newPos, err := parseFMPeriod(tokens, pos, taf.ValidFrom, taf.ValidTo, &taf.Warnings)
 			if err != nil {
 				taf.Warnings = append(taf.Warnings, fmt.Sprintf("failed to parse FM period: %v", err))
 				pos++
@@ -116,7 +91,7 @@ func parseTaf(raw string) (*weather.Taf, error) {
 			pos = newPos
 
 		case strings.HasPrefix(upperToken, "TEMPO"):
-			period, newPos, err := parseTEMPOPeriod(tokens, pos, taf.IssueTimeVal)
+			period, newPos, err := parseTEMPOPeriod(tokens, pos, taf.ValidFrom, &taf.Warnings)
 			if err != nil {
 				taf.Warnings = append(taf.Warnings, fmt.Sprintf("failed to parse TEMPO period: %v", err))
 				pos++
@@ -130,7 +105,7 @@ func parseTaf(raw string) (*weather.Taf, error) {
 			pos = newPos
 
 		case strings.HasPrefix(upperToken, "BECMG"):
-			period, newPos, err := parseBECMGPeriod(tokens, pos, taf.IssueTimeVal)
+			period, newPos, err := parseBECMGPeriod(tokens, pos, taf.ValidFrom, &taf.Warnings)
 			if err != nil {
 				taf.Warnings = append(taf.Warnings, fmt.Sprintf("failed to parse BECMG period: %v", err))
 				pos++
@@ -159,8 +134,60 @@ func parseTaf(raw string) (*weather.Taf, error) {
 	return taf, nil
 }
 
+func parseTafHeader(tokens []string, raw string) (*weather.Taf, int, error) {
+	taf := &weather.Taf{
+		ReportType: weather.ReportTypeTAF,
+		RawTextVal: raw,
+		Warnings:   []string{},
+		Periods:    []weather.TafPeriod{},
+	}
+
+	pos := 0
+	if pos >= len(tokens) {
+		return nil, 0, weather.ErrMissingStation
+	}
+	pos++
+
+	if pos >= len(tokens) {
+		return nil, 0, weather.ErrMissingStation
+	}
+	taf.StationID = tokens[pos]
+	pos++
+
+	if pos >= len(tokens) {
+		return nil, 0, weather.ErrMissingTime
+	}
+	issueTime, err := ParseTime(tokens[pos])
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to parse issue time: %w", err)
+	}
+	taf.IssueTimeVal = issueTime
+	pos++
+
+	if pos >= len(tokens) {
+		return nil, 0, fmt.Errorf("missing validity period")
+	}
+	validFrom, validTo, err := ParseTAFValidity(tokens[pos], taf.IssueTimeVal)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to parse validity period: %w", err)
+	}
+	taf.ValidFrom = validFrom
+	taf.ValidTo = validTo
+	pos++
+
+	return taf, pos, nil
+}
+
+func resolveDayTime(base time.Time, day, hour, min int) time.Time {
+	t := time.Date(base.Year(), base.Month(), day, hour, min, 0, 0, time.UTC)
+	if day < base.Day() {
+		t = t.AddDate(0, 1, 0)
+	}
+	return t
+}
+
 // parseFMPeriod parses an FM (from) period
-func parseFMPeriod(tokens []string, startPos int, issueTimeVal time.Time) (weather.TafPeriod, int, error) {
+func parseFMPeriod(tokens []string, startPos int, validityFrom, validityTo time.Time, warnings *[]string) (weather.TafPeriod, int, error) {
 	period := weather.TafPeriod{
 		Type: "FM",
 	}
@@ -174,9 +201,8 @@ func parseFMPeriod(tokens []string, startPos int, issueTimeVal time.Time) (weath
 	hour, _ := strconv.Atoi(match[2])
 	min, _ := strconv.Atoi(match[3])
 
-	year := issueTimeVal.Year()
-	month := issueTimeVal.Month()
-	period.ValidFrom = time.Date(year, month, day, hour, min, 0, 0, time.UTC)
+	period.ValidFrom = resolveDayTime(validityFrom, day, hour, min)
+	period.ValidTo = validityTo
 
 	// Find end of this period (next FM, TEMPO, BECMG, or end)
 	endPos := len(tokens)
@@ -193,7 +219,7 @@ func parseFMPeriod(tokens []string, startPos int, issueTimeVal time.Time) (weath
 
 	// Parse period elements
 	periodTokens := tokens[startPos+1 : endPos]
-	parsePeriodElements(periodTokens, &period, nil)
+	parsePeriodElements(periodTokens, &period, warnings)
 
 	// Set valid_to to start of next period or end of validity
 	if endPos < len(tokens) {
@@ -204,7 +230,10 @@ func parseFMPeriod(tokens []string, startPos int, issueTimeVal time.Time) (weath
 				nextDay, _ := strconv.Atoi(match[1])
 				nextHour, _ := strconv.Atoi(match[2])
 				nextMin, _ := strconv.Atoi(match[3])
-				period.ValidTo = time.Date(year, month, nextDay, nextHour, nextMin, 0, 0, time.UTC)
+				nextStart := resolveDayTime(period.ValidFrom, nextDay, nextHour, nextMin)
+				if nextStart.Before(period.ValidTo) {
+					period.ValidTo = nextStart
+				}
 			}
 		}
 	}
@@ -213,7 +242,7 @@ func parseFMPeriod(tokens []string, startPos int, issueTimeVal time.Time) (weath
 }
 
 // parseTEMPOPeriod parses a TEMPO (temporary) period
-func parseTEMPOPeriod(tokens []string, startPos int, issueTimeVal time.Time) (weather.TafPeriod, int, error) {
+func parseTEMPOPeriod(tokens []string, startPos int, validityFrom time.Time, warnings *[]string) (weather.TafPeriod, int, error) {
 	period := weather.TafPeriod{
 		Type: "TEMPO",
 	}
@@ -228,16 +257,8 @@ func parseTEMPOPeriod(tokens []string, startPos int, issueTimeVal time.Time) (we
 	toDay, _ := strconv.Atoi(match[3])
 	toHour, _ := strconv.Atoi(match[4])
 
-	year := issueTimeVal.Year()
-	month := issueTimeVal.Month()
-
-	period.ValidFrom = time.Date(year, month, fromDay, fromHour, 0, 0, 0, time.UTC)
-	period.ValidTo = time.Date(year, month, toDay, toHour, 0, 0, 0, time.UTC)
-
-	// If toDay < fromDay, assume next month
-	if toDay < fromDay {
-		period.ValidTo = period.ValidTo.AddDate(0, 1, 0)
-	}
+	period.ValidFrom = resolveDayTime(validityFrom, fromDay, fromHour, 0)
+	period.ValidTo = resolveDayTime(period.ValidFrom, toDay, toHour, 0)
 
 	// Find end of this period
 	endPos := startPos + 1
@@ -254,13 +275,13 @@ func parseTEMPOPeriod(tokens []string, startPos int, issueTimeVal time.Time) (we
 
 	// Parse period elements
 	periodTokens := tokens[startPos+1 : endPos]
-	parsePeriodElements(periodTokens, &period, nil)
+	parsePeriodElements(periodTokens, &period, warnings)
 
 	return period, endPos, nil
 }
 
 // parseBECMGPeriod parses a BECMG (becoming) period
-func parseBECMGPeriod(tokens []string, startPos int, issueTimeVal time.Time) (weather.TafPeriod, int, error) {
+func parseBECMGPeriod(tokens []string, startPos int, validityFrom time.Time, warnings *[]string) (weather.TafPeriod, int, error) {
 	period := weather.TafPeriod{
 		Type: "BECMG",
 	}
@@ -275,16 +296,8 @@ func parseBECMGPeriod(tokens []string, startPos int, issueTimeVal time.Time) (we
 	toDay, _ := strconv.Atoi(match[3])
 	toHour, _ := strconv.Atoi(match[4])
 
-	year := issueTimeVal.Year()
-	month := issueTimeVal.Month()
-
-	period.ValidFrom = time.Date(year, month, fromDay, fromHour, 0, 0, 0, time.UTC)
-	period.ValidTo = time.Date(year, month, toDay, toHour, 0, 0, 0, time.UTC)
-
-	// If toDay < fromDay, assume next month
-	if toDay < fromDay {
-		period.ValidTo = period.ValidTo.AddDate(0, 1, 0)
-	}
+	period.ValidFrom = resolveDayTime(validityFrom, fromDay, fromHour, 0)
+	period.ValidTo = resolveDayTime(period.ValidFrom, toDay, toHour, 0)
 
 	// Find end of this period
 	endPos := startPos + 1
@@ -301,86 +314,24 @@ func parseBECMGPeriod(tokens []string, startPos int, issueTimeVal time.Time) (we
 
 	// Parse period elements
 	periodTokens := tokens[startPos+1 : endPos]
-	parsePeriodElements(periodTokens, &period, nil)
+	parsePeriodElements(periodTokens, &period, warnings)
 
 	return period, endPos, nil
 }
 
 // parsePeriodElements parses common elements (wind, visibility, clouds, phenomena) for a TAF period
-func parsePeriodElements(tokens []string, period *weather.TafPeriod, taf *weather.Taf) {
-	pos := 0
+func parsePeriodElements(tokens []string, period *weather.TafPeriod, warnings *[]string) {
+	pos, wind, visibility := parseWindAndVisibility(tokens)
+	period.Wind = wind
+	period.Visibility = visibility
 
-	// Parse wind
-	if pos < len(tokens) {
-		if wind := parseWind(tokens[pos]); wind != nil {
-			period.Wind = wind
-			pos++
+	phenomConsumed, phenomena := parsePhenomena(tokens[pos:])
+	period.Phenomena = append(period.Phenomena, phenomena...)
+	pos += phenomConsumed
 
-			// Check for variable wind
-			if pos < len(tokens) {
-				if match := variableWindPattern.FindStringSubmatch(tokens[pos]); match != nil {
-					from, _ := strconv.Atoi(match[1])
-					to, _ := strconv.Atoi(match[2])
-					period.Wind.Variable = true
-					period.Wind.VariableFrom = from
-					period.Wind.VariableTo = to
-					pos++
-				}
-			}
-		}
-	}
+	cloudConsumed, clouds := parseClouds(tokens[pos:])
+	period.Clouds = append(period.Clouds, clouds...)
+	pos += cloudConsumed
 
-	// Parse visibility
-	if pos < len(tokens) {
-		if vis := parseVisibility(tokens[pos]); vis != nil {
-			period.Visibility = vis
-			pos++
-		}
-	}
-
-	// Parse weather phenomena
-	for pos < len(tokens) {
-		if match := phenomenonPattern.FindStringSubmatch(tokens[pos]); match != nil {
-			phenom := weather.Phenomenon{
-				Intensity:  match[1],
-				Descriptor: match[2],
-				Weather:    match[3],
-			}
-			period.Phenomena = append(period.Phenomena, phenom)
-			pos++
-		} else {
-			break
-		}
-	}
-
-	// Parse clouds
-	for pos < len(tokens) {
-		if match := skyClearPattern.FindStringSubmatch(tokens[pos]); match != nil {
-			// SKC, CLR, NSC - no clouds
-			pos++
-			break
-		}
-
-		if match := cloudPattern.FindStringSubmatch(tokens[pos]); match != nil {
-			alt, _ := strconv.Atoi(match[2])
-			cloud := weather.Cloud{
-				Type:     match[1],
-				Altitude: alt * 100, // Convert to feet
-				Modifier: match[3],
-			}
-			period.Clouds = append(period.Clouds, cloud)
-			pos++
-		} else {
-			break
-		}
-	}
-
-	// Collect any remaining unrecognized tokens as warnings
-	if taf != nil {
-		for pos < len(tokens) {
-			taf.Warnings = append(taf.Warnings, fmt.Sprintf("unrecognized token in period: %s", tokens[pos]))
-			pos++
-		}
-	}
+	appendPeriodWarnings(warnings, tokens[pos:])
 }
-
