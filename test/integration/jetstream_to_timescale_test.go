@@ -82,7 +82,7 @@ func TestJetStreamToTimescaleFlow(t *testing.T) {
 	}
 
 	telemetryRecorder := telemetryinfra.NewNoop()
-	proc := app.NewMessageProcessor(parser.ProvideParser(), repo, publisher, telemetryRecorder, logger)
+	proc := app.NewMessageProcessor(parser.ProvideParser(), repo, publisher, telemetryRecorder, logger, cfg)
 	consumer, err := natsinfra.ProvideConsumer(conn, js, proc, cfg, telemetryRecorder, logger)
 	if err != nil {
 		t.Fatalf("failed to init consumer: %v", err)

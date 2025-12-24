@@ -19,6 +19,9 @@ type ConsumerManager struct {
 
 // NewConsumerManager creates a new consumer manager
 func NewConsumerManager(js nats.JetStreamContext, streamName, consumerName, subject string, logger *zap.Logger) *ConsumerManager {
+	if logger == nil {
+		logger = zap.NewNop()
+	}
 	return &ConsumerManager{
 		js:           js,
 		streamName:   streamName,
@@ -66,5 +69,32 @@ func (cm *ConsumerManager) CreatePullSubscription() (*nats.Subscription, error) 
 
 // CreatePullSubscriptionWithRecovery creates a pull subscription
 func (cm *ConsumerManager) CreatePullSubscriptionWithRecovery(streamManager *StreamManager, consumerConfig *nats.ConsumerConfig) (*nats.Subscription, error) {
-	return cm.CreatePullSubscription()
+	sub, err := cm.CreatePullSubscription()
+	if err == nil {
+		return sub, nil
+	}
+
+	// Attempt recovery when the consumer or stream is missing.
+	if !errors.Is(err, nats.ErrConsumerNotFound) && !errors.Is(err, nats.ErrStreamNotFound) {
+		return nil, fmt.Errorf("create pull subscription: %w", err)
+	}
+
+	if streamManager != nil {
+		if streamErr := streamManager.EnsureStream(nil); streamErr != nil {
+			return nil, fmt.Errorf("recover stream %s: %w", cm.streamName, streamErr)
+		}
+	}
+
+	if consumerConfig == nil {
+		return nil, fmt.Errorf("consumer config is required for recovery")
+	}
+	if err := cm.EnsureConsumer(consumerConfig); err != nil {
+		return nil, fmt.Errorf("recover consumer %s: %w", cm.consumerName, err)
+	}
+
+	sub, err = cm.CreatePullSubscription()
+	if err != nil {
+		return nil, fmt.Errorf("create pull subscription after recovery: %w", err)
+	}
+	return sub, nil
 }

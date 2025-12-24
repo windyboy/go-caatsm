@@ -29,6 +29,9 @@ type StreamConfig struct {
 
 // NewStreamManager creates a new stream manager
 func NewStreamManager(js nats.JetStreamContext, streamName string, subjects []string, logger *zap.Logger) *StreamManager {
+	if logger == nil {
+		logger = zap.NewNop()
+	}
 	return &StreamManager{
 		js:         js,
 		streamName: streamName,
