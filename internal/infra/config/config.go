@@ -22,6 +22,7 @@ type Config struct {
 	Telemetry  TelemetryConfig  `koanf:"telemetry"`
 	Monitoring MonitoringConfig `koanf:"monitoring"`
 	DLQ        DLQConfig        `koanf:"dlq"`
+	AFTN       AFTNConfig       `koanf:"aftn"`
 	// Legacy fields for backward compatibility during migration
 	Subscription SubscriptionConfig `koanf:"subscription"`
 	Timeouts     TimeoutsConfig     `koanf:"timeouts"`
@@ -144,6 +145,19 @@ type TelemetryConfig struct {
 type DLQConfig struct {
 	Enabled bool   `koanf:"enabled"`
 	Subject string `koanf:"subject"`
+}
+
+// AFTNConfig defines AFTN protocol validation and monitoring settings
+type AFTNConfig struct {
+	// ValidationEnabled enables AFTN protocol validation
+	ValidationEnabled bool `koanf:"validation_enabled"`
+
+	// MessageGapThreshold is the duration after which the serial reader
+	// is considered stalled (no messages received). Default: 2 minutes.
+	MessageGapThreshold time.Duration `koanf:"message_gap_threshold"`
+
+	// EnableSequenceGapDetection enables monitoring for missing sequence numbers
+	EnableSequenceGapDetection bool `koanf:"enable_sequence_gap_detection"`
 }
 
 // MonitoringConfig controls the lightweight HTTP server that exposes health and metrics endpoints.
@@ -317,6 +331,11 @@ func LoadConfig() (*Config, error) {
 		cfg.Monitoring.HealthTimeout = 2 * time.Second
 	}
 
+	// Set AFTN defaults
+	if cfg.AFTN.MessageGapThreshold == 0 {
+		cfg.AFTN.MessageGapThreshold = 2 * time.Minute
+	}
+
 	// Validate configuration
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("config validation failed: %w", err)
@@ -405,6 +424,10 @@ func (c *Config) Validate() error {
 	}
 	if c.Monitoring.HealthTimeout < 0 {
 		return fmt.Errorf("monitoring.health_timeout must be >= 0")
+	}
+	// Validate AFTN configuration
+	if c.AFTN.MessageGapThreshold < 0 {
+		return fmt.Errorf("aftn.message_gap_threshold must be >= 0")
 	}
 	return nil
 }

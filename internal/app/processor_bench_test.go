@@ -3,9 +3,11 @@ package app
 import (
 	"caatsm/internal/adapter/dto"
 	"caatsm/internal/adapter/parser"
+	"caatsm/internal/infra/config"
 	"caatsm/internal/infra/telemetry"
 	"context"
 	"testing"
+	"time"
 
 	"go.uber.org/zap"
 )
@@ -64,8 +66,15 @@ func createBenchmarkProcessor() *MessageProcessor {
 	mockPub := &mockPublisher{}
 	logger := zap.NewNop()
 	recorder := telemetry.NewNoop()
+	cfg := &config.Config{
+		AFTN: config.AFTNConfig{
+			ValidationEnabled:          false,
+			MessageGapThreshold:        2 * time.Minute,
+			EnableSequenceGapDetection: true,
+		},
+	}
 
-	return NewMessageProcessor(aviationParser, mockRepo, mockPub, recorder, logger)
+	return NewMessageProcessor(aviationParser, mockRepo, mockPub, recorder, logger, cfg)
 }
 
 // BenchmarkHandleARR benchmarks processing ARR messages end-to-end
@@ -133,8 +142,15 @@ func BenchmarkHandleParseOnly(b *testing.B) {
 	mockPub := &mockPublisher{}
 	logger := zap.NewNop()
 	recorder := telemetry.NewNoop()
+	cfg := &config.Config{
+		AFTN: config.AFTNConfig{
+			ValidationEnabled:          false,
+			MessageGapThreshold:        2 * time.Minute,
+			EnableSequenceGapDetection: true,
+		},
+	}
 
-	processor := NewMessageProcessor(aviationParser, mockRepo, mockPub, recorder, logger)
+	processor := NewMessageProcessor(aviationParser, mockRepo, mockPub, recorder, logger, cfg)
 	ctx := context.Background()
 
 	b.ResetTimer()

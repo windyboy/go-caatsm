@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/nats-io/nats.go"
@@ -39,6 +40,11 @@ type Consumer struct {
 
 	// State
 	consecutiveProcessErrors int
+
+	// Message tracking for health monitoring
+	lastMessageTime     time.Time
+	lastMessageSequence uint64
+	messageGapMutex     sync.RWMutex
 }
 
 // consumerConfig holds normalized consumer configuration values.
@@ -352,6 +358,11 @@ func (c *Consumer) startJetStream(ctx context.Context) error {
 			fetchErrorStreak = 0
 		}
 
+		// Update message tracking for health monitoring (track each message)
+		for _, msg := range msgs {
+			c.updateMessageTracking(msg)
+		}
+
 		// Process batch
 		c.batchProcessor.ProcessBatch(ctx, msgs)
 	}
@@ -391,6 +402,22 @@ func (c *Consumer) emitConsumerStats(ctx context.Context) {
 				zap.Uint64("pending", info.NumPending),
 			)
 			obsmetrics.RecordNATSConsumerPending(c.config.streamName, c.config.consumerName, info.NumPending)
+
+			// Record AFTN health metrics
+			gapSeconds := c.getMessageGapSeconds()
+			healthy := c.isSerialReaderHealthy()
+
+			obsmetrics.RecordMessageGap(c.config.streamName, c.config.consumerName, gapSeconds)
+			obsmetrics.RecordSerialReaderHealth(c.config.streamName, c.config.consumerName, healthy)
+
+			if !healthy {
+				c.logger.Warn("Serial reader appears stalled - no messages received recently",
+					zap.String("stream", c.config.streamName),
+					zap.String("consumer", c.config.consumerName),
+					zap.Float64("gap_seconds", gapSeconds),
+					zap.Duration("threshold", c.cfg.AFTN.MessageGapThreshold),
+				)
+			}
 		}
 	}
 }
@@ -422,4 +449,68 @@ func (c *Consumer) Shutdown(ctx context.Context) error {
 		c.conn.Close()
 		return fmt.Errorf("nats drain timeout: %w", closeCtx.Err())
 	}
+}
+
+// updateMessageTracking updates the last message time and sequence number for health monitoring.
+// This should be called for every message received to track message flow and detect gaps.
+func (c *Consumer) updateMessageTracking(msg *nats.Msg) {
+	if msg == nil {
+		return
+	}
+
+	c.messageGapMutex.Lock()
+	defer c.messageGapMutex.Unlock()
+
+	now := time.Now()
+	c.lastMessageTime = now
+
+	// Extract sequence number from message metadata
+	if meta, err := msg.Metadata(); err == nil {
+		currentSeq := meta.Sequence.Stream
+
+		// Detect sequence gaps if we have a previous sequence
+		if c.lastMessageSequence > 0 && c.cfg.AFTN.EnableSequenceGapDetection {
+			if currentSeq > c.lastMessageSequence+1 {
+				gapSize := currentSeq - c.lastMessageSequence - 1
+				c.logger.Warn("Message sequence gap detected",
+					zap.String("stream", c.config.streamName),
+					zap.String("consumer", c.config.consumerName),
+					zap.Uint64("last_sequence", c.lastMessageSequence),
+					zap.Uint64("current_sequence", currentSeq),
+					zap.Uint64("gap_size", gapSize),
+				)
+				obsmetrics.RecordSequenceGap(c.config.streamName, c.config.consumerName, gapSize)
+			}
+		}
+
+		c.lastMessageSequence = currentSeq
+	}
+}
+
+// getMessageGapSeconds returns the number of seconds since the last message was received.
+// Returns 0 if no message has been received yet.
+func (c *Consumer) getMessageGapSeconds() float64 {
+	c.messageGapMutex.RLock()
+	defer c.messageGapMutex.RUnlock()
+
+	if c.lastMessageTime.IsZero() {
+		return 0
+	}
+
+	return time.Since(c.lastMessageTime).Seconds()
+}
+
+// isSerialReaderHealthy returns true if messages are being received within the threshold.
+// Returns false if the gap exceeds the configured message gap threshold.
+func (c *Consumer) isSerialReaderHealthy() bool {
+	c.messageGapMutex.RLock()
+	defer c.messageGapMutex.RUnlock()
+
+	// If we haven't received any messages yet, consider it healthy (initial state)
+	if c.lastMessageTime.IsZero() {
+		return true
+	}
+
+	gap := time.Since(c.lastMessageTime)
+	return gap < c.cfg.AFTN.MessageGapThreshold
 }

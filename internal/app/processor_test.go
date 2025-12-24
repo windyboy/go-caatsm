@@ -6,8 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"caatsm/internal/adapter/parser"
 	"caatsm/internal/adapter/dto"
+	"caatsm/internal/adapter/parser"
+	"caatsm/internal/infra/config"
 	"caatsm/internal/infra/telemetry"
 	"caatsm/internal/port"
 
@@ -122,7 +123,7 @@ var _ = Describe("MessageProcessor", func() {
 				},
 				err: errors.New("parse failure"),
 			}
-			proc = NewMessageProcessor(parserStub, repo, pub, telemetry.NewNoop(), logger)
+			proc = NewMessageProcessor(parserStub, repo, pub, telemetry.NewNoop(), logger, newTestConfig())
 
 			err := proc.Handle(ctx, []byte("raw"), "msg-6")
 			Expect(err).To(HaveOccurred())
@@ -146,7 +147,17 @@ var _ = Describe("MessageProcessor", func() {
 })
 
 func newTestProcessor(p parser.Parser, repo port.Repository, pub port.Publisher) *MessageProcessor {
-	return NewMessageProcessor(p, repo, pub, telemetry.NewNoop(), zap.NewNop())
+	return NewMessageProcessor(p, repo, pub, telemetry.NewNoop(), zap.NewNop(), newTestConfig())
+}
+
+func newTestConfig() *config.Config {
+	return &config.Config{
+		AFTN: config.AFTNConfig{
+			ValidationEnabled:          false, // Disabled by default for tests
+			MessageGapThreshold:        2 * time.Minute,
+			EnableSequenceGapDetection: true,
+		},
+	}
 }
 
 type stubParser struct {

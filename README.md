@@ -42,6 +42,180 @@ This project follows Clean Architecture principles with clear separation of conc
 - **Configuration Management**: Koanf for flexible configuration loading (file + environment variables)
 - **Structured Logging**: Zap logger with configurable levels and formats
 - **Batch Processing**: Efficient batch message processing and database inserts
+- **AFTN Protocol Validation**: Optional AFTN/ICAO protocol compliance validation with detailed error tracking
+- **Serial Reader Health Monitoring**: Automatic detection of message flow interruptions and sequence gaps
+
+## AFTN Protocol Validation
+
+The system includes comprehensive AFTN (Aeronautical Fixed Telecommunication Network) protocol validation to ensure incoming telegrams comply with ICAO standards.
+
+### Features
+
+1. **Protocol Field Validation**
+   - Priority indicators: FF (Flash), GG (Immediate), QU (Distress), DD (Delay), SS (Service), KK (Correction)
+   - ICAO addresses: 4-character alphanumeric validation
+   - DateTime formats: DDHHMM with range validation (DD:01-31, HH:00-23, MM:00-59)
+
+2. **Serial Reader Health Monitoring**
+   - Automatic detection of message flow interruptions
+   - Configurable gap threshold (default: 2 minutes)
+   - Message sequence gap detection (missing sequence numbers)
+   - Real-time health status metrics
+
+3. **Dead-Letter Queue (DLQ) Routing**
+   - Invalid telegrams automatically routed to DLQ for offline review
+   - Detailed error categorization (priority_indicator, icao_address, datetime, multiple_errors)
+   - Preserves original message content for debugging
+
+4. **Observability**
+   - Prometheus metrics for validation errors, message gaps, and health status
+   - Structured logging with error context
+   - OpenTelemetry tracing integration
+
+### Configuration
+
+AFTN validation is **disabled by default** for safe rollout. Enable it in your configuration file:
+
+```toml
+[aftn]
+# Enable AFTN protocol validation
+validation_enabled = true
+
+# Time threshold after which serial reader is considered stalled
+message_gap_threshold = "2m"
+
+# Enable detection of missing message sequence numbers
+enable_sequence_gap_detection = true
+```
+
+### Metrics
+
+The system exposes the following Prometheus metrics:
+
+| Metric | Type | Description |
+|--------|------|-------------|
+| `caatsm_aftn_validation_errors_total` | Counter | Total AFTN validation errors by error_type label |
+| `caatsm_message_gap_seconds` | Gauge | Time in seconds since last message received |
+| `caatsm_message_sequence_gap_total` | Counter | Number of detected sequence gaps (missing messages) |
+| `caatsm_serial_reader_healthy` | Gauge | Health status: 1=healthy, 0=stalled |
+
+Example Prometheus queries:
+
+```promql
+# AFTN validation error rate
+rate(caatsm_aftn_validation_errors_total[5m])
+
+# Current message gap
+caatsm_message_gap_seconds{stream="TELEGRAM", consumer="telegram-consumer"}
+
+# Serial reader health
+caatsm_serial_reader_healthy{stream="TELEGRAM", consumer="telegram-consumer"}
+
+# Sequence gap rate
+rate(caatsm_message_sequence_gap_total[5m])
+```
+
+### Alerts
+
+Pre-configured Prometheus alert rules are available in `configs/prometheus-alerts.yml`:
+
+- **SerialReaderStalled** (critical): No messages for > 2 minutes
+- **HighMessageGap** (warning): Gap > 60 seconds
+- **MessageSequenceGaps** (warning): Missing sequence numbers detected
+- **HighAFTNValidationErrorRate** (warning): > 5% of messages failing validation
+- **ConsumerLagGrowing** (warning): Pending messages increasing
+- **ConsumerCriticallyBehind** (critical): > 5000 pending messages
+
+To install the alerts:
+
+```bash
+# Copy alerts to Prometheus server
+cp configs/prometheus-alerts.yml /path/to/prometheus/rules/
+
+# Add to prometheus.yml
+rule_files:
+  - "rules/prometheus-alerts.yml"
+
+# Reload Prometheus
+curl -X POST http://localhost:9090/-/reload
+```
+
+### Grafana Dashboard
+
+A pre-built Grafana dashboard is available in `configs/grafana-dashboard-aftn.json` with panels for:
+
+- Serial reader health status (stat panel with color coding)
+- Message gap time series
+- AFTN validation errors by type
+- AFTN error rate percentage
+- Sequence gap rate
+- Consumer pending messages
+- Message processing throughput by status
+
+To import the dashboard:
+
+1. Open Grafana UI
+2. Navigate to Dashboards → Import
+3. Upload `configs/grafana-dashboard-aftn.json`
+4. Select your Prometheus datasource
+5. Click "Import"
+
+### Error Handling
+
+When AFTN validation fails:
+
+1. **Message Status**: Set to `aftn_error`
+2. **Error Recording**: Error details stored in `error_reason` field
+3. **DLQ Routing**: Message published to DLQ subject (if configured)
+4. **Metrics**: Validation error counter incremented with error type label
+5. **Logging**: Warning logged with error context and message preview
+6. **Tracing**: Error recorded in OpenTelemetry span
+
+Example log entry:
+
+```json
+{
+  "level": "warn",
+  "msg": "AFTN validation failed",
+  "status": "aftn_error",
+  "error_type": "priority_indicator",
+  "content_preview": "ZCZC TMQ2526 141605\nXX ZBTJZPZX\n...",
+  "error": "AFTN validation error [priority_indicator]: must be one of FF, GG, QU, DD, SS, KK (value: \"XX\")"
+}
+```
+
+### Testing AFTN Validation
+
+To test AFTN validation in development:
+
+```bash
+# Enable validation in config.dev.toml
+[aftn]
+validation_enabled = true
+
+# Start the application
+make run
+
+# Send a telegram with invalid priority indicator
+# The message will be rejected and routed to DLQ
+
+# Check DLQ for rejected messages
+nats sub caatsm.dlq
+
+# Check metrics
+curl http://localhost:2112/metrics | grep aftn
+```
+
+### Disabling AFTN Validation
+
+AFTN validation can be disabled at runtime without code changes:
+
+```toml
+[aftn]
+validation_enabled = false  # Disable validation
+```
+
+This allows for gradual rollout and quick rollback if issues arise.
 
 ## Contributor Guide
 

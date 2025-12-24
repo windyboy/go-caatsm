@@ -42,6 +42,9 @@ type Recorder interface {
 
 	// RecordJSAPICall records a JetStream API call.
 	RecordJSAPICall(operation string)
+
+	// RecordAFTNValidationError records an AFTN protocol validation failure.
+	RecordAFTNValidationError(ctx context.Context, errorType string)
 }
 
 // ProvideRecorder wires a composite Recorder based on configuration flags.
@@ -98,6 +101,9 @@ func (n *noopRecorder) RecordDLQPublishFailure(ctx context.Context, stream, cons
 }
 
 func (n *noopRecorder) RecordJSAPICall(operation string) {
+}
+
+func (n *noopRecorder) RecordAFTNValidationError(ctx context.Context, errorType string) {
 }
 
 // compositeRecorder fans out all calls to a slice of underlying recorders.
@@ -167,6 +173,12 @@ func (c *compositeRecorder) RecordJSAPICall(operation string) {
 	}
 }
 
+func (c *compositeRecorder) RecordAFTNValidationError(ctx context.Context, errorType string) {
+	for _, r := range c.recorders {
+		r.RecordAFTNValidationError(ctx, errorType)
+	}
+}
+
 // promRecorder delegates to the Prometheus metrics helpers in the
 // internal/infra/metrics package.
 type promRecorder struct{}
@@ -211,6 +223,10 @@ func (p *promRecorder) RecordDLQPublishFailure(ctx context.Context, stream, cons
 
 func (p *promRecorder) RecordJSAPICall(operation string) {
 	obsmetrics.RecordJSAPICall(operation)
+}
+
+func (p *promRecorder) RecordAFTNValidationError(ctx context.Context, errorType string) {
+	obsmetrics.RecordAFTNValidationError(ctx, errorType)
 }
 
 // otelRecorder creates and records OpenTelemetry metrics for the CAATSM
@@ -303,6 +319,11 @@ func (o *otelRecorder) RecordDLQPublishFailure(ctx context.Context, stream, cons
 }
 
 func (o *otelRecorder) RecordJSAPICall(operation string) {
+}
+
+func (o *otelRecorder) RecordAFTNValidationError(ctx context.Context, errorType string) {
+	// AFTN validation metrics are primarily tracked via Prometheus.
+	// This is a no-op for OTEL recorder.
 }
 
 

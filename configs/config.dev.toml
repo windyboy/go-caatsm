@@ -118,3 +118,12 @@ health_timeout = "2s"
 enabled = true  # Set to true when switching to JetStream mode
 # subject: NATS subject where failed messages will be published for manual inspection
 subject = "caatsm.dlq"
+
+[aftn]
+# AFTN Protocol Validation and Monitoring
+# validation_enabled: Enable AFTN protocol validation for telegrams (disabled by default for safe rollout)
+validation_enabled = false
+# message_gap_threshold: Duration after which serial reader is considered stalled (no messages received)
+message_gap_threshold = "2m"
+# enable_sequence_gap_detection: Monitor for missing sequence numbers in telegram stream
+enable_sequence_gap_detection = true

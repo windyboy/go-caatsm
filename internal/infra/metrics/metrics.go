@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"context"
 	"math"
 	"net/http"
 	"strings"
@@ -25,10 +26,14 @@ const (
 	MetricJSAPICallsTotal       = "caatsm_js_api_calls_total"
 	MetricDBQueriesTotal        = "caatsm_db_queries_total"
 	MetricDBQueryLatencySeconds = "caatsm_db_query_latency_seconds"
-	MetricDLQMessagesTotal      = "caatsm_dlq_messages_total"
-	MetricDLQPublishFailures    = "caatsm_dlq_publish_failures_total"
-	MetricPublishFailuresTotal  = "caatsm_publish_failures_total"
-	MetricNATSConsumerPending   = "caatsm_nats_consumer_pending_messages"
+	MetricDLQMessagesTotal            = "caatsm_dlq_messages_total"
+	MetricDLQPublishFailures          = "caatsm_dlq_publish_failures_total"
+	MetricPublishFailuresTotal        = "caatsm_publish_failures_total"
+	MetricNATSConsumerPending         = "caatsm_nats_consumer_pending_messages"
+	MetricAFTNValidationErrorsTotal   = "caatsm_aftn_validation_errors_total"
+	MetricMessageGapSeconds           = "caatsm_message_gap_seconds"
+	MetricMessageSequenceGapTotal     = "caatsm_message_sequence_gap_total"
+	MetricSerialReaderHealthy         = "caatsm_serial_reader_healthy"
 
 	// Common label keys.
 	LabelStatus    = "status"
@@ -39,6 +44,7 @@ const (
 	LabelResult    = "result"
 	LabelReason    = "reason"
 	LabelOperation = "operation"
+	LabelErrorType = "error_type"
 
 	// Standard result label values for caatsm_messages_total.
 	ResultOK            = "ok"
@@ -78,6 +84,12 @@ var (
 
 	// NATS consumer lag metrics.
 	natsConsumerPending *prometheus.GaugeVec
+
+	// AFTN validation and health metrics.
+	aftnValidationErrorsTotal *prometheus.CounterVec
+	messageGapSeconds         *prometheus.GaugeVec
+	messageSequenceGapTotal   *prometheus.CounterVec
+	serialReaderHealthy       *prometheus.GaugeVec
 )
 
 func initCollectors() {
@@ -154,6 +166,27 @@ func initCollectors() {
 		Help: "Approximate number of pending messages for a JetStream consumer, labelled by stream and consumer.",
 	}, []string{LabelStream, LabelConsumer})
 
+	// AFTN validation and health metrics.
+	aftnValidationErrorsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: MetricAFTNValidationErrorsTotal,
+		Help: "Total number of AFTN protocol validation errors, labelled by error type.",
+	}, []string{LabelErrorType})
+
+	messageGapSeconds = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: MetricMessageGapSeconds,
+		Help: "Time in seconds since the last message was received from the serial reader.",
+	}, []string{LabelStream, LabelConsumer})
+
+	messageSequenceGapTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: MetricMessageSequenceGapTotal,
+		Help: "Total number of message sequence gaps detected (missing sequence numbers).",
+	}, []string{LabelStream, LabelConsumer})
+
+	serialReaderHealthy = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: MetricSerialReaderHealthy,
+		Help: "Serial reader health status: 1 = healthy (messages flowing), 0 = stalled (no messages).",
+	}, []string{LabelStream, LabelConsumer})
+
 	registry.MustRegister(
 		processedCounter,
 		failureCounter,
@@ -168,6 +201,10 @@ func initCollectors() {
 		dbQueriesTotal,
 		dbQueryLatency,
 		natsConsumerPending,
+		aftnValidationErrorsTotal,
+		messageGapSeconds,
+		messageSequenceGapTotal,
+		serialReaderHealthy,
 	)
 }
 
@@ -270,6 +307,35 @@ func RecordNATSConsumerPending(stream, consumer string, pending uint64) {
 	
 	// Set the metric value
 	natsConsumerPending.WithLabelValues(streamLabel, consumerLabel).Set(float64(pending))
+}
+
+// RecordAFTNValidationError increments the AFTN validation error counter for the given error type.
+func RecordAFTNValidationError(ctx context.Context, errorType string) {
+	ensureCollectors()
+	aftnValidationErrorsTotal.WithLabelValues(labelValue(errorType)).Inc()
+}
+
+// RecordMessageGap records the time gap (in seconds) since the last message was received.
+func RecordMessageGap(stream, consumer string, gapSeconds float64) {
+	ensureCollectors()
+	messageGapSeconds.WithLabelValues(labelValue(stream), labelValue(consumer)).Set(gapSeconds)
+}
+
+// RecordSequenceGap increments the sequence gap counter when missing sequence numbers are detected.
+func RecordSequenceGap(stream, consumer string, gapSize uint64) {
+	ensureCollectors()
+	messageSequenceGapTotal.WithLabelValues(labelValue(stream), labelValue(consumer)).Add(float64(gapSize))
+}
+
+// RecordSerialReaderHealth sets the serial reader health status.
+// healthy=1 means messages are flowing normally, healthy=0 means the reader has stalled.
+func RecordSerialReaderHealth(stream, consumer string, healthy bool) {
+	ensureCollectors()
+	value := 0.0
+	if healthy {
+		value = 1.0
+	}
+	serialReaderHealthy.WithLabelValues(labelValue(stream), labelValue(consumer)).Set(value)
 }
 
 func labelValue(value string) string {

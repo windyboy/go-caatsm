@@ -1,0 +1,224 @@
+# Prometheus Alert Rules for CAATSM AFTN Telegram Processor
+#
+# Installation:
+#   1. Copy this file to your Prometheus server's rules directory
+#   2. Add to prometheus.yml:
+#      rule_files:
+#        - "prometheus-alerts.yml"
+#   3. Reload Prometheus configuration
+#
+# Alert Severity Levels:
+#   - critical: Immediate action required (pages on-call)
+#   - warning: Investigation needed (notify team channel)
+
+groups:
+  - name: caatsm_aftn_health
+    interval: 30s
+    rules:
+      # Critical: Serial reader has stopped publishing messages
+      - alert: SerialReaderStalled
+        expr: caatsm_serial_reader_healthy == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: serial_reader
+        annotations:
+          summary: "Serial reader stalled for {{ $labels.stream }}/{{ $labels.consumer }}"
+          description: |
+            No messages have been received from the serial reader for more than 2 minutes.
+            This indicates the serial port reader may have crashed or the hardware connection is broken.
+
+            Current gap: {{ with query "caatsm_message_gap_seconds{stream=\"" }}{{ . | first | value | humanizeDuration }}{{ end }}
+            Stream: {{ $labels.stream }}
+            Consumer: {{ $labels.consumer }}
+
+            ACTION REQUIRED:
+            1. Check serial reader process status
+            2. Verify serial port connection
+            3. Check hardware status
+            4. Review serial reader logs
+
+      # Warning: Message gap is growing but not yet critical
+      - alert: HighMessageGap
+        expr: caatsm_message_gap_seconds > 60 and caatsm_serial_reader_healthy == 1
+        for: 1m
+        labels:
+          severity: warning
+          component: serial_reader
+        annotations:
+          summary: "High message gap detected: {{ $labels.stream }}/{{ $labels.consumer }}"
+          description: |
+            Message gap is {{ $value }}s but still below critical threshold.
+            This may indicate slow message processing or reduced incoming message rate.
+
+            Stream: {{ $labels.stream }}
+            Consumer: {{ $labels.consumer }}
+
+      # Warning: Sequence gaps detected (missing messages)
+      - alert: MessageSequenceGaps
+        expr: rate(caatsm_message_sequence_gap_total[5m]) > 0
+        for: 2m
+        labels:
+          severity: warning
+          component: serial_reader
+        annotations:
+          summary: "Message sequence gaps detected: {{ $labels.stream }}/{{ $labels.consumer }}"
+          description: |
+            Missing message sequence numbers detected at {{ $value | humanize }} gaps/sec.
+            This indicates messages are being lost or skipped in the stream.
+
+            Stream: {{ $labels.stream }}
+            Consumer: {{ $labels.consumer }}
+            Rate: {{ $value | humanize }} gaps/sec
+
+            Possible causes:
+            - Serial reader buffer overflow
+            - Network packet loss (if messages forwarded over network)
+            - Stream retention limits exceeded
+            - Consumer processing too slow
+
+      # Warning: High AFTN validation error rate
+      - alert: HighAFTNValidationErrorRate
+        expr: |
+          (
+            sum(rate(caatsm_aftn_validation_errors_total[5m])) by (stream, consumer)
+            /
+            sum(rate(caatsm_processed_total[5m])) by (stream, consumer)
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          component: aftn_validator
+        annotations:
+          summary: "High AFTN validation error rate: {{ $value | humanizePercentage }}"
+          description: |
+            More than 5% of incoming telegrams are failing AFTN protocol validation.
+            Current error rate: {{ $value | humanizePercentage }}
+
+            This may indicate:
+            - Upstream system sending malformed telegrams
+            - Serial port data corruption
+            - Configuration mismatch
+
+            Check DLQ for error details and patterns.
+
+      # Warning: Consumer lag is growing
+      - alert: ConsumerLagGrowing
+        expr: |
+          deriv(caatsm_nats_consumer_pending_messages[5m]) > 10
+        for: 3m
+        labels:
+          severity: warning
+          component: consumer
+        annotations:
+          summary: "Consumer lag growing: {{ $labels.stream }}/{{ $labels.consumer }}"
+          description: |
+            Consumer pending messages is growing at {{ $value | humanize }} msgs/sec.
+            Current pending: {{ with query "caatsm_nats_consumer_pending_messages" }}{{ . | first | value }}{{ end }}
+
+            This indicates the consumer cannot keep up with incoming message rate.
+
+            Stream: {{ $labels.stream }}
+            Consumer: {{ $labels.consumer }}
+
+      # Critical: Consumer critically behind
+      - alert: ConsumerCriticallyBehind
+        expr: caatsm_nats_consumer_pending_messages > 5000
+        for: 5m
+        labels:
+          severity: critical
+          component: consumer
+        annotations:
+          summary: "Consumer critically behind: {{ $value }} pending messages"
+          description: |
+            Consumer has {{ $value }} pending messages - critically behind.
+            This will cause message processing delays and may trigger stream retention limits.
+
+            Stream: {{ $labels.stream }}
+            Consumer: {{ $labels.consumer }}
+            Pending: {{ $value }}
+
+            ACTION REQUIRED:
+            1. Check processor performance and errors
+            2. Check database connection and performance
+            3. Consider scaling consumers horizontally
+            4. Review stream retention settings
+
+      # Warning: High processing failure rate
+      - alert: HighProcessingFailureRate
+        expr: |
+          (
+            sum(rate(caatsm_messages_total{result="fail"}[5m])) by (stream, consumer)
+            /
+            sum(rate(caatsm_messages_total[5m])) by (stream, consumer)
+          ) > 0.10
+        for: 5m
+        labels:
+          severity: warning
+          component: processor
+        annotations:
+          summary: "High processing failure rate: {{ $value | humanizePercentage }}"
+          description: |
+            More than 10% of messages are failing to process.
+            Current failure rate: {{ $value | humanizePercentage }}
+
+            Stream: {{ $labels.stream }}
+            Consumer: {{ $labels.consumer }}
+
+            Check application logs for error details.
+
+      # Warning: High publish failure rate
+      - alert: HighPublishFailureRate
+        expr: |
+          sum(rate(caatsm_publish_failures_total[5m])) by (category)
+          /
+          sum(rate(caatsm_processed_total[5m])) by (category) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          component: publisher
+        annotations:
+          summary: "High publish failure rate for {{ $labels.category }}: {{ $value | humanizePercentage }}"
+          description: |
+            More than 5% of {{ $labels.category }} messages failing to publish.
+            Current failure rate: {{ $value | humanizePercentage }}
+
+            Category: {{ $labels.category }}
+
+            Check NATS JetStream connectivity and publisher logs.
+
+      # Warning: DLQ publish failures (messages lost)
+      - alert: DLQPublishFailures
+        expr: rate(caatsm_dlq_publish_failures_total[5m]) > 0
+        for: 2m
+        labels:
+          severity: warning
+          component: dlq
+        annotations:
+          summary: "DLQ publish failures detected"
+          description: |
+            Failed messages cannot be published to DLQ - messages may be lost!
+            Failure rate: {{ $value | humanize }} msgs/sec
+
+            Stream: {{ $labels.stream }}
+            Consumer: {{ $labels.consumer }}
+
+            Check DLQ subject configuration and NATS JetStream health.
+
+  - name: caatsm_aftn_validation_details
+    interval: 1m
+    rules:
+      # Recording rule: AFTN error rate by type
+      - record: caatsm:aftn_validation_error_rate:5m
+        expr: |
+          rate(caatsm_aftn_validation_errors_total[5m])
+
+      # Recording rule: Total processing rate
+      - record: caatsm:processing_rate:5m
+        expr: |
+          sum(rate(caatsm_processed_total[5m])) by (stream, consumer, status)
+
+      # Recording rule: Average message gap
+      - record: caatsm:message_gap_seconds:avg
+        expr: |
+          avg(caatsm_message_gap_seconds) by (stream, consumer)

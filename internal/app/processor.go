@@ -3,6 +3,8 @@ package app
 import (
 	"caatsm/internal/adapter/dto"
 	"caatsm/internal/adapter/parser"
+	"caatsm/internal/adapter/validator"
+	"caatsm/internal/infra/config"
 	"caatsm/internal/infra/log"
 	"caatsm/internal/infra/telemetry"
 	"caatsm/internal/port"
@@ -25,6 +27,7 @@ type MessageProcessor struct {
 	publisher  port.Publisher
 	logger     *zap.Logger
 	telemetry  telemetry.Recorder
+	cfg        *config.Config
 }
 
 // ProcessingStatus represents the outcome of the processing pipeline
@@ -45,6 +48,7 @@ func NewMessageProcessor(
 	publisher port.Publisher,
 	rec telemetry.Recorder,
 	logger *zap.Logger,
+	cfg *config.Config,
 ) *MessageProcessor {
 	return &MessageProcessor{
 		parser:     parser,
@@ -52,6 +56,7 @@ func NewMessageProcessor(
 		publisher:  publisher,
 		logger:     logger,
 		telemetry:  rec,
+		cfg:        cfg,
 	}
 }
 
@@ -137,6 +142,31 @@ func (p *MessageProcessor) Handle(ctx context.Context, raw []byte, msgID string)
 		return Permanent(fmt.Errorf("parser error: %w", parseErr))
 	}
 	parsed.ErrorReason = ""
+
+	// AFTN protocol validation (if enabled)
+	if p.cfg.AFTN.ValidationEnabled {
+		if err := validator.ValidateTelegram(parsed); err != nil {
+			parsed.Status = dto.MessageStatusAFTNError
+			parsed.ErrorReason = err.Error()
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+			span.SetAttributes(
+				attribute.String("aftn.error_type", validator.GetAFTNErrorType(err)),
+			)
+			p.telemetry.RecordAFTNValidationError(ctx, validator.GetAFTNErrorType(err))
+			p.persistRaw(ctx, parsed)
+			msgLogger.With(zap.String("status", string(parsed.Status))).
+				Warn("AFTN validation failed",
+					zap.String("error_type", validator.GetAFTNErrorType(err)),
+					zap.String("content_preview", truncateContent(parsed.Content, 256)),
+					zap.Error(err),
+				)
+			latency := parsed.ParsedAt.Sub(receivedAt)
+			p.telemetry.RecordFailure("aftn_validator")
+			p.telemetry.RecordProcessingResult(ctx, string(parsed.Status), parsed.Category, latency)
+			return Permanent(fmt.Errorf("AFTN validation error: %w", err))
+		}
+	}
 
 	// Log parsing result
 	span.SetAttributes(

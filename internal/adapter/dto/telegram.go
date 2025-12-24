@@ -14,6 +14,7 @@ const (
 	MessageStatusParsed      MessageStatus = "parsed"
 	MessageStatusHeaderError MessageStatus = "header_error"
 	MessageStatusBodyError   MessageStatus = "body_error"
+	MessageStatusAFTNError   MessageStatus = "aftn_error"
 )
 
 // ParsedTelegram holds the parsed data from an aviation message.

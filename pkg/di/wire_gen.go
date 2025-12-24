@@ -51,7 +51,7 @@ func buildAppComponents() (*appComponents, error) {
 		return nil, err
 	}
 	recorder := telemetry.ProvideRecorder(configConfig)
-	messageProcessor := app.NewMessageProcessor(parserParser, repository, publisher, recorder, logger)
+	messageProcessor := app.NewMessageProcessor(parserParser, repository, publisher, recorder, logger, configConfig)
 	consumer, err := nats.ProvideConsumer(conn, jetStreamContext, messageProcessor, configConfig, recorder, logger)
 	if err != nil {
 		return nil, err
@@ -95,7 +95,7 @@ func buildAppComponentsWithConfig(cfg *config.Config) (*appComponents, error) {
 		return nil, err
 	}
 	recorder := telemetry.ProvideRecorder(cfg)
-	messageProcessor := app.NewMessageProcessor(parserParser, repository, publisher, recorder, logger)
+	messageProcessor := app.NewMessageProcessor(parserParser, repository, publisher, recorder, logger, cfg)
 	consumer, err := nats.ProvideConsumer(conn, jetStreamContext, messageProcessor, cfg, recorder, logger)
 	if err != nil {
 		return nil, err
