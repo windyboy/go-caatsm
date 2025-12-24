@@ -1,4 +1,4 @@
-package parser
+package aviation
 
 import "regexp"
 
@@ -15,25 +15,39 @@ const (
 	CategoryDelay        = "DLA"
 	CategoryFlightPlan   = "FPL"
 
-	CANCELLED    = "CNL"
-	AirportCode  = "airport"
-	Date         = "date"
-	Task         = "task"
-	Index        = "idx"
 	FlightNumber = "number"
 	Register     = "reg"
+
+	SSR             = "ssr"
+	DepartureCode   = "dep"
+	DepartureTime   = "dep_time"
+	ArrivalCode     = "arr"
+	ArrivalTime     = "arr_time"
+	DestinationCode = "dest"
+	OtherInfo       = "other"
+
+	ReferenceData        = "reference_data"
+	CategorySurveillance = "surve"
+	Indicator            = "indicator"
+	Other                = "other"
+	AircraftID           = "aircraft"
+	Surveillance         = "surve"
+	Speed                = "speed"
+	Level                = "level"
+	Route                = "route"
+	EstimatedTime        = "estt"
+	AlternateAirport     = "alter"
+	PBN                  = "pbn"
+	NavigationEquipment  = "nav"
+	EstimatedElapsedTime = "eet"
+	SELCALCode           = "sel"
+	PerformanceCategory  = "per"
+	RerouteInformation   = "rif"
+	Remarks              = "remark"
 )
 
 // Regular expression patterns
 const (
-	AllDigitsPattern    = `^(?P<dep_time>\d+)$`
-	IndexPattern        = `^(?P<idx>\(?L?[0-9]+\)?:?\.?)$`
-	DatePattern         = `^(?P<date>\d{2}\w{3})$`
-	TaskPattern         = `(?P<task>[A-Z]\/[A-Z])$`
-	WaypointPattern     = `^(SI:)?(?P<arr_time>\d{4}(\(\d{2}[A-Z]{3}\))?)?\/?(?P<airport>[A-Z]{3})\/?(?P<dep_time>\d{4}(\(\d{2}[A-Z]{3}\))?)?$`
-	FlightNumberPattern = `^(?P<number>[0-9A-Z][0-9A-Z]\d{3,5}(\/\d+)*)$`
-	RegisterPattern     = `^(?P<reg>B\d{4})$`
-
 	ArrPatternString = `^\((?P<category>[A-Z]{3})-(?P<number>[A-Z0-9]+)(\/?(?P<ssr>[A-Z0-9]+))?-(?P<dep>[A-Z]{4})-(?P<arr>[A-Z]{4})(?P<arr_time>\d{4})\)$`
 	DepPatternString = `^\((?P<category>[A-Z]{3})-(?P<number>[A-Z0-9]+)(\/(?P<ssr>[A-Z0-9]+))?-(?P<dep>[A-Z]{4})(?P<dep_time>\d{4})-(?P<arr>[A-Z]{4})\)$`
 	FplPatternString = `\((?P<category>[A-Z]{3})-(?P<number>[A-Z]+\d+)-(?P<indicator>[A-Z]{2})\n-(?P<aircraft>[A-Z]+\d+\/?[A-Z]?)\n?-(?P<surve>.*)\n?-(?P<dep>[A-Z]{4})(?P<dep_time>\d{4})\n?-(?P<speed>[A-Z]+\d+)(?P<level>[A-Z0-9]+)\s+(?P<route>(.|\n)+)\n-(?P<dest>[A-Z]{4})(?P<estt>\d{4})\s?(?P<alter>(\s[A-Z]{4})+)\n?-([A-Z]{3}\/(?:[A-Z]{4}\d{4}\s?)+)?(?P<other>(?m)[A-Z]{3}\/(.|\n)*)\)$`
@@ -43,19 +57,12 @@ const (
 
 // Compiled regular expressions
 var (
-	AllDigitsExpression    = regexp.MustCompile(AllDigitsPattern)
-	IndexExpression        = regexp.MustCompile(IndexPattern)
-	TaskExpression         = regexp.MustCompile(TaskPattern)
-	DateExpression         = regexp.MustCompile(DatePattern)
-	WaypointExpression     = regexp.MustCompile(WaypointPattern)
-	FlightNumberExpression = regexp.MustCompile(FlightNumberPattern)
-	RegisterExpression     = regexp.MustCompile(RegisterPattern)
-	ArrPatternExpression   = regexp.MustCompile(ArrPatternString)
-	DepPatternExpression   = regexp.MustCompile(DepPatternString)
-	FplPatternExpression   = regexp.MustCompile(FplPatternString)
-	CnlPatternExpression   = regexp.MustCompile(CnlPatternString)
-	DlaPatternExpression   = regexp.MustCompile(DlaPatternString)
-	BodyTypePattern        = regexp.MustCompile(`^\(([A-Z]{3})(.*\n?)+\)$`)
+	ArrPatternExpression = regexp.MustCompile(ArrPatternString)
+	DepPatternExpression = regexp.MustCompile(DepPatternString)
+	FplPatternExpression = regexp.MustCompile(FplPatternString)
+	CnlPatternExpression = regexp.MustCompile(CnlPatternString)
+	DlaPatternExpression = regexp.MustCompile(DlaPatternString)
+	BodyTypePattern      = regexp.MustCompile(`^\(([A-Z]{3})(.*\n?)+\)$`)
 
 	categoryRegex      = regexp.MustCompile(`\((?P<category>[A-Z]+)-`)
 	emptyLineRemove    = regexp.MustCompile(`(?m)^\s*$`)
@@ -69,5 +76,4 @@ var (
 	eetPattern         = regexp.MustCompile(`(?s)(-?EET\/(?P<eet>(?:[A-Z]{4}\d{4}\s*)+))`)
 	performancePattern = regexp.MustCompile(`(?s)-?PER\/(?P<per>\w)`)
 	reroutePattern     = regexp.MustCompile(`(?m)RIF\/(?P<rif>.*)[A-Z]{3}\/`)
-	cancelledPattern   = regexp.MustCompile(`\bCNL\b`)
 )

@@ -1,4 +1,4 @@
-package parser
+package aviation
 
 import (
 	"caatsm/internal/adapter/dto"
@@ -12,35 +12,6 @@ import (
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
-)
-
-const (
-	SSR             = "ssr"
-	DepartureCode   = "dep"
-	DepartureTime   = "dep_time"
-	ArrivalCode     = "arr"
-	ArrivalTime     = "arr_time"
-	DestinationCode = "dest"
-	OtherInfo       = "other"
-
-	ReferenceData        = "reference_data"
-	CategorySurveillance = "surve"
-	Indicator            = "indicator"
-	Other                = "other"
-	AircraftID           = "aircraft"
-	Surveillance         = "surve"
-	Speed                = "speed"
-	Level                = "level"
-	Route                = "route"
-	EstimatedTime        = "estt"
-	AlternateAirport     = "alter"
-	PBN                  = "pbn"
-	NavigationEquipment  = "nav"
-	EstimatedElapsedTime = "eet"
-	SELCALCode           = "sel"
-	PerformanceCategory  = "per"
-	RerouteInformation   = "rif"
-	Remarks              = "remark"
 )
 
 var (

@@ -2,6 +2,7 @@ package parser
 
 import (
 	"caatsm/internal/adapter/dto"
+	"caatsm/internal/adapter/parser/aviation"
 	weatherparser "caatsm/internal/adapter/parser/weather"
 	"caatsm/internal/port"
 
@@ -15,7 +16,7 @@ var _ = Describe("CompositeParser", func() {
 	var weatherParser port.WeatherParser
 
 	BeforeEach(func() {
-		aviationParser = &AviationParser{}
+		aviationParser = aviation.NewParser()
 		weatherParser = weatherparser.NewWeatherParser()
 		composite = NewCompositeParser(aviationParser, weatherParser)
 	})
@@ -77,4 +78,3 @@ NNNN`
 		})
 	})
 })
-

@@ -1,4 +1,4 @@
-package parser
+package aviation
 
 import (
 	. "github.com/onsi/ginkgo/v2"
