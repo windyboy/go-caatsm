@@ -10,7 +10,8 @@ type Token struct {
 }
 
 // Tokenizer splits text into tokens using a whitespace set.
-// A forward slash is treated as whitespace but is emitted as its own token.
+// Whitespace characters split tokens but are not emitted.
+// All other characters (including '/') are included in tokens.
 type Tokenizer struct {
 	Whitespace string
 }
@@ -33,13 +34,6 @@ func (t Tokenizer) Tokenize(input string) []Token {
 					End:   idx,
 				})
 				start = -1
-			}
-			if r == '/' {
-				tokens = append(tokens, Token{
-					Text:  "/",
-					Start: idx,
-					End:   idx + 1,
-				})
 			}
 			continue
 		}

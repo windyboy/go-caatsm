@@ -84,14 +84,17 @@ task down                 # Stop and remove containers
 ```
 internal/
 ├── domain/           # Pure business entities (no dependencies)
-│   └── aviation.go   # ARR, DEP, CNL, DLA, FPL domain models
+│   └── aviation.go   # ARR, DEP, CNL, DLA, FPL, Weather domain models
 ├── port/             # Interface contracts (Repository, Publisher)
 │   ├── repository.go
 │   └── publisher.go
 ├── app/              # Application logic (orchestration)
 │   └── processor.go  # MessageProcessor - main processing pipeline
 ├── adapter/          # Interface implementations & data transformations
-│   ├── parser/       # Aviation telegram parsers (regex-based)
+│   ├── parser/       # Telegram parsers (composite pattern)
+│   │   ├── aviation/ # Aviation telegrams (ARR, DEP, CNL, DLA, FPL)
+│   │   ├── weather/  # Weather reports (METAR, SPECI, TAF)
+│   │   └── schedule/ # Flight schedule messages
 │   ├── mapper/       # Domain ↔ DTO transformations
 │   └── dto/          # Data Transfer Objects (ParsedTelegram, MessageStatus)
 └── infra/            # Infrastructure concerns
@@ -123,8 +126,11 @@ The domain layer has zero external dependencies. All layers depend on interfaces
    - Repository failures are transient (NAK'd, retry with backoff)
 
 3. **Parser** (`internal/adapter/parser/`)
-   - Regex-based parsing for ICAO telegram formats
-   - Supports ARR, DEP, CNL, DLA, FPL message types
+   - Composite parser architecture with specialized sub-parsers
+   - **Aviation Parser** (`internal/adapter/parser/aviation/`) - ICAO telegram formats (ARR, DEP, CNL, DLA, FPL)
+   - **Weather Parser** (`internal/adapter/parser/weather/`) - Weather reports (METAR, SPECI, TAF)
+   - **Schedule Parser** (`internal/adapter/parser/schedule/`) - Flight schedule messages
+   - Uses pattern matching, tokenization, and lexical analysis
    - Returns structured domain models or error status
 
 4. **Repository** (`internal/infra/postgres/repository.go`)
@@ -151,6 +157,34 @@ Uses Koanf for config loading from TOML files + environment variables:
   - `dlq.enabled`: Enable Dead-Letter Queue for poison messages
   - `app.batch_size`: JetStream pull batch size (default: 50)
   - `monitoring.addr`: Metrics/health server address (default: `:2112`)
+
+### Parser Architecture
+
+The system uses a **composite parser pattern** with specialized sub-parsers:
+
+1. **Composite Parser** (`internal/adapter/parser/composite.go`)
+   - Orchestrates multiple specialized parsers
+   - Routes messages to appropriate parser based on content classification
+   - Falls back gracefully if primary parser fails
+
+2. **Aviation Parser** (`internal/adapter/parser/aviation/`)
+   - Pattern-based parsing using registry of message type patterns
+   - Tokenizer for breaking down telegram structure
+   - Handles ARR, DEP, CNL, DLA, FPL message types
+   - Extracts flight details, aircraft info, timestamps, airports
+
+3. **Weather Parser** (`internal/adapter/parser/weather/`)
+   - Lexer-based parsing for weather reports
+   - Classifier to identify METAR, SPECI, or TAF format
+   - Pattern matching for weather elements (wind, visibility, clouds, etc.)
+   - Normalizes weather data into structured format
+
+4. **Schedule Parser** (`internal/adapter/parser/schedule/`)
+   - Extracts flight schedule information
+   - Pattern matching for schedule-specific fields
+   - Handles recurring flight patterns and time ranges
+
+Each parser implements the `Parser` interface from `internal/port/parser.go`, enabling easy extension and testing.
 
 ### Dependency Injection
 

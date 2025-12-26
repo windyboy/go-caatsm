@@ -6,11 +6,9 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
-	"go.uber.org/zap"
 )
 
 var (
@@ -31,7 +29,6 @@ var (
 type BodyParser struct {
 	body         string
 	bodyPatterns map[string]BodyConfig
-	mu           sync.Mutex
 }
 
 func NewBodyParser(body string) *BodyParser {
@@ -41,26 +38,15 @@ func NewBodyParser(body string) *BodyParser {
 	}
 }
 
+// GetBodyPatterns returns the body patterns map.
+// The bodyPatterns map is a reference to the package-level bodyPatterns,
+// which is initialized once at startup and never modified, making it safe
+// for concurrent reads without synchronization.
 func (parser *BodyParser) GetBodyPatterns() map[string]BodyConfig {
-	parser.mu.Lock()
-	defer parser.mu.Unlock()
-	copied := make(map[string]BodyConfig, len(parser.bodyPatterns))
-	for k, v := range parser.bodyPatterns {
-		copied[k] = v
-	}
-	return copied
-}
-
-func (parser *BodyParser) SetBodyPatterns(patterns map[string]BodyConfig) {
-	parser.mu.Lock()
-	defer parser.mu.Unlock()
-	parser.bodyPatterns = patterns
+	return parser.bodyPatterns
 }
 
 func (parser *BodyParser) Parse() (string, interface{}, error) {
-	parser.mu.Lock()
-	defer parser.mu.Unlock()
-
 	parser.body = strings.TrimSpace(parser.body)
 	category := findCategory(parser.body)
 	if category == "" {
@@ -69,7 +55,7 @@ func (parser *BodyParser) Parse() (string, interface{}, error) {
 
 	patternConfig, exists := parser.bodyPatterns[category]
 	if !exists || patternConfig.Patterns == nil {
-		return "", nil, fmt.Errorf("no matching pattern found for body: %s", parser.body)
+		return "", nil, fmt.Errorf("no matching pattern found for category: %s", category)
 	}
 
 	ctx := ParseContext{
@@ -102,7 +88,12 @@ func findCategory(body string) string {
 }
 
 func extract(data string, exp *regexp.Regexp) map[string]string {
-	match := exp.FindStringSubmatch(data)
+	// Use timeout protection to prevent ReDoS attacks
+	match, err := MatchWithTimeout(exp, data, DefaultRegexTimeout)
+	if err != nil {
+		// Timeout occurred - return nil to indicate no match
+		return nil
+	}
 	if len(match) > 0 {
 		return extractData(match, exp)
 	}
@@ -136,7 +127,50 @@ func headerToParsedTelegram(header Header) dto.ParsedTelegram {
 	}
 }
 
+// Parse parses a raw ICAO aviation telegram and returns a ParsedTelegram with parsing status.
+//
+// IMPORTANT ERROR HANDLING PATTERN:
+// This function intentionally returns both a non-nil ParsedTelegram AND an error when parsing fails.
+// This design decision allows the caller to persist failed parse attempts with error details to the
+// database for audit and compliance purposes. This pattern is specific to the aviation parser's
+// error handling strategy where parser failures are permanent (ACK'd, not retried) and must be
+// stored for regulatory compliance and troubleshooting.
+//
+// Error Handling Strategy:
+//   - Input validation failure: Returns ParsedTelegram with MessageStatusHeaderError + ErrHeaderParse
+//   - Header parse failure: Returns ParsedTelegram with MessageStatusHeaderError + ErrHeaderParse
+//   - Body parse failure: Returns ParsedTelegram with MessageStatusBodyError + ErrBodyParse
+//   - Success: Returns ParsedTelegram with MessageStatusParsed + nil error
+//
+// The returned ParsedTelegram is ALWAYS non-nil and safe to use, even when error is non-nil.
+// Callers should check both the error and the ParsedTelegram.Status field to determine the outcome.
+//
+// Security:
+//   - Input size validation prevents DoS attacks (max 1800 chars per AFTN standard)
+//   - Regex timeout protection prevents ReDoS attacks (100ms timeout)
+//
+// Example usage:
+//
+//	parsed, err := Parse(rawTelegram)
+//	if err != nil {
+//	    // Parse failed, but parsed contains error details for storage
+//	    repository.InsertRaw(parsed) // Store for audit
+//	    return Permanent(err)         // Don't retry
+//	}
+//	// Parse succeeded
+//	repository.Insert(parsed)
+//	publisher.Publish(parsed.BodyData)
 func Parse(rawText string) (*dto.ParsedTelegram, error) {
+	// Validate input size to prevent DoS attacks
+	if err := ValidateInputSize(rawText); err != nil {
+		msg := dto.NewParsedTelegram()
+		msg.Content = rawText
+		msg.Comments = err.Error()
+		msg.ErrorReason = err.Error()
+		msg.Status = dto.MessageStatusHeaderError
+		return msg, fmt.Errorf("%w: %w", ErrHeaderParse, err)
+	}
+
 	header, err := ParseHeader(rawText)
 	if err != nil {
 		msg := dto.NewParsedTelegram()
@@ -199,14 +233,18 @@ type Header struct {
 	ParsedAt           time.Time
 }
 
+// ParseHeader parses the header portion of an ICAO telegram.
+// It extracts message metadata (ID, datetime, addresses, originator) and separates
+// the body content for subsequent parsing.
+//
+// Returns Header struct with parsed fields and the raw body content.
+// On error, returns Header with Content field populated for audit purposes.
 func ParseHeader(fullMessage string) (Header, error) {
-	log := zap.S()
 	cleaned := cleanMessage(fullMessage)
 	lines := strings.Split(cleaned, "\n")
 
-	if len(lines) < 3 {
-		log.Warnf("invalid message format: %s", fullMessage)
-		return Header{Content: fullMessage}, fmt.Errorf("invalid message format: %s", fullMessage)
+	if len(lines) < MinHeaderLines {
+		return Header{Content: fullMessage}, fmt.Errorf("invalid message format: expected at least %d lines, got %d", MinHeaderLines, len(lines))
 	}
 
 	_, messageID, dateTime, err := parseStartIndicator(lines[0])
@@ -233,86 +271,104 @@ func ParseHeader(fullMessage string) (Header, error) {
 
 func parseStartIndicator(line string) (string, string, string, error) {
 	parts := strings.Fields(line)
-	if len(parts) >= 3 && strings.HasPrefix(parts[0], StartIndicatorPrefix) {
+	if len(parts) >= MinStartIndicatorParts && strings.HasPrefix(parts[0], StartIndicatorPrefix) {
 		return parts[0], parts[1], parts[2], nil
 	}
-	zap.S().Warnf("invalid start indicator line format: %s", line)
 	return "", "", "", fmt.Errorf("invalid start indicator line format: %s", line)
 }
 
 func parsePriorityAndPrimary(line string) (string, string) {
 	parts := strings.Fields(line)
-	if len(parts) >= 2 {
+	if len(parts) >= MinPriorityLineParts {
 		return parts[0], parts[1]
 	}
-	zap.S().Warnf("invalid priority and primary address line format: %s", line)
 	return "", ""
+}
+
+// isOriginatorLine checks if a dot-prefixed line matches the originator format (.CODE DATETIME).
+// Returns the originator code, datetime, and whether it's a valid match.
+func isOriginatorLine(line string) (originator, dateTime string, isMatch bool) {
+	if !strings.HasPrefix(line, ".") {
+		return "", "", false
+	}
+
+	parts := strings.Fields(line[1:])
+	if len(parts) < MinOriginatorParts {
+		return "", "", false
+	}
+
+	if isAllUppercaseLetters(parts[0]) && isAllDigits(parts[1]) {
+		return parts[0], parts[1], true
+	}
+
+	return "", "", false
+}
+
+// isBodyStartLine checks if a line indicates the start of the message body.
+func isBodyStartLine(line string) bool {
+	return strings.HasPrefix(line, BeginPartMarker) || strings.HasPrefix(line, "(")
 }
 
 func parseRemainingLines(lines []string) (string, string, string, string) {
 	var (
-		secondaryAddresses string
+		secondaryAddresses strings.Builder
 		originator         string
 		originatorDateTime string
-		bodyAndFooter      strings.Builder
-		headerEnded        bool
+		body               strings.Builder
+		inBody             bool
 	)
 
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
-		if headerEnded {
-			bodyAndFooter.WriteString(line + "\n")
-		} else {
-			switch {
-			case line == EndHeaderMarker:
-			case strings.HasPrefix(line, "."):
-				// Validate if dot-prefixed line matches originator format: .ORIGINATOR_CODE YYMMDD
-				// Originator code should be uppercase letters, date/time should be digits
-				originatorInfo := strings.Fields(line[1:])
-				if len(originatorInfo) >= 2 {
-					// Check if first token is all uppercase letters and second is all digits
-					firstToken := originatorInfo[0]
-					secondToken := originatorInfo[1]
-					if isAllUppercaseLetters(firstToken) && isAllDigits(secondToken) {
-						originator = firstToken
-						originatorDateTime = secondToken
-						headerEnded = true
-					} else {
-						// Doesn't match originator format, treat as body content
-						headerEnded = true
-						bodyAndFooter.WriteString(line + "\n")
-					}
-				} else {
-					// Not enough tokens for originator format, treat as body content
-					headerEnded = true
-					bodyAndFooter.WriteString(line + "\n")
-				}
-			case strings.HasPrefix(line, BeginPartMarker) || strings.HasPrefix(line, "("):
-				headerEnded = true
-				if strings.Index(line, "NNNN") > 0 {
-					break
-				}
-				bodyAndFooter.WriteString(line + "\n")
-			default:
-				if o1, o2 := getOriginator(line); o1 != "" {
-					originatorDateTime = o1
-					originator = o2
-				} else {
-					secondaryAddresses = secondaryAddresses + " " + line
-				}
-			}
+
+		// Skip empty lines and single dots
+		if line == "" || line == EndHeaderMarker {
+			continue
 		}
+
+		// Once in body, collect all remaining lines
+		if inBody {
+			body.WriteString(line + "\n")
+			continue
+		}
+
+		// Check for originator line (.CODE DATETIME)
+		if orig, dt, isOrig := isOriginatorLine(line); isOrig {
+			originator = orig
+			originatorDateTime = dt
+			inBody = true
+			continue
+		}
+
+		// Check for body start markers
+		if isBodyStartLine(line) {
+			inBody = true
+			// Skip lines containing NNNN (end marker)
+			if !strings.Contains(line, "NNNN") {
+				body.WriteString(line + "\n")
+			}
+			continue
+		}
+
+		// Try to parse as originator using regex (fallback)
+		if dt, orig := getOriginator(line); orig != "" {
+			originatorDateTime = dt
+			originator = orig
+			continue
+		}
+
+		// Otherwise, treat as secondary address
+		secondaryAddresses.WriteString(" " + line)
 	}
 
-	return secondaryAddresses, originator, originatorDateTime, bodyAndFooter.String()
+	return secondaryAddresses.String(), originator, originatorDateTime, body.String()
 }
 
 func getOriginator(line string) (string, string) {
 	match := originator.FindStringSubmatch(line)
-	if len(match) >= 3 {
+	if len(match) >= MinOriginatorMatchGroups {
 		return match[1], match[2]
 	}
-	zap.S().Warnf("invalid originator line format: %s", line)
 	return "", ""
 }
 

@@ -33,12 +33,12 @@ func TestTokenizerDefaultWhitespace(t *testing.T) {
 func TestTokenizerSlashWhitespace(t *testing.T) {
 	t.Parallel()
 
+	// When slash is in whitespace, it splits tokens but is not emitted
 	input := "A/B C"
 	tokens := Tokenizer{Whitespace: " \n\t\r/"}.Tokenize(input)
 
 	expected := []Token{
 		{Text: "A", Start: 0, End: 1},
-		{Text: "/", Start: 1, End: 2},
 		{Text: "B", Start: 2, End: 3},
 		{Text: "C", Start: 4, End: 5},
 	}

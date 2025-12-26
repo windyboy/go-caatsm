@@ -33,13 +33,35 @@ func (arrParser) Patterns() []PatternConfig {
 }
 
 func (arrParser) Parse(_ ParseContext, data map[string]string) (interface{}, error) {
+	// Validate and extract required fields
+	category, err := GetRequiredField(data, Category)
+	if err != nil {
+		return nil, err
+	}
+	aircraftID, err := GetRequiredField(data, FlightNumber)
+	if err != nil {
+		return nil, err
+	}
+	depAirport, err := GetRequiredField(data, DepartureCode)
+	if err != nil {
+		return nil, err
+	}
+	arrAirport, err := GetRequiredField(data, ArrivalCode)
+	if err != nil {
+		return nil, err
+	}
+	arrTime, err := GetRequiredField(data, ArrivalTime)
+	if err != nil {
+		return nil, err
+	}
+
 	return &domain.ARR{
-		Category:         data[Category],
-		AircraftID:       data[FlightNumber],
-		SSRModeAndCode:   data[SSR],
-		DepartureAirport: data[DepartureCode],
-		ArrivalAirport:   data[ArrivalCode],
-		ArrivalTime:      data[ArrivalTime],
+		Category:         category,
+		AircraftID:       aircraftID,
+		SSRModeAndCode:   GetOptionalField(data, SSR),
+		DepartureAirport: depAirport,
+		ArrivalAirport:   arrAirport,
+		ArrivalTime:      arrTime,
 	}, nil
 }
 
@@ -58,13 +80,35 @@ func (depParser) Patterns() []PatternConfig {
 }
 
 func (depParser) Parse(_ ParseContext, data map[string]string) (interface{}, error) {
+	// Validate and extract required fields
+	category, err := GetRequiredField(data, Category)
+	if err != nil {
+		return nil, err
+	}
+	aircraftID, err := GetRequiredField(data, FlightNumber)
+	if err != nil {
+		return nil, err
+	}
+	depAirport, err := GetRequiredField(data, DepartureCode)
+	if err != nil {
+		return nil, err
+	}
+	depTime, err := GetRequiredField(data, DepartureTime)
+	if err != nil {
+		return nil, err
+	}
+	destination, err := GetRequiredField(data, ArrivalCode)
+	if err != nil {
+		return nil, err
+	}
+
 	return &domain.DEP{
-		Category:         data[Category],
-		AircraftID:       data[FlightNumber],
-		SSRModeAndCode:   data[SSR],
-		DepartureAirport: data[DepartureCode],
-		DepartureTime:    data[DepartureTime],
-		Destination:      data[ArrivalCode],
+		Category:         category,
+		AircraftID:       aircraftID,
+		SSRModeAndCode:   GetOptionalField(data, SSR),
+		DepartureAirport: depAirport,
+		DepartureTime:    depTime,
+		Destination:      destination,
 	}, nil
 }
 
@@ -83,11 +127,29 @@ func (cnlParser) Patterns() []PatternConfig {
 }
 
 func (cnlParser) Parse(_ ParseContext, data map[string]string) (interface{}, error) {
+	// Validate and extract required fields
+	category, err := GetRequiredField(data, Category)
+	if err != nil {
+		return nil, err
+	}
+	aircraftID, err := GetRequiredField(data, FlightNumber)
+	if err != nil {
+		return nil, err
+	}
+	depAirport, err := GetRequiredField(data, DepartureCode)
+	if err != nil {
+		return nil, err
+	}
+	destAirport, err := GetRequiredField(data, ArrivalCode)
+	if err != nil {
+		return nil, err
+	}
+
 	return &domain.CNL{
-		Category:           data[Category],
-		AircraftID:         data[FlightNumber],
-		DepartureAirport:   data[DepartureCode],
-		DestinationAirport: data[ArrivalCode],
+		Category:           category,
+		AircraftID:         aircraftID,
+		DepartureAirport:   depAirport,
+		DestinationAirport: destAirport,
 	}, nil
 }
 
@@ -106,13 +168,31 @@ func (dlaParser) Patterns() []PatternConfig {
 }
 
 func (dlaParser) Parse(_ ParseContext, data map[string]string) (interface{}, error) {
+	// Validate and extract required fields
+	category, err := GetRequiredField(data, Category)
+	if err != nil {
+		return nil, err
+	}
+	aircraftID, err := GetRequiredField(data, FlightNumber)
+	if err != nil {
+		return nil, err
+	}
+	depAirport, err := GetRequiredField(data, DepartureCode)
+	if err != nil {
+		return nil, err
+	}
+	arrAirport, err := GetRequiredField(data, ArrivalCode)
+	if err != nil {
+		return nil, err
+	}
+
 	return &domain.DLA{
-		Category:         data[Category],
-		AircraftID:       data[FlightNumber],
-		DepartureAirport: data[DepartureCode],
-		NewDepartureTime: data[DepartureTime],
-		ArrivalAirport:   data[ArrivalCode],
-		ArrivalTime:      data[ArrivalTime],
+		Category:         category,
+		AircraftID:       aircraftID,
+		DepartureAirport: depAirport,
+		NewDepartureTime: GetOptionalField(data, DepartureTime),
+		ArrivalAirport:   arrAirport,
+		ArrivalTime:      GetOptionalField(data, ArrivalTime),
 	}, nil
 }
 
@@ -131,23 +211,72 @@ func (fplParser) Patterns() []PatternConfig {
 }
 
 func (fplParser) Parse(_ ParseContext, data map[string]string) (interface{}, error) {
-	otherData := parseOther(data[OtherInfo])
+	// Validate and extract required fields
+	category, err := GetRequiredField(data, Category)
+	if err != nil {
+		return nil, err
+	}
+	flightNumber, err := GetRequiredField(data, FlightNumber)
+	if err != nil {
+		return nil, err
+	}
+	aircraftID, err := GetRequiredField(data, AircraftID)
+	if err != nil {
+		return nil, err
+	}
+	indicator, err := GetRequiredField(data, Indicator)
+	if err != nil {
+		return nil, err
+	}
+	speed, err := GetRequiredField(data, Speed)
+	if err != nil {
+		return nil, err
+	}
+	level, err := GetRequiredField(data, Level)
+	if err != nil {
+		return nil, err
+	}
+	depAirport, err := GetRequiredField(data, DepartureCode)
+	if err != nil {
+		return nil, err
+	}
+	depTime, err := GetRequiredField(data, DepartureTime)
+	if err != nil {
+		return nil, err
+	}
+	route, err := GetRequiredField(data, Route)
+	if err != nil {
+		return nil, err
+	}
+	destCode, err := GetRequiredField(data, DestinationCode)
+	if err != nil {
+		return nil, err
+	}
+	estTime, err := GetRequiredField(data, EstimatedTime)
+	if err != nil {
+		return nil, err
+	}
+
+	// Parse optional "other" fields
+	otherInfo := GetOptionalField(data, OtherInfo)
+	otherData := parseOther(otherInfo)
+
 	return &domain.FPL{
-		Category:                data[Category],
-		FlightNumber:            data[FlightNumber],
-		ReferenceData:           data[ReferenceData],
-		AircraftID:              data[AircraftID],
-		SSRModeAndCode:          data[Surveillance],
-		FlightRulesAndType:      data[Indicator],
-		CruisingSpeedAndLevel:   data[Speed] + data[Level],
-		DepartureAirport:        data[DepartureCode],
-		DepartureTime:           data[DepartureTime],
-		Route:                   data[Route],
-		DestinationAndTotalTime: data[DestinationCode] + data[EstimatedTime],
-		AlternateAirport:        data[AlternateAirport],
-		OtherInfo:               data[OtherInfo],
+		Category:                category,
+		FlightNumber:            flightNumber,
+		ReferenceData:           GetOptionalField(data, ReferenceData),
+		AircraftID:              aircraftID,
+		SSRModeAndCode:          GetOptionalField(data, Surveillance),
+		FlightRulesAndType:      indicator,
+		CruisingSpeedAndLevel:   speed + level,
+		DepartureAirport:        depAirport,
+		DepartureTime:           depTime,
+		Route:                   route,
+		DestinationAndTotalTime: destCode + estTime,
+		AlternateAirport:        GetOptionalField(data, AlternateAirport),
+		OtherInfo:               otherInfo,
 		Register:                otherData[Register],
-		EstimatedArrivalTime:    data[EstimatedTime],
+		EstimatedArrivalTime:    estTime,
 		PBN:                     otherData[PBN],
 		NavigationEquipment:     otherData[NavigationEquipment],
 		EstimatedElapsedTime:    otherData[EstimatedElapsedTime],
