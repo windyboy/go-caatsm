@@ -10,6 +10,8 @@
 
 ## Code Style & Architecture
 - **Structure**: Clean Architecture (`cmd/`, `internal/{domain,app,adapter,infra}`, `pkg/`).
+- **Parsers**: Composite parser pattern with specialized sub-parsers (aviation, weather).
+- **Domain**: Core domain types include aviation telegrams and weather reports.
 - **Formatting**: Run `go fmt ./...` and `goimports` before committing.
 - **Naming**: `CamelCase` (exported), `camelCase` (private). Package names match dirs.
 - **Errors**: Wrap with context (`fmt.Errorf("...: %w", err)`). Use `errors.Is`.

@@ -189,6 +189,7 @@ go run ./cmd/seed-telegrams \
 - `docs/migrations.md`
 - `docs/secret-management.md`
 - `docs/reliability.md`
+- `docs/weather-parser.md`
 
 ## Contributing
 

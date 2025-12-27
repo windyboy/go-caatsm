@@ -8,15 +8,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
-	"sync"
 	"time"
 
 	"github.com/nats-io/nats.go"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"go.uber.org/zap"
 )
 
-// Consumer handles NATS JetStream message consumption with clean separation of concerns
+// Consumer handles NATS JetStream message consumption.
+// It consolidates stream management, fetching, and processing into a single, cohesive unit.
 type Consumer struct {
 	// Core dependencies
 	conn      *nats.Conn
@@ -26,40 +28,24 @@ type Consumer struct {
 	logger    *zap.Logger
 	telemetry telemetry.Recorder
 
+	// Components
+	monitor    *ConsumerMonitor
+	dlqHandler DLQHandler
+
 	// Configuration
-	config consumerConfig
-
-	// Collaborators (injected for testability)
-	fetcher        MessageFetcher
-	batchProcessor MessageProcessor
-	dlqHandler     DLQHandler
-
-	// Resource managers
-	consumerManager *ConsumerManager
-	streamManager   *StreamManager
+	streamName   string
+	consumerName string
+	subject      string
+	batchSize    int
+	batchTimeout time.Duration
+	ackWait      time.Duration
+	backoff      []time.Duration
 
 	// State
-	consecutiveProcessErrors int
-
-	// Message tracking for health monitoring
-	lastMessageTime     time.Time
-	lastMessageSequence uint64
-	messageGapMutex     sync.RWMutex
+	consecutiveErrors int
 }
 
-// consumerConfig holds normalized consumer configuration values.
-type consumerConfig struct {
-	subject         string
-	consumerName    string
-	streamName      string
-	dlqSubject      string
-	ackWait         time.Duration
-	batchSize       int
-	batchTimeout    time.Duration
-	monitorInterval time.Duration
-}
-
-// ProvideConsumer creates a NATS consumer with clean architecture.
+// ProvideConsumer initializes a NATS consumer, ensuring infrastructure exists.
 func ProvideConsumer(
 	conn *nats.Conn,
 	js nats.JetStreamContext,
@@ -68,449 +54,302 @@ func ProvideConsumer(
 	rec telemetry.Recorder,
 	logger *zap.Logger,
 ) (*Consumer, error) {
-	normCfg := normalizeConsumerConfig(cfg)
-
-	consumer := &Consumer{
-		conn:      conn,
-		js:        js,
-		processor: processor,
-		cfg:       cfg,
-		logger:    logger,
-		telemetry: rec,
-		config:    *normCfg, // dereference the pointer
-	}
-	consumer.initCollaborators()
-
-	// Initialize the pending messages metric early (set to 0) so it appears in Prometheus
-	// even before the consumer starts. This ensures the metric is always visible.
-	logger.Info("Initializing NATS consumer pending messages metric",
-		zap.String("stream", normCfg.streamName),
-		zap.String("consumer", normCfg.consumerName),
-		zap.Uint64("pending", 0),
-		zap.Bool("js_available", js != nil),
-	)
-	obsmetrics.RecordNATSConsumerPending(normCfg.streamName, normCfg.consumerName, 0)
-
-	// Initialize managers
-	consumer.consumerManager = NewConsumerManager(js, normCfg.streamName, normCfg.consumerName, normCfg.subject, logger)
-	// Use StreamManager with full configuration
-	streamSubjects := []string{normCfg.subject}
-	if publisherSubject := strings.TrimSpace(cfg.Publisher.Topic); publisherSubject != "" {
-		streamSubjects = append(streamSubjects, publisherSubject)
-	}
-	// Add DLQ subject to stream if DLQ is enabled
-	if normCfg.dlqSubject != "" {
-		streamSubjects = append(streamSubjects, normCfg.dlqSubject)
-	}
-	streamSubjects = dedupeSubjects(streamSubjects)
-	consumer.streamManager = NewStreamManager(js, normCfg.streamName, streamSubjects, logger)
-
-	// Update fetcher with managers now that they're initialized
-	if fetcher, ok := consumer.fetcher.(*defaultMessageFetcher); ok {
-		fetcher.consumerManager = consumer.consumerManager
-		fetcher.streamManager = consumer.streamManager
+	// 1. Normalize Configuration
+	c := &Consumer{
+		conn:         conn,
+		js:           js,
+		processor:    processor,
+		cfg:          cfg,
+		logger:       logger,
+		telemetry:    rec,
+		streamName:   orDefault(cfg.NATS.Stream, "TELEGRAM"),
+		consumerName: orDefault(cfg.NATS.Consumer, "telegram-consumer"),
+		subject:      cfg.EffectiveSubscriptionTopic(),
+		batchSize:    cfg.App.BatchSize,
+		batchTimeout: cfg.App.BatchTimeout,
+		ackWait:      orDefaultDuration(cfg.NATS.ConsumerRules.AckWait, 30*time.Second),
+		backoff:      cfg.NATS.ConsumerRules.Backoff,
 	}
 
-	// Ensure stream exists before creating consumer
-	streamCfg := &StreamConfig{
-		MaxMsgs:  cfg.NATS.StreamLimits.MaxMsgs,
-		MaxBytes: cfg.NATS.StreamLimits.MaxBytes,
-		MaxAge:   cfg.NATS.StreamLimits.MaxAge,
-		Discard:  cfg.NATS.StreamLimits.Discard,
-		Storage:  cfg.NATS.StreamLimits.Storage,
-		Replicas: cfg.NATS.StreamLimits.Replicas,
+	if c.batchSize <= 0 {
+		c.batchSize = 50
 	}
-	if err := consumer.streamManager.EnsureStream(streamCfg); err != nil {
-		return nil, fmt.Errorf("failed to ensure stream: %w", err)
+	if c.batchTimeout <= 0 {
+		c.batchTimeout = 2 * time.Second
 	}
 
-	// Create consumer if it doesn't exist
-	consumerConfig := consumer.buildConsumerConfig()
-	if err := consumer.consumerManager.EnsureConsumer(consumerConfig); err != nil {
-		return nil, fmt.Errorf("failed to ensure consumer: %w", err)
-	}
-	// Validate DLQ configuration early so misconfiguration is visible at startup
-	// rather than only when the first poison message appears.
-	if err := consumer.validateDLQ(); err != nil {
-		return nil, fmt.Errorf("DLQ validation failed: %w", err)
-	}
-
-	return consumer, nil
-}
-
-// initCollaborators initializes the collaborator components
-func (c *Consumer) initCollaborators() {
-	c.fetcher = &defaultMessageFetcher{
-		batchSize:       c.config.batchSize,
-		batchTimeout:    c.config.batchTimeout,
-		logger:          c.logger,
-		conn:            c.conn,
-		js:              c.js,
-		consumerManager: c.consumerManager,
-		streamManager:   c.streamManager,
-		config:          &c.config,
-		cfg:             c.cfg,
-	}
-
-	// Initialize DLQ handler first if needed, so batch processor can reference it
-	if c.config.dlqSubject != "" {
+	// 2. Initialize Components
+	c.monitor = NewConsumerMonitor(logger, cfg, js, c.streamName, c.consumerName, cfg.App.MonitorInterval)
+	if cfg.DLQ.Enabled && cfg.DLQ.Subject != "" {
 		c.dlqHandler = &defaultDLQHandler{
-			js:           c.js,
-			dlqSubject:   c.config.dlqSubject,
-			streamName:   c.config.streamName,
-			consumerName: c.config.consumerName,
-			logger:       c.logger,
-			telemetry:    c.telemetry,
+			js:           js,
+			dlqSubject:   cfg.DLQ.Subject,
+			streamName:   c.streamName,
+			consumerName: c.consumerName,
+			logger:       logger,
+			telemetry:    rec,
 		}
 	}
 
-	c.batchProcessor = &defaultBatchProcessor{
-		processor:                c.processor,
-		dlqHandler:               c.dlqHandler,
-		logger:                   c.logger,
-		telemetry:                c.telemetry,
-		streamName:               c.config.streamName,
-		consumerName:             c.config.consumerName,
-		backoff:                  c.cfg.NATS.ConsumerRules.Backoff,
-		consecutiveProcessErrors: &c.consecutiveProcessErrors,
+	// 3. Ensure Infrastructure (Stream & Consumer)
+	if err := c.ensureInfrastructure(); err != nil {
+		return nil, err
 	}
+
+	return c, nil
 }
 
-// normalizeConsumerConfig extracts and normalizes consumer configuration from the application config.
-// This function can be unit-tested without requiring a JetStream context.
-func normalizeConsumerConfig(cfg *config.Config) *consumerConfig {
-	subject := cfg.EffectiveSubscriptionTopic()
-
-	consumerName := cfg.NATS.Consumer
-	if consumerName == "" {
-		consumerName = "telegram-consumer"
-	}
-
-	streamName := cfg.NATS.Stream
-	if streamName == "" {
-		streamName = "TELEGRAM"
-	}
-
-	// DLQ routing is only meaningful in JetStream mode. Respect dlq.enabled to allow
-	// environments to opt out cleanly even if a subject is configured.
-	dlqSubject := ""
-	if cfg.DLQ.Enabled {
-		dlqSubject = strings.TrimSpace(cfg.DLQ.Subject)
-	}
-
-	ackWait := cfg.NATS.ConsumerRules.AckWait
-	if ackWait == 0 {
-		ackWait = cfg.Timeouts.AckWait
-	}
-	if ackWait == 0 {
-		ackWait = 30 * time.Second
-	}
-
-	batchSize := cfg.App.BatchSize
-	if batchSize == 0 {
-		batchSize = 50
-	}
-
-	batchTimeout := cfg.App.BatchTimeout
-	if batchTimeout == 0 {
-		batchTimeout = 2 * time.Second
-	}
-
-	monitorInterval := cfg.App.MonitorInterval
-	if monitorInterval <= 0 {
-		monitorInterval = 30 * time.Second
-	}
-
-	return &consumerConfig{
-		subject:         subject,
-		consumerName:    consumerName,
-		streamName:      streamName,
-		dlqSubject:      dlqSubject,
-		ackWait:         ackWait,
-		batchSize:       batchSize,
-		batchTimeout:    batchTimeout,
-		monitorInterval: monitorInterval,
-	}
-}
-
-// buildConsumerConfig builds the NATS consumer configuration
-func (c *Consumer) buildConsumerConfig() *nats.ConsumerConfig {
-	return &nats.ConsumerConfig{
-		Durable:       c.config.consumerName,
-		DeliverPolicy: mapDeliverPolicy(c.cfg.NATS.ConsumerRules.DeliverPolicy),
-		AckPolicy:     nats.AckExplicitPolicy,
-		AckWait:       c.config.ackWait,
-		ReplayPolicy:  mapReplayPolicy(c.cfg.NATS.ConsumerRules.ReplayPolicy),
-		MaxDeliver:    c.cfg.NATS.ConsumerRules.MaxDeliver,
-		MaxAckPending: c.cfg.NATS.ConsumerRules.MaxAckPending,
-		FilterSubject: c.config.subject,
-		BackOff:       c.cfg.NATS.ConsumerRules.Backoff,
-	}
-}
-
-// Start starts consuming messages from JetStream.
+// Start begins the main consumption loop.
 func (c *Consumer) Start(ctx context.Context) error {
-	return c.startJetStream(ctx)
-}
-
-// RouteToDLQ implements DLQHandler interface
-func (c *Consumer) RouteToDLQ(ctx context.Context, msg *nats.Msg, cause error) error {
-	if c.dlqHandler != nil {
-		return c.dlqHandler.RouteToDLQ(ctx, msg, cause)
-	}
-	return nil
-}
-
-// ValidateDLQ implements DLQHandler interface
-func (c *Consumer) ValidateDLQ() error {
-	if c.dlqHandler != nil {
-		return c.dlqHandler.ValidateDLQ()
-	}
-	return nil
-}
-
-// validateDLQ is a helper for internal use (lowercase)
-func (c *Consumer) validateDLQ() error {
-	return c.ValidateDLQ()
-}
-
-// createPullSubscription creates a pull subscription
-func (c *Consumer) createPullSubscription() (*nats.Subscription, error) {
-	return c.consumerManager.CreatePullSubscription()
-}
-
-// startJetStream starts the JetStream consumer loop.
-func (c *Consumer) startJetStream(ctx context.Context) error {
-	// Create pull subscription
-	sub, err := c.createPullSubscription()
-	if err != nil {
-		return err
-	}
-
-	// Use a closure that always cleans up the current subscription.
-	// When subscription is replaced in handleFetchError, this will clean up
-	// whatever currentSub points to at shutdown time.
-	var currentSub = sub
-	cleanupSubscriber := func() {
-		if currentSub != nil {
-			if err := currentSub.Unsubscribe(); err != nil {
-				c.logger.Error("Failed to unsubscribe subscription", zap.Error(err))
-			}
-			currentSub = nil
-		}
-	}
-	defer cleanupSubscriber()
-
-	c.logger.Info("Started consuming messages",
-		zap.String("subject", c.config.subject),
-		zap.String("consumer", c.config.consumerName),
-		zap.String("stream", c.config.streamName),
+	c.logger.Info("Starting consumer",
+		zap.String("stream", c.streamName),
+		zap.String("consumer", c.consumerName),
+		zap.String("subject", c.subject),
 	)
 
-	// Record initial pending messages metric immediately
-	// This ensures the metric appears in Prometheus right away
-	if info, err := c.js.ConsumerInfo(c.config.streamName, c.config.consumerName); err == nil {
-		c.logger.Info("Recording initial NATS consumer pending messages metric",
-			zap.String("stream", c.config.streamName),
-			zap.String("consumer", c.config.consumerName),
-			zap.Uint64("pending", info.NumPending),
-		)
-		obsmetrics.RecordNATSConsumerPending(c.config.streamName, c.config.consumerName, info.NumPending)
-	} else {
-		c.logger.Warn("Failed to fetch initial consumer info for pending messages metric",
-			zap.String("stream", c.config.streamName),
-			zap.String("consumer", c.config.consumerName),
-			zap.Error(err),
-		)
+	// Start background monitoring
+	monitorCtx, cancelMonitor := context.WithCancel(ctx)
+	defer cancelMonitor()
+	go c.monitor.Start(monitorCtx)
+
+	// Create subscription
+	sub, err := c.js.PullSubscribe(c.subject, c.consumerName, nats.BindStream(c.streamName))
+	if err != nil {
+		return fmt.Errorf("failed to subscribe: %w", err)
+	}
+	defer sub.Unsubscribe()
+
+	// Initial metric recording
+	if info, err := c.js.ConsumerInfo(c.streamName, c.consumerName); err == nil {
+		c.monitor.RecordInitialPending(info.NumPending)
 	}
 
-	statsCtx, statsCancel := context.WithCancel(ctx)
-	defer statsCancel()
-	go c.emitConsumerStats(statsCtx)
-
-	var fetchErrorStreak int
-
+	// Main Loop
 	for {
 		select {
 		case <-ctx.Done():
-			c.logger.Info("Stopping consumer", zap.Error(ctx.Err()))
-			return ctx.Err()
+			return nil
 		default:
 		}
 
-		// Fetch messages in batch
-		msgs, err := c.fetcher.FetchBatch(ctx, currentSub)
+		msgs, err := sub.Fetch(c.batchSize, nats.MaxWait(c.batchTimeout))
 		if err != nil {
-			// If context was cancelled, return immediately
+			if errors.Is(err, nats.ErrTimeout) {
+				continue // Normal timeout, just retry
+			}
 			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
-				c.logger.Info("Stopping consumer due to context cancellation", zap.Error(err))
-				return err
+				return nil
 			}
-			shouldContinue, handleErr := c.fetcher.HandleFetchError(ctx, err, &currentSub, &fetchErrorStreak)
-			if !shouldContinue {
-				return handleErr
-			}
+			// Log other errors but keep loop alive unless critical
+			c.logger.Warn("Fetch error", zap.Error(err))
+			time.Sleep(100 * time.Millisecond) // Slight backoff
 			continue
 		}
 
-		// Successful fetch -> reset error streak.
-		if fetchErrorStreak > 0 {
-			fetchErrorStreak = 0
-		}
-
-		// Update message tracking for health monitoring (track each message)
-		for _, msg := range msgs {
-			c.updateMessageTracking(msg)
-		}
-
-		// Process batch
-		c.batchProcessor.ProcessBatch(ctx, msgs)
+		c.processBatch(ctx, msgs)
 	}
 }
 
-// emitConsumerStats periodically emits basic consumer statistics.
-func (c *Consumer) emitConsumerStats(ctx context.Context) {
-	ticker := time.NewTicker(c.config.monitorInterval)
-	defer ticker.Stop()
-
-	// Record initial metric (0) to ensure it appears in Prometheus even before first tick
-	c.logger.Info("Starting NATS consumer stats emission goroutine, recording initial pending metric",
-		zap.String("stream", c.config.streamName),
-		zap.String("consumer", c.config.consumerName),
-		zap.Duration("interval", c.config.monitorInterval),
-	)
-	obsmetrics.RecordNATSConsumerPending(c.config.streamName, c.config.consumerName, 0)
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			info, err := c.js.ConsumerInfo(c.config.streamName, c.config.consumerName)
-			if err != nil {
-				c.logger.Warn("Failed to fetch consumer info for pending messages metric",
-					zap.String("stream", c.config.streamName),
-					zap.String("consumer", c.config.consumerName),
-					zap.Error(err),
-				)
-				continue
-			}
-			// Record pending messages for monitoring
-			c.logger.Debug("Recording NATS consumer pending messages metric",
-				zap.String("stream", c.config.streamName),
-				zap.String("consumer", c.config.consumerName),
-				zap.Uint64("pending", info.NumPending),
-			)
-			obsmetrics.RecordNATSConsumerPending(c.config.streamName, c.config.consumerName, info.NumPending)
-
-			// Record AFTN health metrics
-			gapSeconds := c.getMessageGapSeconds()
-			healthy := c.isSerialReaderHealthy()
-
-			obsmetrics.RecordMessageGap(c.config.streamName, c.config.consumerName, gapSeconds)
-			obsmetrics.RecordSerialReaderHealth(c.config.streamName, c.config.consumerName, healthy)
-
-			if !healthy {
-				c.logger.Warn("Serial reader appears stalled - no messages received recently",
-					zap.String("stream", c.config.streamName),
-					zap.String("consumer", c.config.consumerName),
-					zap.Float64("gap_seconds", gapSeconds),
-					zap.Duration("threshold", c.cfg.AFTN.MessageGapThreshold),
-				)
-			}
-		}
-	}
-}
-
-// Shutdown drains the underlying NATS connection gracefully.
+// Shutdown gracefully drains the connection.
 func (c *Consumer) Shutdown(ctx context.Context) error {
 	if c.conn == nil {
 		return nil
 	}
+	c.logger.Info("Draining NATS connection...")
+	return c.conn.Drain()
+}
 
-	timeout := c.cfg.Timeouts.Close
-	if timeout <= 0 {
-		timeout = 2 * time.Second // Reduced from 10s for faster shutdown
-	}
-
-	closeCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
-	errCh := make(chan error, 1)
-	go func() {
-		errCh <- c.conn.Drain()
-	}()
-
-	select {
-	case err := <-errCh:
-		c.conn.Close()
-		return err
-	case <-closeCtx.Done():
-		c.conn.Close()
-		return fmt.Errorf("nats drain timeout: %w", closeCtx.Err())
+// processBatch iterates through a batch of messages.
+func (c *Consumer) processBatch(ctx context.Context, msgs []*nats.Msg) {
+	for _, msg := range msgs {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			c.monitor.TrackMessage(msg)
+			c.processMsg(ctx, msg)
+		}
 	}
 }
 
-// updateMessageTracking updates the last message time and sequence number for health monitoring.
-// This should be called for every message received to track message flow and detect gaps.
-func (c *Consumer) updateMessageTracking(msg *nats.Msg) {
-	if msg == nil {
+// processMsg handles a single message: Trace -> App Logic -> Ack/Nak.
+func (c *Consumer) processMsg(ctx context.Context, msg *nats.Msg) {
+	start := time.Now()
+	ctx, span := otel.Tracer("caatsm/nats").Start(ctx, "Consumer.processMsg")
+	defer span.End()
+
+	msgID := c.resolveMsgID(msg)
+	
+	// Add metadata to span/logger
+	span.SetAttributes(
+		attribute.String("messaging.system", "nats"),
+		attribute.String("messaging.message_id", msgID),
+		attribute.String("caatsm.stream", c.streamName),
+	)
+
+	// Execute Application Logic
+	err := c.processor.Handle(ctx, msg.Data, msgID)
+	
+	// Handle Result
+	if err != nil {
+		c.handleError(ctx, msg, msgID, err)
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		c.telemetry.RecordMessageHandled(ctx, c.streamName, c.consumerName, obsmetrics.ResultFail, time.Since(start))
+	} else {
+		// Success
+		if c.consecutiveErrors > 0 {
+			c.consecutiveErrors = 0
+		}
+		if ackErr := msg.Ack(); ackErr != nil {
+			c.logger.Warn("Failed to ACK", zap.String("msg_id", msgID), zap.Error(ackErr))
+		}
+		c.telemetry.RecordMessageHandled(ctx, c.streamName, c.consumerName, "ok", time.Since(start))
+	}
+}
+
+// handleError decides whether to Ack (Permanent/DLQ) or Nak (Transient).
+func (c *Consumer) handleError(ctx context.Context, msg *nats.Msg, msgID string, err error) {
+	isPermanent := app.IsPermanent(err)
+	c.logger.Error("Processing failed",
+		zap.String("msg_id", msgID),
+		zap.Error(err),
+		zap.Bool("permanent", isPermanent),
+	)
+
+	if isPermanent {
+		// Poison message: Route to DLQ -> Ack
+		c.consecutiveErrors = 0
+		if c.dlqHandler != nil {
+			_ = c.dlqHandler.RouteToDLQ(ctx, msg, err) // Logged inside handler
+		}
+		_ = msg.Ack()
 		return
 	}
 
-	c.messageGapMutex.Lock()
-	defer c.messageGapMutex.Unlock()
+	// Transient error: Backpressure -> Nak with Backoff
+	c.consecutiveErrors++
+	c.applyBackpressure(ctx)
+	
+	_ = c.nakWithBackoff(msg)
+}
 
-	now := time.Now()
-	c.lastMessageTime = now
+// nakWithBackoff calculates the appropriate NAK delay based on delivery attempts.
+func (c *Consumer) nakWithBackoff(msg *nats.Msg) error {
+	if len(c.backoff) == 0 {
+		return msg.Nak()
+	}
+	meta, err := msg.Metadata()
+	if err != nil {
+		return msg.Nak()
+	}
+	
+	// attempt is 1-based, index is 0-based
+	attempt := int(meta.NumDelivered)
+	index := attempt - 1
+	if index >= len(c.backoff) {
+		index = len(c.backoff) - 1
+	} else if index < 0 {
+		index = 0
+	}
+	
+	return msg.NakWithDelay(c.backoff[index])
+}
 
-	// Extract sequence number from message metadata
+// applyBackpressure sleeps if error streak is high to protect the system.
+func (c *Consumer) applyBackpressure(ctx context.Context) {
+	if c.consecutiveErrors < 10 {
+		return
+	}
+	delay := time.Duration(c.consecutiveErrors) * 100 * time.Millisecond
+	if delay > 5*time.Second {
+		delay = 5 * time.Second
+	}
+	
+	select {
+	case <-time.After(delay):
+	case <-ctx.Done():
+	}
+}
+
+// ensureInfrastructure creates the Stream and Consumer if they don't exist.
+func (c *Consumer) ensureInfrastructure() error {
+	// 1. Ensure Stream
+	subjects := []string{c.subject}
+	if c.cfg.Publisher.Topic != "" {
+		subjects = append(subjects, c.cfg.Publisher.Topic)
+	}
+	if c.cfg.DLQ.Enabled && c.cfg.DLQ.Subject != "" {
+		subjects = append(subjects, c.cfg.DLQ.Subject)
+	}
+	
+	streamCfg := &nats.StreamConfig{
+		Name:     c.streamName,
+		Subjects: dedupeSubjects(subjects),
+		Retention: nats.WorkQueuePolicy, // Defaulting to WorkQueue for queues
+		MaxMsgs:  c.cfg.NATS.StreamLimits.MaxMsgs,
+		MaxBytes: c.cfg.NATS.StreamLimits.MaxBytes,
+		MaxAge:   c.cfg.NATS.StreamLimits.MaxAge,
+		Replicas: c.cfg.NATS.StreamLimits.Replicas,
+		Storage:  nats.FileStorage,
+	}
+	if c.cfg.NATS.StreamLimits.Discard == "new" {
+		streamCfg.Discard = nats.DiscardNew
+	}
+	if c.cfg.NATS.StreamLimits.Storage == "memory" {
+		streamCfg.Storage = nats.MemoryStorage
+	}
+
+	// Idempotent add/update
+	if _, err := c.js.AddStream(streamCfg); err != nil {
+		return fmt.Errorf("ensure stream: %w", err)
+	}
+
+	// 2. Ensure Consumer
+	consumerCfg := &nats.ConsumerConfig{
+		Durable:       c.consumerName,
+		FilterSubject: c.subject,
+		AckPolicy:     nats.AckExplicitPolicy,
+		AckWait:       c.ackWait,
+		MaxDeliver:    c.cfg.NATS.ConsumerRules.MaxDeliver,
+		MaxAckPending: c.cfg.NATS.ConsumerRules.MaxAckPending,
+		ReplayPolicy:  nats.ReplayInstantPolicy,
+	}
+	if c.cfg.NATS.ConsumerRules.ReplayPolicy == "original" {
+		consumerCfg.ReplayPolicy = nats.ReplayOriginalPolicy
+	}
+	
+	// Idempotent add/update
+	if _, err := c.js.AddConsumer(c.streamName, consumerCfg); err != nil {
+		return fmt.Errorf("ensure consumer: %w", err)
+	}
+
+	return nil
+}
+
+// resolveMsgID extracts the ID from headers or metadata.
+func (c *Consumer) resolveMsgID(msg *nats.Msg) string {
+	if id := msg.Header.Get("Nats-Msg-Id"); id != "" {
+		return id
+	}
 	if meta, err := msg.Metadata(); err == nil {
-		currentSeq := meta.Sequence.Stream
-
-		// Detect sequence gaps if we have a previous sequence
-		if c.lastMessageSequence > 0 && c.cfg.AFTN.EnableSequenceGapDetection {
-			if currentSeq > c.lastMessageSequence+1 {
-				gapSize := currentSeq - c.lastMessageSequence - 1
-				c.logger.Warn("Message sequence gap detected",
-					zap.String("stream", c.config.streamName),
-					zap.String("consumer", c.config.consumerName),
-					zap.Uint64("last_sequence", c.lastMessageSequence),
-					zap.Uint64("current_sequence", currentSeq),
-					zap.Uint64("gap_size", gapSize),
-				)
-				obsmetrics.RecordSequenceGap(c.config.streamName, c.config.consumerName, gapSize)
-			}
-		}
-
-		c.lastMessageSequence = currentSeq
+		return fmt.Sprintf("js-%d", meta.Sequence.Stream)
 	}
+	return "unknown"
 }
 
-// getMessageGapSeconds returns the number of seconds since the last message was received.
-// Returns 0 if no message has been received yet.
-func (c *Consumer) getMessageGapSeconds() float64 {
-	c.messageGapMutex.RLock()
-	defer c.messageGapMutex.RUnlock()
+// --- Helpers ---
 
-	if c.lastMessageTime.IsZero() {
-		return 0
+func orDefault(val, def string) string {
+	if val != "" {
+		return val
 	}
-
-	return time.Since(c.lastMessageTime).Seconds()
+	return def
 }
 
-// isSerialReaderHealthy returns true if messages are being received within the threshold.
-// Returns false if the gap exceeds the configured message gap threshold.
-func (c *Consumer) isSerialReaderHealthy() bool {
-	c.messageGapMutex.RLock()
-	defer c.messageGapMutex.RUnlock()
-
-	// If we haven't received any messages yet, consider it healthy (initial state)
-	if c.lastMessageTime.IsZero() {
-		return true
+func orDefaultDuration(val, def time.Duration) time.Duration {
+	if val > 0 {
+		return val
 	}
-
-	gap := time.Since(c.lastMessageTime)
-	return gap < c.cfg.AFTN.MessageGapThreshold
+	return def
 }
