@@ -20,12 +20,11 @@ Behaviour:
 1. The NATS consumer calls `processor.Handle`.  
 2. If an error is returned and `app.IsPermanent(err)` is true:
    - The original NATS message is copied into a DLQ payload with metadata:
-     - `schema_version` (payload schema version)
-     - `msg_id` (NATS message ID or JetStream sequence)
-     - `subject`, `stream`, `consumer`
-     - `stream_sequence`, `delivery_count`
-     - `error` (stringified cause)
-     - `received_at` (DLQ event time)
+     - `transport_msg_id` (NATS message ID)  
+     - `subject`, `stream`, `consumer`  
+     - `nats_sequence`, `deliveries`  
+     - `error` (stringified cause)  
+     - `received_at` (DLQ event time)  
      - `body` (raw message body)
    - The payload is published to `dlq.subject` using JetStream.  
    - The original message is **ACKed**, so it will not be redelivered.

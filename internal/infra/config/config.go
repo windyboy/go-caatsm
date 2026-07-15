@@ -425,10 +425,6 @@ func (c *Config) Validate() error {
 	if c.Monitoring.HealthTimeout < 0 {
 		return fmt.Errorf("monitoring.health_timeout must be >= 0")
 	}
-	// Validate DLQ configuration
-	if c.DLQ.Enabled && c.DLQ.Subject == "" {
-		return fmt.Errorf("dlq.subject is required when dlq.enabled=true")
-	}
 	// Validate AFTN configuration
 	if c.AFTN.MessageGapThreshold < 0 {
 		return fmt.Errorf("aftn.message_gap_threshold must be >= 0")
