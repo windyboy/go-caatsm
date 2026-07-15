@@ -310,15 +310,19 @@ func (o *otelRecorder) RecordMessageHandled(ctx context.Context, stream, consume
 }
 
 func (o *otelRecorder) RecordRetry(ctx context.Context, stream, consumer, reason string) {
+	// Intentionally a no-op: this metric is already exposed via the Prometheus recorder (promRecorder).
 }
 
 func (o *otelRecorder) RecordDLQMessage(ctx context.Context, stream, consumer string) {
+	// Intentionally a no-op: this metric is already exposed via the Prometheus recorder (promRecorder).
 }
 
 func (o *otelRecorder) RecordDLQPublishFailure(ctx context.Context, stream, consumer string) {
+	// Intentionally a no-op: this metric is already exposed via the Prometheus recorder (promRecorder).
 }
 
 func (o *otelRecorder) RecordJSAPICall(operation string) {
+	// Intentionally a no-op: this metric is already exposed via the Prometheus recorder (promRecorder).
 }
 
 func (o *otelRecorder) RecordAFTNValidationError(ctx context.Context, errorType string) {
