@@ -1,4 +1,4 @@
-package parser
+package aviation
 
 import (
 	"testing"
@@ -134,4 +134,3 @@ func BenchmarkParseMixed(b *testing.B) {
 		_, _ = Parse(msg)
 	}
 }
-

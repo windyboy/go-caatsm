@@ -11,6 +11,13 @@ import (
 	"go.uber.org/zap"
 )
 
+// dlqPublisher is the minimal interface needed by the DLQ handler,
+// making it easy to mock in tests without requiring the full JetStreamContext.
+type dlqPublisher interface {
+	Publish(subj string, data []byte, opts ...nats.PubOpt) (*nats.PubAck, error)
+	StreamNameBySubject(subj string, opts ...nats.JSOpt) (string, error)
+}
+
 // DLQHandler defines the interface for dead letter queue operations
 type DLQHandler interface {
 	RouteToDLQ(ctx context.Context, msg *nats.Msg, cause error) error
@@ -19,7 +26,7 @@ type DLQHandler interface {
 
 // defaultDLQHandler implements DLQHandler interface
 type defaultDLQHandler struct {
-	js           nats.JetStreamContext
+	publisher    dlqPublisher
 	dlqSubject   string
 	streamName   string
 	consumerName string
@@ -36,14 +43,29 @@ func (h *defaultDLQHandler) ValidateDLQ() error {
 }
 
 func (h *defaultDLQHandler) routeToDLQInternal(ctx context.Context, msg *nats.Msg, cause error) error {
-	// Basic DLQ routing implementation
 	payload := map[string]any{
-		"subject":     msg.Subject,
-		"stream":      h.streamName,
-		"consumer":    h.consumerName,
-		"error":       cause.Error(),
-		"received_at": time.Now().UTC(),
-		"body":        string(msg.Data),
+		"subject":          msg.Subject,
+		"stream":           h.streamName,
+		"consumer":         h.consumerName,
+		"error":            cause.Error(),
+		"received_at":      time.Now().UTC(),
+		"body":             string(msg.Data),
+		"transport_msg_id": msg.Header.Get("Nats-Msg-Id"),
+	}
+	// Enrich with JetStream metadata when available
+	if meta, err := msg.Metadata(); err == nil {
+		payload["nats_sequence"] = meta.Sequence.Stream
+		payload["deliveries"] = meta.NumDelivered
+	}
+	if msg.Reply != "" {
+		payload["reply"] = msg.Reply
+	}
+	if len(msg.Header) > 0 {
+		headers := make(map[string][]string, len(msg.Header))
+		for k, v := range msg.Header {
+			headers[k] = v
+		}
+		payload["headers"] = headers
 	}
 
 	data, err := json.Marshal(payload)
@@ -54,7 +76,7 @@ func (h *defaultDLQHandler) routeToDLQInternal(ctx context.Context, msg *nats.Ms
 
 	pubCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	_, err = h.js.Publish(h.dlqSubject, data, nats.Context(pubCtx))
+	_, err = h.publisher.Publish(h.dlqSubject, data, nats.Context(pubCtx))
 	if err != nil {
 		h.logger.Error("failed to publish to DLQ",
 			zap.String("dlq_subject", h.dlqSubject),
@@ -69,11 +91,11 @@ func (h *defaultDLQHandler) routeToDLQInternal(ctx context.Context, msg *nats.Ms
 }
 
 func (h *defaultDLQHandler) validateDLQInternal() error {
-	if h.js == nil {
+	if h.publisher == nil {
 		return fmt.Errorf("JetStream context is nil")
 	}
 
-	_, err := h.js.StreamNameBySubject(h.dlqSubject)
+	_, err := h.publisher.StreamNameBySubject(h.dlqSubject)
 	if err != nil {
 		return fmt.Errorf("DLQ subject %s not bound to any JetStream stream: %w", h.dlqSubject, err)
 	}

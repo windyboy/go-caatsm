@@ -58,7 +58,7 @@ Use these tasks if you prefer a one-command workflow instead of invoking `docker
 
 ## Publishing Sample Telegrams
 
-Use the helper CLI in `cmd/seed-telegrams` to push realistic payloads onto NATS (mirrors the fixtures in `internal/adapter/parser/aviation_parser_test.go`):
+Use the helper CLI in `cmd/seed-telegrams` to push realistic payloads onto NATS. The tool supports both aviation telegrams (FPL, ARR, DEP, etc.) and weather reports (METAR, SPECI, TAF).
 
 ### Publishing to JetStream (Recommended)
 

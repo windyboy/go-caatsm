@@ -33,7 +33,7 @@ const (
 	MetricAFTNValidationErrorsTotal   = "caatsm_aftn_validation_errors_total"
 	MetricMessageGapSeconds           = "caatsm_message_gap_seconds"
 	MetricMessageSequenceGapTotal     = "caatsm_message_sequence_gap_total"
-	MetricSerialReaderHealthy         = "caatsm_serial_reader_healthy"
+	MetricConsumerHealthy             = "caatsm_consumer_healthy"
 
 	// Common label keys.
 	LabelStatus    = "status"
@@ -58,6 +58,10 @@ const (
 	// Standard retry reasons.
 	RetryReasonProcessorError = "processor_error"
 )
+
+// MetricSerialReaderHealthy is a deprecated alias for MetricConsumerHealthy.
+// It is retained for backward compatibility and will be removed in a future release.
+var MetricSerialReaderHealthy = MetricConsumerHealthy
 
 var (
 	once sync.Once
@@ -174,7 +178,7 @@ func initCollectors() {
 
 	messageGapSeconds = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: MetricMessageGapSeconds,
-		Help: "Time in seconds since the last message was received from the serial reader.",
+		Help: "Time in seconds since the last message was received from the JetStream consumer.",
 	}, []string{LabelStream, LabelConsumer})
 
 	messageSequenceGapTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
@@ -184,7 +188,7 @@ func initCollectors() {
 
 	serialReaderHealthy = prometheus.NewGaugeVec(prometheus.GaugeOpts{
 		Name: MetricSerialReaderHealthy,
-		Help: "Serial reader health status: 1 = healthy (messages flowing), 0 = stalled (no messages).",
+		Help: "JetStream consumer health status: 1 = healthy (messages flowing), 0 = stalled (no messages).",
 	}, []string{LabelStream, LabelConsumer})
 
 	registry.MustRegister(
@@ -327,15 +331,21 @@ func RecordSequenceGap(stream, consumer string, gapSize uint64) {
 	messageSequenceGapTotal.WithLabelValues(labelValue(stream), labelValue(consumer)).Add(float64(gapSize))
 }
 
-// RecordSerialReaderHealth sets the serial reader health status.
-// healthy=1 means messages are flowing normally, healthy=0 means the reader has stalled.
-func RecordSerialReaderHealth(stream, consumer string, healthy bool) {
+// RecordConsumerHealth sets the JetStream consumer health status.
+// healthy=1 means messages are flowing normally, healthy=0 means the consumer has stalled.
+func RecordConsumerHealth(stream, consumer string, healthy bool) {
 	ensureCollectors()
 	value := 0.0
 	if healthy {
 		value = 1.0
 	}
 	serialReaderHealthy.WithLabelValues(labelValue(stream), labelValue(consumer)).Set(value)
+}
+
+// RecordSerialReaderHealth is a deprecated alias for RecordConsumerHealth.
+// It is retained for backward compatibility and will be removed in a future release.
+func RecordSerialReaderHealth(stream, consumer string, healthy bool) {
+	RecordConsumerHealth(stream, consumer, healthy)
 }
 
 func labelValue(value string) string {

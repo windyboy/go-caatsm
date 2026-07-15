@@ -24,6 +24,7 @@ Clean Architecture with clear separation of concerns:
 - OpenTelemetry tracing and Prometheus metrics
 - Optional AFTN protocol validation
 - Batch processing and health monitoring
+- Weather report parsing (METAR, SPECI, TAF)
 
 ## Prerequisites
 
@@ -188,6 +189,7 @@ go run ./cmd/seed-telegrams \
 - `docs/migrations.md`
 - `docs/secret-management.md`
 - `docs/reliability.md`
+- `docs/weather-parser.md`
 
 ## Contributing
 

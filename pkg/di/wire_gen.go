@@ -8,6 +8,7 @@ package di
 
 import (
 	"caatsm/internal/adapter/parser"
+	"caatsm/internal/adapter/parser/weather"
 	"caatsm/internal/app"
 	"caatsm/internal/infra/config"
 	"caatsm/internal/infra/log"
@@ -21,7 +22,8 @@ import (
 // Injectors from wire.go:
 
 func buildAppComponents() (*appComponents, error) {
-	parserParser := parser.ProvideParser()
+	weatherParser := weather.NewWeatherParser()
+	parserParser := parser.ProvideParser(weatherParser)
 	configConfig, err := config.ProvideConfig()
 	if err != nil {
 		return nil, err
@@ -69,7 +71,8 @@ func buildAppComponents() (*appComponents, error) {
 }
 
 func buildAppComponentsWithConfig(cfg *config.Config) (*appComponents, error) {
-	parserParser := parser.ProvideParser()
+	weatherParser := weather.NewWeatherParser()
+	parserParser := parser.ProvideParser(weatherParser)
 	logger, err := log.ProvideLogger(cfg)
 	if err != nil {
 		return nil, err
@@ -132,7 +135,7 @@ func InitializeAppWithConfig(cfg *config.Config) (*app.MessageProcessor, *nats.C
 	return comps.Processor, comps.Consumer, comps.Monitoring, nil
 }
 
-var runtimeSet = wire.NewSet(log.ProvideLogger, postgres.ProvideDB, postgres.ProvideRepository, nats.ProvideNATSConn, nats.ProvideJetStream, nats.ProvidePublisher, parser.ProvideParser, telemetry.ProvideRecorder, app.NewMessageProcessor, nats.ProvideConsumer, monitoring.ProvideServer)
+var runtimeSet = wire.NewSet(log.ProvideLogger, postgres.ProvideDB, postgres.ProvideRepository, nats.ProvideNATSConn, nats.ProvideJetStream, nats.ProvidePublisher, weather.NewWeatherParser, parser.ProvideParser, telemetry.ProvideRecorder, app.NewMessageProcessor, nats.ProvideConsumer, monitoring.ProvideServer)
 
 type appComponents struct {
 	Processor  *app.MessageProcessor

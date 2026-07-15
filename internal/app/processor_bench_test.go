@@ -3,6 +3,7 @@ package app
 import (
 	"caatsm/internal/adapter/dto"
 	"caatsm/internal/adapter/parser"
+	"caatsm/internal/adapter/parser/weather"
 	"caatsm/internal/infra/config"
 	"caatsm/internal/infra/telemetry"
 	"context"
@@ -61,7 +62,8 @@ NNNN`)
 
 // createBenchmarkProcessor creates a processor with mocks for benchmarking
 func createBenchmarkProcessor() *MessageProcessor {
-	aviationParser := parser.ProvideParser()
+	weatherParser := weather.NewWeatherParser()
+	aviationParser := parser.ProvideParser(weatherParser)
 	mockRepo := &mockRepository{}
 	mockPub := &mockPublisher{}
 	logger := zap.NewNop()
@@ -135,7 +137,8 @@ func BenchmarkHandleMixed(b *testing.B) {
 // BenchmarkHandleParseOnly benchmarks parsing without persistence/publishing
 // This isolates parser performance
 func BenchmarkHandleParseOnly(b *testing.B) {
-	aviationParser := parser.ProvideParser()
+	weatherParser := weather.NewWeatherParser()
+	aviationParser := parser.ProvideParser(weatherParser)
 	// Use a repository that does nothing
 	mockRepo := &mockRepository{}
 	// Use a publisher that does nothing

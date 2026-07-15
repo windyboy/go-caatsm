@@ -4,6 +4,7 @@ package di
 
 import (
 	"caatsm/internal/adapter/parser"
+	weatherparser "caatsm/internal/adapter/parser/weather"
 	"caatsm/internal/app"
 	"caatsm/internal/infra/config"
 	"caatsm/internal/infra/log"
@@ -46,7 +47,10 @@ var runtimeSet = wire.NewSet(
 	nats.ProvideJetStream,
 	nats.ProvidePublisher,
 
-	// Parser
+	// Weather Parser
+	weatherparser.NewWeatherParser,
+
+	// Parser (composite, depends on weather parser)
 	parser.ProvideParser,
 
 	// Telemetry

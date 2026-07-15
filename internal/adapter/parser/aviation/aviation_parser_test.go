@@ -1,4 +1,4 @@
-package parser
+package aviation
 
 import (
 	"caatsm/internal/domain"

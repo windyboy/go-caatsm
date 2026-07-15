@@ -429,6 +429,10 @@ func (c *Config) Validate() error {
 	if c.AFTN.MessageGapThreshold < 0 {
 		return fmt.Errorf("aftn.message_gap_threshold must be >= 0")
 	}
+	// Validate DLQ: enabled requires a non-empty subject
+	if c.DLQ.Enabled && c.DLQ.Subject == "" {
+		return fmt.Errorf("dlq.subject is required when dlq.enabled=true")
+	}
 	return nil
 }
 

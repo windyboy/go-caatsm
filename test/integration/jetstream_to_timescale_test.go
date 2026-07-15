@@ -285,3 +285,96 @@ func applyDDL(ctx context.Context, pool *pgxpool.Pool) error {
 	_, err = pool.Exec(ctx, string(bytes))
 	return err
 }
+
+func TestInsertOne_ConcurrentDedup(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	pgContainer, pgURL := startPostgres(ctx, t)
+	defer func() {
+		_ = pgContainer.Terminate(context.Background())
+	}()
+
+	natsContainer, natsURL := startNATS(ctx, t)
+	defer func() {
+		_ = natsContainer.Terminate(context.Background())
+	}()
+
+	cfg := buildTestConfig(natsURL, pgURL)
+	logger, err := loginfra.ProvideLogger(cfg)
+	if err != nil {
+		t.Fatalf("failed to init logger: %v", err)
+	}
+	defer logger.Sync()
+
+	pool, err := postgresinfra.ProvideDB(cfg, logger)
+	if err != nil {
+		t.Fatalf("failed to init postgres: %v", err)
+	}
+	defer pool.Close()
+
+	if err := applyDDL(ctx, pool); err != nil {
+		t.Fatalf("failed to apply schema: %v", err)
+	}
+
+	repo, err := postgresinfra.ProvideRepository(pool, logger)
+	if err != nil {
+		t.Fatalf("failed to init repository: %v", err)
+	}
+
+	// Concurrent inserts of the same business key
+	const concurrency = 10
+	errCh := make(chan error, concurrency)
+
+	for i := 0; i < concurrency; i++ {
+		go func() {
+			msg := &dto.ParsedTelegram{
+				Uuid:       uuid.NewString(),
+				MessageID:  "CONCURRENT_TEST",
+				DateTime:   "120000",
+				Category:   "ARR",
+				Content:    "ZCZC CONCURRENT_TEST 120000",
+				Status:     dto.MessageStatusParsed,
+				Parsed:     true,
+				ReceivedAt: time.Now(),
+				ParsedAt:   time.Now(),
+			}
+			errCh <- repo.InsertOne(ctx, msg)
+		}()
+	}
+
+	// Collect errors
+	for i := 0; i < concurrency; i++ {
+		if err := <-errCh; err != nil {
+			t.Errorf("concurrent insert %d failed: %v", i, err)
+		}
+	}
+
+	// Verify exactly 1 row in aviation.telegrams
+	var telegramCount int
+	err = pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM aviation.telegrams WHERE message_id = $1
+	`, "CONCURRENT_TEST").Scan(&telegramCount)
+	if err != nil {
+		t.Fatalf("failed to count telegrams: %v", err)
+	}
+	if telegramCount != 1 {
+		t.Errorf("expected 1 telegram row, got %d", telegramCount)
+	}
+
+	// Verify exactly 1 row in aviation.telegram_keys
+	var keyCount int
+	err = pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM aviation.telegram_keys WHERE message_id = $1
+	`, "CONCURRENT_TEST").Scan(&keyCount)
+	if err != nil {
+		t.Fatalf("failed to count telegram_keys: %v", err)
+	}
+	if keyCount != 1 {
+		t.Errorf("expected 1 telegram_keys row, got %d", keyCount)
+	}
+}

@@ -7,21 +7,61 @@ import (
 	"caatsm/internal/port"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	"go.uber.org/zap"
 )
 
+// dbExecer is the subset of *pgxpool.Pool used by Repository. Its method set
+// matches *pgxpool.Pool exactly so the concrete pool satisfies it directly, while
+// tests can substitute a fake pool without a running database.
+type dbExecer interface {
+	Exec(ctx context.Context, sql string, args ...interface{}) (pgconn.CommandTag, error)
+	QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row
+	Begin(ctx context.Context) (pgx.Tx, error)
+	CopyFrom(ctx context.Context, tableName pgx.Identifier, columnNames []string, rowSrc pgx.CopyFromSource) (int64, error)
+}
+
+// uniqueViolationCode is the PostgreSQL SQLSTATE for a unique-constraint
+// violation (duplicate key).
+const uniqueViolationCode = "23505"
+
+// insertTelegramSQL inserts a parsed telegram. The conflict target
+// (uuid, received_at) is a safety net only: uuid is generated per parse, so it
+// never prevents duplicate business messages on its own. Business-level
+// idempotency is enforced by the aviation.telegram_keys gate table.
+const insertTelegramSQL = `
+	INSERT INTO aviation.telegrams (
+		uuid, message_id, date_time, priority_indicator, primary_address,
+		secondary_addresses, originator, originator_date_time, category,
+		content, body_data, status, error_reason,
+		received_at, parsed_at, dispatched_at, need_dispatch
+	) VALUES (
+		$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17
+	)
+	ON CONFLICT (uuid, received_at) DO NOTHING
+`
+
+// insertDedupKeySQL reserves the business-key slot in aviation.telegram_keys.
+// A primary-key violation signals that the same (message_id, date_time) was
+// already persisted, i.e. this is a duplicate.
+const insertDedupKeySQL = `
+	INSERT INTO aviation.telegram_keys (message_id, date_time) VALUES ($1, $2)
+`
+
 // Repository implements the port.Repository interface using PostgreSQL
 type Repository struct {
-	pool   *pgxpool.Pool
+	pool   dbExecer
 	mapper *mapper.TelegramMapper
 	logger *zap.Logger
 }
@@ -35,7 +75,13 @@ func ProvideRepository(pool *pgxpool.Pool, logger *zap.Logger) (port.Repository,
 	}, nil
 }
 
-// InsertOne inserts a single telegram message
+// InsertOne inserts a single telegram message.
+//
+// Business-message identity is (message_id, date_time). When both are known we
+// enforce idempotency at the database level via the aviation.telegram_keys gate
+// table (see insertDedup). When either is missing (legacy/partial telegrams) we
+// fall back to a direct insert without the gate, preserving the previous
+// behaviour for those records.
 func (r *Repository) InsertOne(ctx context.Context, msg *dto.ParsedTelegram) error {
 	if msg == nil {
 		return fmt.Errorf("message cannot be nil")
@@ -54,64 +100,35 @@ func (r *Repository) InsertOne(ctx context.Context, msg *dto.ParsedTelegram) err
 		attribute.String("caatsm.message.category", msg.Category),
 	)
 
-	// Optional idempotency check based on business message identity. If we have a
-	// non-empty message ID and date/time, we can cheaply skip duplicates here to
-	// avoid applying the same business event multiple times.
 	if msg.MessageID != "" && msg.DateTime != "" {
-		exists, err := r.messageExists(ctx, msg.MessageID, msg.DateTime)
-		if err != nil {
-			span.RecordError(err)
-			span.SetStatus(codes.Error, err.Error())
-			r.logger.Error("failed to check existing message",
-				zap.String("message_id", msg.MessageID),
-				zap.String("date_time", msg.DateTime),
-				zap.Error(err),
-			)
-			return fmt.Errorf("failed to check existing message: %w", err)
-		}
-		if exists {
-			r.logger.Info("Duplicate message detected by message_id/date_time; skipping insert",
-				zap.String("message_id", msg.MessageID),
-				zap.String("date_time", msg.DateTime),
-			)
-			return nil
-		}
+		return r.insertDedup(ctx, span, msg)
 	}
+	return r.insertDirect(ctx, span, msg)
+}
 
+// insertDirect inserts a telegram without the business-key gate. Used when the
+// business identity is incomplete, matching the previous behaviour for partial
+// records.
+func (r *Repository) insertDirect(ctx context.Context, span trace.Span, msg *dto.ParsedTelegram) error {
 	row, err := r.mapper.ToDBRow(msg)
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
-
 		r.logger.Error("failed to map message to DB row", zap.Error(err))
 		return fmt.Errorf("failed to map message to DB row: %w", err)
 	}
 
-	query := `
-		INSERT INTO aviation.telegrams (
-			uuid, message_id, date_time, priority_indicator, primary_address,
-			secondary_addresses, originator, originator_date_time, category,
-			content, body_data, status, error_reason,
-			received_at, parsed_at, dispatched_at, need_dispatch
-		) VALUES (
-			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17
-		)
-		ON CONFLICT (uuid, received_at) DO NOTHING
-	`
-
 	start := time.Now()
-	tag, err := r.pool.Exec(ctx, query,
+	tag, err := r.pool.Exec(ctx, insertTelegramSQL,
 		row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8],
 		row[9], row[10], row[11], row[12], row[13], row[14], row[15], row[16],
 	)
 	elapsed := time.Since(start)
 
-	result := obsmetrics.DBResultOK
 	if err != nil {
-		result = obsmetrics.DBResultError
+		obsmetrics.RecordDBQuery("insert_one", obsmetrics.DBResultError, elapsed)
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
-		obsmetrics.RecordDBQuery("insert_one", result, elapsed)
 		r.logger.Error("failed to insert message",
 			zap.String("uuid", msg.Uuid),
 			zap.String("message_id", msg.MessageID),
@@ -121,14 +138,93 @@ func (r *Repository) InsertOne(ctx context.Context, msg *dto.ParsedTelegram) err
 		return fmt.Errorf("failed to insert message: %w", err)
 	}
 
-	obsmetrics.RecordDBQuery("insert_one", result, elapsed)
+	obsmetrics.RecordDBQuery("insert_one", obsmetrics.DBResultOK, elapsed)
 
 	if tag.RowsAffected() == 0 {
 		r.logger.Info("Duplicate message skipped",
 			zap.String("uuid", msg.Uuid),
 			zap.String("message_id", msg.MessageID),
 		)
-		return nil
+	}
+
+	r.logger.Debug("Inserted message",
+		zap.String("uuid", msg.Uuid),
+		zap.String("message_id", msg.MessageID),
+	)
+
+	return nil
+}
+
+// insertDedup enforces business-message idempotency atomically. It reserves the
+// (message_id, date_time) slot in aviation.telegram_keys inside a transaction;
+// a primary-key violation means the business message was already persisted (by
+// this or a concurrent writer), so the telegram insert is skipped. Because the
+// reservation and the telegram insert share the transaction, a failure rolls
+// both back and cannot leave a dangling gate row.
+func (r *Repository) insertDedup(ctx context.Context, span trace.Span, msg *dto.ParsedTelegram) error {
+	txn, err := r.pool.Begin(ctx)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		r.logger.Error("failed to begin transaction", zap.Error(err))
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer txn.Rollback(ctx) //nolint:errcheck // Rollback after Commit is expected to fail; error handled by Commit path
+
+	if _, err = txn.Exec(ctx, insertDedupKeySQL, msg.MessageID, msg.DateTime); err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == uniqueViolationCode {
+			r.logger.Info("Duplicate message detected by business key; skipping insert",
+				zap.String("message_id", msg.MessageID),
+				zap.String("date_time", msg.DateTime),
+			)
+			return port.ErrDuplicate
+		}
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		r.logger.Error("failed to reserve dedup key",
+			zap.String("message_id", msg.MessageID),
+			zap.String("date_time", msg.DateTime),
+			zap.Error(err),
+		)
+		return fmt.Errorf("failed to reserve dedup key: %w", err)
+	}
+
+	row, err := r.mapper.ToDBRow(msg)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		r.logger.Error("failed to map message to DB row", zap.Error(err))
+		return fmt.Errorf("failed to map message to DB row: %w", err)
+	}
+
+	start := time.Now()
+	_, err = txn.Exec(ctx, insertTelegramSQL,
+		row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8],
+		row[9], row[10], row[11], row[12], row[13], row[14], row[15], row[16],
+	)
+	elapsed := time.Since(start)
+
+	if err != nil {
+		obsmetrics.RecordDBQuery("insert_one", obsmetrics.DBResultError, elapsed)
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		r.logger.Error("failed to insert message",
+			zap.String("uuid", msg.Uuid),
+			zap.String("message_id", msg.MessageID),
+			zap.Duration("elapsed", elapsed),
+			zap.Error(err),
+		)
+		return fmt.Errorf("failed to insert message: %w", err)
+	}
+
+	obsmetrics.RecordDBQuery("insert_one", obsmetrics.DBResultOK, elapsed)
+
+	if err = txn.Commit(ctx); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		r.logger.Error("failed to commit transaction", zap.Error(err))
+		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
 	r.logger.Debug("Inserted message",
@@ -287,35 +383,4 @@ func (r *Repository) InsertRaw(ctx context.Context, msg *dto.ParsedTelegram) err
 	)
 
 	return nil
-}
-
-// messageExists performs a lightweight existence check for a business message,
-// using (message_id, date_time) as the idempotency key. This avoids requiring a
-// unique constraint at the database level while still preventing duplicate effects.
-func (r *Repository) messageExists(ctx context.Context, messageID, dateTime string) (bool, error) {
-	if messageID == "" || dateTime == "" {
-		return false, nil
-	}
-
-	const query = `
-		SELECT 1
-		FROM aviation.telegrams
-		WHERE message_id = $1 AND date_time = $2
-		LIMIT 1
-	`
-
-	var one int
-	if err := r.pool.QueryRow(ctx, query, messageID, dateTime).Scan(&one); err != nil {
-		if err == pgx.ErrNoRows {
-			return false, nil
-		}
-		r.logger.Error("failed to check message existence",
-			zap.String("message_id", messageID),
-			zap.String("date_time", dateTime),
-			zap.Error(err),
-		)
-		return false, err
-	}
-
-	return true, nil
 }

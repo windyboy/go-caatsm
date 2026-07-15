@@ -1,4 +1,4 @@
-package parser
+package schedule
 
 import (
 	"caatsm/internal/domain"
