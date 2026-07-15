@@ -218,17 +218,61 @@ func (c *Consumer) handleError(ctx context.Context, msg *nats.Msg, msgID string,
 	)
 
 	if isPermanent {
-		// Poison message: Route to DLQ -> Ack
+		// Poison message: Route to DLQ -> Ack (only if DLQ publish succeeds)
 		c.consecutiveErrors = 0
 		if c.dlqHandler != nil {
-			_ = c.dlqHandler.RouteToDLQ(ctx, msg, err) // Logged inside handler
+			if dlqErr := c.dlqHandler.RouteToDLQ(ctx, msg, err); dlqErr != nil {
+				// DLQ publish failed — do NOT ACK; NAK so the message remains available
+				// for later retry or manual inspection.
+				c.logger.Error("DLQ publish failed, NAKing original message",
+					zap.String("msg_id", msgID),
+					zap.Error(dlqErr),
+				)
+				c.telemetry.RecordDLQPublishFailure(ctx, c.streamName, c.consumerName)
+				_ = msg.NakWithDelay(5 * time.Second)
+				return
+			}
+			_ = msg.Ack()
+			return
 		}
+		// DLQ disabled — permanent error has nowhere to go; ACK to avoid infinite redelivery.
+		c.logger.Warn("Permanent error but DLQ disabled, ACKing message",
+			zap.String("msg_id", msgID),
+			zap.Error(err),
+		)
 		_ = msg.Ack()
 		return
 	}
 
-	// Transient error: Backpressure -> Nak with Backoff
+	// Transient error: Check if MaxDeliver exhausted -> DLQ or Nak with Backoff
 	c.consecutiveErrors++
+
+	// Check if message has reached max deliver attempts
+	if meta, metaErr := msg.Metadata(); metaErr == nil {
+		if int(meta.NumDelivered) >= c.cfg.NATS.ConsumerRules.MaxDeliver {
+			c.logger.Error("MaxDeliver exhausted for transient error, routing to DLQ",
+				zap.String("msg_id", msgID),
+				zap.Error(err),
+				zap.Uint64("delivered", meta.NumDelivered),
+				zap.Int("max_deliver", c.cfg.NATS.ConsumerRules.MaxDeliver),
+			)
+			if c.dlqHandler != nil {
+				if dlqErr := c.dlqHandler.RouteToDLQ(ctx, msg, err); dlqErr != nil {
+					c.logger.Error("DLQ publish failed for exhausted message",
+						zap.String("msg_id", msgID),
+						zap.Error(dlqErr),
+					)
+					c.telemetry.RecordDLQPublishFailure(ctx, c.streamName, c.consumerName)
+					_ = msg.NakWithDelay(5 * time.Second)
+					return
+				}
+				c.telemetry.RecordDLQMessage(ctx, c.streamName, c.consumerName)
+			}
+			_ = msg.Ack()
+			return
+		}
+	}
+
 	c.applyBackpressure(ctx)
 	
 	_ = c.nakWithBackoff(msg)

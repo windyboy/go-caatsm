@@ -36,14 +36,34 @@ func (h *defaultDLQHandler) ValidateDLQ() error {
 }
 
 func (h *defaultDLQHandler) routeToDLQInternal(ctx context.Context, msg *nats.Msg, cause error) error {
+	// Extract metadata from NATS message
+	msgID := ""
+	var streamSequence uint64
+	var deliveryCount uint64
+
+	if id := msg.Header.Get("Nats-Msg-Id"); id != "" {
+		msgID = id
+	}
+	if meta, err := msg.Metadata(); err == nil {
+		streamSequence = meta.Sequence.Stream
+		deliveryCount = uint64(meta.NumDelivered)
+		if msgID == "" {
+			msgID = fmt.Sprintf("js-%d", streamSequence)
+		}
+	}
+
 	// Basic DLQ routing implementation
 	payload := map[string]any{
-		"subject":     msg.Subject,
-		"stream":      h.streamName,
-		"consumer":    h.consumerName,
-		"error":       cause.Error(),
-		"received_at": time.Now().UTC(),
-		"body":        string(msg.Data),
+		"schema_version": "1.0",
+		"msg_id":         msgID,
+		"subject":        msg.Subject,
+		"stream":         h.streamName,
+		"consumer":       h.consumerName,
+		"stream_sequence": streamSequence,
+		"delivery_count": deliveryCount,
+		"error":          cause.Error(),
+		"received_at":    time.Now().UTC(),
+		"body":           string(msg.Data),
 	}
 
 	data, err := json.Marshal(payload)
