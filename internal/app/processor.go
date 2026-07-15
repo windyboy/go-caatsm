@@ -9,6 +9,7 @@ import (
 	"caatsm/internal/infra/telemetry"
 	"caatsm/internal/port"
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -182,6 +183,13 @@ func (p *MessageProcessor) Handle(ctx context.Context, raw []byte, msgID string)
 
 	// Insert into database
 	if err := p.repository.InsertOne(ctx, parsed); err != nil {
+		if errors.Is(err, port.ErrDuplicate) {
+			msgLogger.Info("Duplicate message detected; skipping publish",
+				zap.String("message_id", parsed.MessageID),
+				zap.String("date_time", parsed.DateTime),
+			)
+			return nil
+		}
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
 		latency := parsed.ParsedAt.Sub(receivedAt)

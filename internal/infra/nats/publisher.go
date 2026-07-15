@@ -61,9 +61,15 @@ func (p *Publisher) Publish(message any) error {
 
 	switch typed := message.(type) {
 	case *dto.ParsedTelegram:
-		if typed != nil && typed.Uuid != "" {
-			jsMsg.Header.Set("Nats-Msg-Id", typed.Uuid)
+		if typed != nil && typed.MessageID != "" && typed.DateTime != "" {
+			// Derive Nats-Msg-Id from business key for JetStream deduplication
+			msgID := typed.MessageID + "|" + typed.DateTime
+			if typed.Category != "" {
+				msgID += "|" + typed.Category
+			}
+			jsMsg.Header.Set("Nats-Msg-Id", msgID)
 		} else {
+			// Fall back to random UUID for partial telegrams
 			jsMsg.Header.Set("Nats-Msg-Id", uuid.NewString())
 		}
 	default:
