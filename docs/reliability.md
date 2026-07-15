@@ -20,12 +20,15 @@ Behaviour:
 1. The NATS consumer calls `processor.Handle`.  
 2. If an error is returned and `app.IsPermanent(err)` is true:
    - The original NATS message is copied into a DLQ payload with metadata:
-     - `transport_msg_id` (NATS message ID)  
-     - `subject`, `stream`, `consumer`  
-     - `nats_sequence`, `deliveries`  
-     - `error` (stringified cause)  
-     - `received_at` (DLQ event time)  
+     - `subject`, `stream`, `consumer`
+     - `error` (stringified cause)
+     - `received_at` (DLQ event time)
      - `body` (raw message body)
+     - `transport_msg_id` (NATS `Nats-Msg-Id` header, if set)
+     - `nats_sequence` (JetStream stream sequence number)
+     - `deliveries` (JetStream delivery count)
+     - `reply` (NATS reply subject, if present)
+     - `headers` (NATS message headers, if any)
    - The payload is published to `dlq.subject` using JetStream.  
    - The original message is **ACKed**, so it will not be redelivered.
 
@@ -51,19 +54,26 @@ This combination provides **backpressure** when downstream systems (especially t
 
 ### Persistence and Idempotency
 
-The primary persistence path is `Repository.InsertOne` into `aviation.telegrams`. To avoid applying the same business event multiple times, a **minimal idempotency check** is implemented:
+The primary persistence path is `Repository.InsertOne` into `aviation.telegrams`. Business-message idempotency is enforced atomically via the **`aviation.telegram_keys` gate table**:
 
 - If both `message_id` and `date_time` are non-empty:
-  - `InsertOne` first calls `messageExists(message_id, date_time)`.  
-  - If a row already exists, the insert is **skipped** and an informational log is written.  
-  - Otherwise, the insert proceeds.
+  - `InsertOne` begins a transaction and reserves the business key in `aviation.telegram_keys` (PK: `message_id, date_time`).
+  - A primary-key violation means the same business message was already persisted (possibly by a concurrent writer), so the telegram insert is **skipped** and the transaction is rolled back.
+  - Otherwise, the telegram is inserted and the transaction is committed, ensuring both the gate row and the telegram are atomically persisted.
 
-This makes repeated delivery of the same telegram (same `message_id`/`date_time`) safe from a business perspective, even if JetStream redelivers messages or upstream replays.
+This makes repeated delivery of the same telegram (same `message_id`/`date_time`) safe from a business perspective, even under concurrent inserts or JetStream redeliveries.
 
-For higher guarantees in production environments, you may:
+**Partial records:** When either `message_id` or `date_time` is empty (legacy/partial telegrams), `InsertOne` falls back to a direct insert without the gate, preserving the previous behaviour. Duplicates are still possible for these records.
 
-- Add a unique index on `(message_id, date_time)` at the DB level, and treat any conflict as a duplicate.  
-- Extend the idempotency key with additional fields (e.g. originator, category) if required by the business model.
+**Migration:** The `aviation.telegram_keys` table is defined in `internal/infra/postgres/telegrams.ddl`. For existing production databases, apply the following DDL:
+
+```sql
+CREATE TABLE IF NOT EXISTS aviation.telegram_keys (
+    message_id TEXT NOT NULL,
+    date_time TEXT NOT NULL,
+    PRIMARY KEY (message_id, date_time)
+);
+```
 
 ### DB Degradation and Backpressure
 

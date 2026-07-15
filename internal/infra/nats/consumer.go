@@ -82,7 +82,7 @@ func ProvideConsumer(
 	c.monitor = NewConsumerMonitor(logger, cfg, js, c.streamName, c.consumerName, cfg.App.MonitorInterval)
 	if cfg.DLQ.Enabled && cfg.DLQ.Subject != "" {
 		c.dlqHandler = &defaultDLQHandler{
-			js:           js,
+			publisher:    js,
 			dlqSubject:   cfg.DLQ.Subject,
 			streamName:   c.streamName,
 			consumerName: c.consumerName,
@@ -218,10 +218,42 @@ func (c *Consumer) handleError(ctx context.Context, msg *nats.Msg, msgID string,
 	)
 
 	if isPermanent {
-		// Poison message: Route to DLQ -> Ack
+		// Poison message: Route to DLQ -> Ack only if DLQ succeeds or DLQ is disabled
 		c.consecutiveErrors = 0
 		if c.dlqHandler != nil {
-			_ = c.dlqHandler.RouteToDLQ(ctx, msg, err) // Logged inside handler
+			if dlqErr := c.dlqHandler.RouteToDLQ(ctx, msg, err); dlqErr != nil {
+				c.logger.Error("DLQ publish failed, NAKing original message for redelivery",
+					zap.String("msg_id", msgID),
+					zap.Error(dlqErr),
+				)
+				c.telemetry.RecordDLQPublishFailure(ctx, c.streamName, c.consumerName)
+				_ = msg.Nak()
+				return
+			}
+		}
+		_ = msg.Ack()
+		return
+	}
+
+	// Transient error: check if MaxDeliver exhausted
+	meta, metaErr := msg.Metadata()
+	if metaErr == nil && int(meta.NumDelivered) >= c.cfg.NATS.ConsumerRules.MaxDeliver {
+		c.logger.Error("Transient error exhausted max deliveries, routing to DLQ",
+			zap.String("msg_id", msgID),
+			zap.Uint64("delivered", meta.NumDelivered),
+			zap.Int("max_deliver", c.cfg.NATS.ConsumerRules.MaxDeliver),
+		)
+		c.consecutiveErrors = 0
+		if c.dlqHandler != nil {
+			if dlqErr := c.dlqHandler.RouteToDLQ(ctx, msg, err); dlqErr != nil {
+				c.logger.Error("DLQ publish failed for exhausted message, NAKing for redelivery",
+					zap.String("msg_id", msgID),
+					zap.Error(dlqErr),
+				)
+				c.telemetry.RecordDLQPublishFailure(ctx, c.streamName, c.consumerName)
+				_ = msg.Nak()
+				return
+			}
 		}
 		_ = msg.Ack()
 		return
@@ -230,7 +262,6 @@ func (c *Consumer) handleError(ctx context.Context, msg *nats.Msg, msgID string,
 	// Transient error: Backpressure -> Nak with Backoff
 	c.consecutiveErrors++
 	c.applyBackpressure(ctx)
-	
 	_ = c.nakWithBackoff(msg)
 }
 
