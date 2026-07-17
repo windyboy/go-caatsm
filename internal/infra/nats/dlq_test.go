@@ -34,8 +34,10 @@ func (m *mockPublisher) Publish(subj string, data []byte, opts ...nats.PubOpt) (
 
 // mockTelemetryRecorder tracks calls for test assertions.
 type mockTelemetryRecorder struct {
-	dlqMessages        int
-	dlqPublishFailures int
+	dlqMessages         int
+	dlqPublishFailures  int
+	dlqTerminalFailures int
+	dlqDisabled         int
 }
 
 func (m *mockTelemetryRecorder) RecordProcessingResult(ctx context.Context, status, category string, parseLatency time.Duration) {
@@ -52,8 +54,11 @@ func (m *mockTelemetryRecorder) RecordDLQPublishFailure(ctx context.Context, str
 	m.dlqPublishFailures++
 }
 func (m *mockTelemetryRecorder) RecordDLQTerminalFailure(ctx context.Context, stream, consumer string) {
+	m.dlqTerminalFailures++
 }
-func (m *mockTelemetryRecorder) RecordDLQDisabled(ctx context.Context, stream, consumer string)  {}
+func (m *mockTelemetryRecorder) RecordDLQDisabled(ctx context.Context, stream, consumer string) {
+	m.dlqDisabled++
+}
 func (m *mockTelemetryRecorder) RecordJSAPICall(operation string)                                {}
 func (m *mockTelemetryRecorder) RecordAFTNValidationError(ctx context.Context, errorType string) {}
 

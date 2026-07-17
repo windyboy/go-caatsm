@@ -45,6 +45,13 @@ type Consumer struct {
 	consecutiveErrors int
 }
 
+type acknowledgmentMessage interface {
+	Ack(...nats.AckOpt) error
+	Nak(...nats.AckOpt) error
+	NakWithDelay(time.Duration, ...nats.AckOpt) error
+	Metadata() (*nats.MsgMetadata, error)
+}
+
 // ProvideConsumer initializes a NATS consumer, ensuring infrastructure exists.
 func ProvideConsumer(
 	conn *nats.Conn,
@@ -261,11 +268,15 @@ func (c *Consumer) routeToDLQOrRetain(ctx context.Context, msg *nats.Msg, msgID 
 		return
 	}
 
-	if err := c.dlqHandler.RouteToDLQ(ctx, msg, cause); err != nil {
+	c.completeDLQRouting(ctx, msg, msgID, reason, c.dlqHandler.RouteToDLQ(ctx, msg, cause))
+}
+
+func (c *Consumer) completeDLQRouting(ctx context.Context, msg acknowledgmentMessage, msgID, reason string, routeErr error) {
+	if routeErr != nil {
 		c.logger.Error("DLQ publish failed; retaining original message",
 			zap.String("msg_id", msgID),
 			zap.String("reason", reason),
-			zap.Error(err),
+			zap.Error(routeErr),
 		)
 		c.retainAfterDLQFailure(ctx, msg, msgID, reason)
 		return
@@ -279,7 +290,7 @@ func (c *Consumer) routeToDLQOrRetain(ctx context.Context, msg *nats.Msg, msgID 
 	}
 }
 
-func (c *Consumer) retainAfterDLQFailure(ctx context.Context, msg *nats.Msg, msgID, reason string) {
+func (c *Consumer) retainAfterDLQFailure(ctx context.Context, msg acknowledgmentMessage, msgID, reason string) {
 	if c.maxDeliverReached(msg) {
 		c.logger.Error("DLQ terminal failure; original message retained for manual recovery",
 			zap.String("msg_id", msgID),
@@ -296,7 +307,7 @@ func (c *Consumer) retainAfterDLQFailure(ctx context.Context, msg *nats.Msg, msg
 	}
 }
 
-func (c *Consumer) maxDeliverReached(msg *nats.Msg) bool {
+func (c *Consumer) maxDeliverReached(msg acknowledgmentMessage) bool {
 	maxDeliver := c.cfg.NATS.ConsumerRules.MaxDeliver
 	if maxDeliver <= 0 {
 		return false
@@ -306,7 +317,7 @@ func (c *Consumer) maxDeliverReached(msg *nats.Msg) bool {
 }
 
 // nakWithBackoff calculates the appropriate NAK delay based on delivery attempts.
-func (c *Consumer) nakWithBackoff(msg *nats.Msg) error {
+func (c *Consumer) nakWithBackoff(msg acknowledgmentMessage) error {
 	if len(c.backoff) == 0 {
 		return msg.Nak()
 	}
