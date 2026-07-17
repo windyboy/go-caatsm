@@ -117,7 +117,11 @@ func (c *Consumer) Start(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to subscribe: %w", err)
 	}
-	defer sub.Unsubscribe()
+	defer func() {
+		if err := sub.Unsubscribe(); err != nil {
+			c.logger.Warn("failed to unsubscribe consumer", zap.Error(err))
+		}
+	}()
 
 	// Initial metric recording
 	if info, err := c.js.ConsumerInfo(c.streamName, c.consumerName); err == nil {
@@ -179,7 +183,7 @@ func (c *Consumer) processMsg(ctx context.Context, msg *nats.Msg) {
 	defer span.End()
 
 	msgID := c.resolveMsgID(msg)
-	
+
 	// Add metadata to span/logger
 	span.SetAttributes(
 		attribute.String("messaging.system", "nats"),
@@ -189,7 +193,7 @@ func (c *Consumer) processMsg(ctx context.Context, msg *nats.Msg) {
 
 	// Execute Application Logic
 	err := c.processor.Handle(ctx, msg.Data, msgID)
-	
+
 	// Handle Result
 	if err != nil {
 		c.handleError(ctx, msg, msgID, err)
@@ -218,44 +222,21 @@ func (c *Consumer) handleError(ctx context.Context, msg *nats.Msg, msgID string,
 	)
 
 	if isPermanent {
-		// Poison message: Route to DLQ -> Ack only if DLQ succeeds or DLQ is disabled
 		c.consecutiveErrors = 0
-		if c.dlqHandler != nil {
-			if dlqErr := c.dlqHandler.RouteToDLQ(ctx, msg, err); dlqErr != nil {
-				c.logger.Error("DLQ publish failed, NAKing original message for redelivery",
-					zap.String("msg_id", msgID),
-					zap.Error(dlqErr),
-				)
-				c.telemetry.RecordDLQPublishFailure(ctx, c.streamName, c.consumerName)
-				_ = msg.Nak()
-				return
-			}
-		}
-		_ = msg.Ack()
+		c.routeToDLQOrRetain(ctx, msg, msgID, err, "permanent")
 		return
 	}
 
 	// Transient error: check if MaxDeliver exhausted
 	meta, metaErr := msg.Metadata()
-	if metaErr == nil && int(meta.NumDelivered) >= c.cfg.NATS.ConsumerRules.MaxDeliver {
+	if c.cfg.NATS.ConsumerRules.MaxDeliver > 0 && metaErr == nil && int(meta.NumDelivered) >= c.cfg.NATS.ConsumerRules.MaxDeliver {
 		c.logger.Error("Transient error exhausted max deliveries, routing to DLQ",
 			zap.String("msg_id", msgID),
 			zap.Uint64("delivered", meta.NumDelivered),
 			zap.Int("max_deliver", c.cfg.NATS.ConsumerRules.MaxDeliver),
 		)
 		c.consecutiveErrors = 0
-		if c.dlqHandler != nil {
-			if dlqErr := c.dlqHandler.RouteToDLQ(ctx, msg, err); dlqErr != nil {
-				c.logger.Error("DLQ publish failed for exhausted message, NAKing for redelivery",
-					zap.String("msg_id", msgID),
-					zap.Error(dlqErr),
-				)
-				c.telemetry.RecordDLQPublishFailure(ctx, c.streamName, c.consumerName)
-				_ = msg.Nak()
-				return
-			}
-		}
-		_ = msg.Ack()
+		c.routeToDLQOrRetain(ctx, msg, msgID, err, "max_deliver_exhausted")
 		return
 	}
 
@@ -263,6 +244,65 @@ func (c *Consumer) handleError(ctx context.Context, msg *nats.Msg, msgID string,
 	c.consecutiveErrors++
 	c.applyBackpressure(ctx)
 	_ = c.nakWithBackoff(msg)
+}
+
+// routeToDLQOrRetain acknowledges the original message only after its DLQ copy
+// is durably accepted. Otherwise the original remains available for retry or
+// manual recovery.
+func (c *Consumer) routeToDLQOrRetain(ctx context.Context, msg *nats.Msg, msgID string, cause error, reason string) {
+	if c.dlqHandler == nil {
+		c.logger.Warn("DLQ is disabled; retaining failed message in the source stream",
+			zap.String("msg_id", msgID),
+			zap.String("reason", reason),
+			zap.Error(cause),
+		)
+		c.telemetry.RecordDLQDisabled(ctx, c.streamName, c.consumerName)
+		c.retainAfterDLQFailure(ctx, msg, msgID, reason)
+		return
+	}
+
+	if err := c.dlqHandler.RouteToDLQ(ctx, msg, cause); err != nil {
+		c.logger.Error("DLQ publish failed; retaining original message",
+			zap.String("msg_id", msgID),
+			zap.String("reason", reason),
+			zap.Error(err),
+		)
+		c.retainAfterDLQFailure(ctx, msg, msgID, reason)
+		return
+	}
+
+	if err := msg.Ack(); err != nil {
+		c.logger.Warn("failed to ACK original message after DLQ publish",
+			zap.String("msg_id", msgID),
+			zap.Error(err),
+		)
+	}
+}
+
+func (c *Consumer) retainAfterDLQFailure(ctx context.Context, msg *nats.Msg, msgID, reason string) {
+	if c.maxDeliverReached(msg) {
+		c.logger.Error("DLQ terminal failure; original message retained for manual recovery",
+			zap.String("msg_id", msgID),
+			zap.String("reason", reason),
+		)
+		c.telemetry.RecordDLQTerminalFailure(ctx, c.streamName, c.consumerName)
+		return
+	}
+	if err := c.nakWithBackoff(msg); err != nil {
+		c.logger.Warn("failed to NAK original message after DLQ publish failure",
+			zap.String("msg_id", msgID),
+			zap.Error(err),
+		)
+	}
+}
+
+func (c *Consumer) maxDeliverReached(msg *nats.Msg) bool {
+	maxDeliver := c.cfg.NATS.ConsumerRules.MaxDeliver
+	if maxDeliver <= 0 {
+		return false
+	}
+	meta, err := msg.Metadata()
+	return err == nil && int(meta.NumDelivered) >= maxDeliver
 }
 
 // nakWithBackoff calculates the appropriate NAK delay based on delivery attempts.
@@ -274,7 +314,7 @@ func (c *Consumer) nakWithBackoff(msg *nats.Msg) error {
 	if err != nil {
 		return msg.Nak()
 	}
-	
+
 	// attempt is 1-based, index is 0-based
 	attempt := int(meta.NumDelivered)
 	index := attempt - 1
@@ -283,7 +323,7 @@ func (c *Consumer) nakWithBackoff(msg *nats.Msg) error {
 	} else if index < 0 {
 		index = 0
 	}
-	
+
 	return msg.NakWithDelay(c.backoff[index])
 }
 
@@ -296,7 +336,7 @@ func (c *Consumer) applyBackpressure(ctx context.Context) {
 	if delay > 5*time.Second {
 		delay = 5 * time.Second
 	}
-	
+
 	select {
 	case <-time.After(delay):
 	case <-ctx.Done():
@@ -310,19 +350,15 @@ func (c *Consumer) ensureInfrastructure() error {
 	if c.cfg.Publisher.Topic != "" {
 		subjects = append(subjects, c.cfg.Publisher.Topic)
 	}
-	if c.cfg.DLQ.Enabled && c.cfg.DLQ.Subject != "" {
-		subjects = append(subjects, c.cfg.DLQ.Subject)
-	}
-	
 	streamCfg := &nats.StreamConfig{
-		Name:     c.streamName,
-		Subjects: dedupeSubjects(subjects),
+		Name:      c.streamName,
+		Subjects:  dedupeSubjects(subjects),
 		Retention: nats.WorkQueuePolicy, // Defaulting to WorkQueue for queues
-		MaxMsgs:  c.cfg.NATS.StreamLimits.MaxMsgs,
-		MaxBytes: c.cfg.NATS.StreamLimits.MaxBytes,
-		MaxAge:   c.cfg.NATS.StreamLimits.MaxAge,
-		Replicas: c.cfg.NATS.StreamLimits.Replicas,
-		Storage:  nats.FileStorage,
+		MaxMsgs:   c.cfg.NATS.StreamLimits.MaxMsgs,
+		MaxBytes:  c.cfg.NATS.StreamLimits.MaxBytes,
+		MaxAge:    c.cfg.NATS.StreamLimits.MaxAge,
+		Replicas:  c.cfg.NATS.StreamLimits.Replicas,
+		Storage:   nats.FileStorage,
 	}
 	if c.cfg.NATS.StreamLimits.Discard == "new" {
 		streamCfg.Discard = nats.DiscardNew
@@ -331,9 +367,11 @@ func (c *Consumer) ensureInfrastructure() error {
 		streamCfg.Storage = nats.MemoryStorage
 	}
 
-	// Idempotent add/update
-	if _, err := c.js.AddStream(streamCfg); err != nil {
+	if err := c.ensureStream(streamCfg); err != nil {
 		return fmt.Errorf("ensure stream: %w", err)
+	}
+	if err := c.ensureDLQStream(); err != nil {
+		return err
 	}
 
 	// 2. Ensure Consumer
@@ -349,13 +387,50 @@ func (c *Consumer) ensureInfrastructure() error {
 	if c.cfg.NATS.ConsumerRules.ReplayPolicy == "original" {
 		consumerCfg.ReplayPolicy = nats.ReplayOriginalPolicy
 	}
-	
+
 	// Idempotent add/update
 	if _, err := c.js.AddConsumer(c.streamName, consumerCfg); err != nil {
 		return fmt.Errorf("ensure consumer: %w", err)
 	}
 
 	return nil
+}
+
+func (c *Consumer) ensureDLQStream() error {
+	if !c.cfg.DLQ.Enabled {
+		return nil
+	}
+
+	streamCfg := &nats.StreamConfig{
+		Name:      c.streamName + "_DLQ",
+		Subjects:  []string{c.cfg.DLQ.Subject},
+		Retention: nats.LimitsPolicy,
+		Replicas:  c.cfg.NATS.StreamLimits.Replicas,
+		Storage:   nats.FileStorage,
+	}
+	if streamCfg.Replicas == 0 {
+		streamCfg.Replicas = 1
+	}
+	if c.cfg.NATS.StreamLimits.Storage == "memory" {
+		streamCfg.Storage = nats.MemoryStorage
+	}
+	if err := c.ensureStream(streamCfg); err != nil {
+		return fmt.Errorf("ensure DLQ stream %q: %w", streamCfg.Name, err)
+	}
+	return nil
+}
+
+func (c *Consumer) ensureStream(streamCfg *nats.StreamConfig) error {
+	_, err := c.js.StreamInfo(streamCfg.Name)
+	if err == nil {
+		_, err = c.js.UpdateStream(streamCfg)
+		return err
+	}
+	if !isJetStreamResourceNotFound(err) {
+		return err
+	}
+	_, err = c.js.AddStream(streamCfg)
+	return err
 }
 
 // resolveMsgID extracts the ID from headers or metadata.

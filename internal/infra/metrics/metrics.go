@@ -17,23 +17,25 @@ import (
 // documentation aligned with the implementation.
 const (
 	// Metric names.
-	MetricProcessedTotal        = "caatsm_processed_total"
-	MetricFailuresTotal         = "caatsm_failures_total"
-	MetricParseLatencySeconds   = "caatsm_parse_latency_seconds"
-	MetricMessagesTotal         = "caatsm_messages_total"
-	MetricHandleLatencySeconds  = "caatsm_handle_latency_seconds"
-	MetricRetriesTotal          = "caatsm_retries_total"
-	MetricJSAPICallsTotal       = "caatsm_js_api_calls_total"
-	MetricDBQueriesTotal        = "caatsm_db_queries_total"
-	MetricDBQueryLatencySeconds = "caatsm_db_query_latency_seconds"
-	MetricDLQMessagesTotal            = "caatsm_dlq_messages_total"
-	MetricDLQPublishFailures          = "caatsm_dlq_publish_failures_total"
-	MetricPublishFailuresTotal        = "caatsm_publish_failures_total"
-	MetricNATSConsumerPending         = "caatsm_nats_consumer_pending_messages"
-	MetricAFTNValidationErrorsTotal   = "caatsm_aftn_validation_errors_total"
-	MetricMessageGapSeconds           = "caatsm_message_gap_seconds"
-	MetricMessageSequenceGapTotal     = "caatsm_message_sequence_gap_total"
-	MetricConsumerHealthy             = "caatsm_consumer_healthy"
+	MetricProcessedTotal            = "caatsm_processed_total"
+	MetricFailuresTotal             = "caatsm_failures_total"
+	MetricParseLatencySeconds       = "caatsm_parse_latency_seconds"
+	MetricMessagesTotal             = "caatsm_messages_total"
+	MetricHandleLatencySeconds      = "caatsm_handle_latency_seconds"
+	MetricRetriesTotal              = "caatsm_retries_total"
+	MetricJSAPICallsTotal           = "caatsm_js_api_calls_total"
+	MetricDBQueriesTotal            = "caatsm_db_queries_total"
+	MetricDBQueryLatencySeconds     = "caatsm_db_query_latency_seconds"
+	MetricDLQMessagesTotal          = "caatsm_dlq_messages_total"
+	MetricDLQPublishFailures        = "caatsm_dlq_publish_failures_total"
+	MetricDLQTerminalFailures       = "caatsm_dlq_terminal_failures_total"
+	MetricDLQDisabled               = "caatsm_dlq_disabled_messages_total"
+	MetricPublishFailuresTotal      = "caatsm_publish_failures_total"
+	MetricNATSConsumerPending       = "caatsm_nats_consumer_pending_messages"
+	MetricAFTNValidationErrorsTotal = "caatsm_aftn_validation_errors_total"
+	MetricMessageGapSeconds         = "caatsm_message_gap_seconds"
+	MetricMessageSequenceGapTotal   = "caatsm_message_sequence_gap_total"
+	MetricConsumerHealthy           = "caatsm_consumer_healthy"
 
 	// Common label keys.
 	LabelStatus    = "status"
@@ -74,12 +76,14 @@ var (
 	parseLatency     *prometheus.HistogramVec
 
 	// Message handling metrics (per stream / consumer).
-	messagesTotal      *prometheus.CounterVec
-	handleLatency      *prometheus.HistogramVec
-	retriesTotal       *prometheus.CounterVec
-	jsAPICallsTotal    *prometheus.CounterVec
-	dlqMessagesTotal   *prometheus.CounterVec
-	dlqPublishFailures *prometheus.CounterVec
+	messagesTotal        *prometheus.CounterVec
+	handleLatency        *prometheus.HistogramVec
+	retriesTotal         *prometheus.CounterVec
+	jsAPICallsTotal      *prometheus.CounterVec
+	dlqMessagesTotal     *prometheus.CounterVec
+	dlqPublishFailures   *prometheus.CounterVec
+	dlqTerminalFailures  *prometheus.CounterVec
+	dlqDisabled          *prometheus.CounterVec
 	publishFailuresTotal *prometheus.CounterVec
 
 	// Database metrics.
@@ -142,6 +146,14 @@ func initCollectors() {
 		Name: MetricDLQPublishFailures,
 		Help: "Total number of failures when publishing to the DLQ, labelled by stream and consumer.",
 	}, []string{LabelStream, LabelConsumer})
+	dlqTerminalFailures = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: MetricDLQTerminalFailures,
+		Help: "Total number of failed messages retained after DLQ recovery is exhausted.",
+	}, []string{LabelStream, LabelConsumer})
+	dlqDisabled = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: MetricDLQDisabled,
+		Help: "Total number of failed messages retained because DLQ routing is disabled.",
+	}, []string{LabelStream, LabelConsumer})
 
 	publishFailuresTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: MetricPublishFailuresTotal,
@@ -201,6 +213,8 @@ func initCollectors() {
 		jsAPICallsTotal,
 		dlqMessagesTotal,
 		dlqPublishFailures,
+		dlqTerminalFailures,
+		dlqDisabled,
 		publishFailuresTotal,
 		dbQueriesTotal,
 		dbQueryLatency,
@@ -267,6 +281,16 @@ func RecordDLQPublishFailure(stream, consumer string) {
 	dlqPublishFailures.WithLabelValues(labelValue(stream), labelValue(consumer)).Inc()
 }
 
+func RecordDLQTerminalFailure(stream, consumer string) {
+	ensureCollectors()
+	dlqTerminalFailures.WithLabelValues(labelValue(stream), labelValue(consumer)).Inc()
+}
+
+func RecordDLQDisabled(stream, consumer string) {
+	ensureCollectors()
+	dlqDisabled.WithLabelValues(labelValue(stream), labelValue(consumer)).Inc()
+}
+
 // RecordPublishFailure increments the publish failure counter for the given category.
 // This tracks general publish failures (not DLQ-specific).
 func RecordPublishFailure(category string) {
@@ -296,11 +320,11 @@ func RecordJSAPICall(operation string) {
 // JetStream consumer as a gauge, enabling backlog / lag alerts.
 func RecordNATSConsumerPending(stream, consumer string, pending uint64) {
 	ensureCollectors()
-	
+
 	// Validate inputs to ensure metric is recorded correctly
 	streamLabel := labelValue(stream)
 	consumerLabel := labelValue(consumer)
-	
+
 	// Ensure metric is always set, even with empty labels (will be "unknown")
 	if streamLabel == "" {
 		streamLabel = "unknown"
@@ -308,7 +332,7 @@ func RecordNATSConsumerPending(stream, consumer string, pending uint64) {
 	if consumerLabel == "" {
 		consumerLabel = "unknown"
 	}
-	
+
 	// Set the metric value
 	natsConsumerPending.WithLabelValues(streamLabel, consumerLabel).Set(float64(pending))
 }

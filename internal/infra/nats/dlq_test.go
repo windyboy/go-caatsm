@@ -4,9 +4,9 @@ import (
 	"caatsm/internal/infra/config"
 	"caatsm/internal/infra/telemetry"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/nats-io/nats.go"
@@ -21,8 +21,6 @@ type mockPublisher struct {
 	publishErr     error
 	publishData    []byte
 	publishSubject string
-	streamNames    map[string]nats.StreamInfo
-	streamNameErr  error
 }
 
 func (m *mockPublisher) Publish(subj string, data []byte, opts ...nats.PubOpt) (*nats.PubAck, error) {
@@ -34,19 +32,6 @@ func (m *mockPublisher) Publish(subj string, data []byte, opts ...nats.PubOpt) (
 	return &nats.PubAck{Stream: "TEST", Sequence: 1}, nil
 }
 
-func (m *mockPublisher) StreamNameBySubject(subj string, opts ...nats.JSOpt) (string, error) {
-	if m.streamNameErr != nil {
-		return "", m.streamNameErr
-	}
-	if m.streamNames != nil {
-		if _, ok := m.streamNames[subj]; ok {
-			return "TEST_STREAM", nil
-		}
-		return "", fmt.Errorf("subject not found")
-	}
-	return "TEST_STREAM", nil
-}
-
 // mockTelemetryRecorder tracks calls for test assertions.
 type mockTelemetryRecorder struct {
 	dlqMessages        int
@@ -55,17 +40,22 @@ type mockTelemetryRecorder struct {
 
 func (m *mockTelemetryRecorder) RecordProcessingResult(ctx context.Context, status, category string, parseLatency time.Duration) {
 }
-func (m *mockTelemetryRecorder) RecordPublishFailure(ctx context.Context, category string)         {}
-func (m *mockTelemetryRecorder) RecordFailure(stage string)                                         {}
+func (m *mockTelemetryRecorder) RecordPublishFailure(ctx context.Context, category string) {}
+func (m *mockTelemetryRecorder) RecordFailure(stage string)                                {}
 func (m *mockTelemetryRecorder) RecordMessageHandled(ctx context.Context, stream, consumer, result string, elapsed time.Duration) {
 }
-func (m *mockTelemetryRecorder) RecordRetry(ctx context.Context, stream, consumer, reason string)  {}
-func (m *mockTelemetryRecorder) RecordDLQMessage(ctx context.Context, stream, consumer string)      { m.dlqMessages++ }
+func (m *mockTelemetryRecorder) RecordRetry(ctx context.Context, stream, consumer, reason string) {}
+func (m *mockTelemetryRecorder) RecordDLQMessage(ctx context.Context, stream, consumer string) {
+	m.dlqMessages++
+}
 func (m *mockTelemetryRecorder) RecordDLQPublishFailure(ctx context.Context, stream, consumer string) {
 	m.dlqPublishFailures++
 }
-func (m *mockTelemetryRecorder) RecordJSAPICall(operation string)                                   {}
-func (m *mockTelemetryRecorder) RecordAFTNValidationError(ctx context.Context, errorType string)     {}
+func (m *mockTelemetryRecorder) RecordDLQTerminalFailure(ctx context.Context, stream, consumer string) {
+}
+func (m *mockTelemetryRecorder) RecordDLQDisabled(ctx context.Context, stream, consumer string)  {}
+func (m *mockTelemetryRecorder) RecordJSAPICall(operation string)                                {}
+func (m *mockTelemetryRecorder) RecordAFTNValidationError(ctx context.Context, errorType string) {}
 
 var _ = Describe("DLQHandler", func() {
 	var (
@@ -87,30 +77,6 @@ var _ = Describe("DLQHandler", func() {
 		}
 	})
 
-	Describe("ValidateDLQ", func() {
-		It("returns error when publisher is nil", func() {
-			handler.publisher = nil
-			err := handler.ValidateDLQ()
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("JetStream context is nil"))
-		})
-
-		It("returns error when subject is not bound to any stream", func() {
-			mock.streamNameErr = errors.New("no stream found")
-			err := handler.ValidateDLQ()
-			Expect(err).To(HaveOccurred())
-			Expect(err.Error()).To(ContainSubstring("not bound to any JetStream stream"))
-		})
-
-		It("succeeds when subject is bound to a stream", func() {
-			mock.streamNames = map[string]nats.StreamInfo{
-				"caatsm.dlq": {},
-			}
-			err := handler.ValidateDLQ()
-			Expect(err).NotTo(HaveOccurred())
-		})
-	})
-
 	Describe("RouteToDLQ", func() {
 		It("publishes payload with expected fields on success", func() {
 			msg := &nats.Msg{
@@ -130,39 +96,27 @@ var _ = Describe("DLQHandler", func() {
 			Expect(payload["stream"]).To(Equal("TEST_STREAM"))
 			Expect(payload["consumer"]).To(Equal("test-consumer"))
 			Expect(payload["error"]).To(Equal("permanent error"))
-			Expect(payload["body"]).To(Equal("test message body"))
+			Expect(payload["schema_version"]).To(Equal("v1"))
+			Expect(payload["message_id"]).To(Equal("msg-123"))
+			Expect(payload["body_base64"]).To(Equal(base64.StdEncoding.EncodeToString([]byte("test message body"))))
 			Expect(payload["received_at"]).NotTo(BeNil())
-			Expect(payload["transport_msg_id"]).To(Equal("msg-123"))
 		})
 
-	It("includes headers in payload when present", func() {
-		msg := &nats.Msg{
-			Subject: "test",
-			Data:    []byte("data"),
-			Header:  nats.Header{"X-Custom": []string{"val1"}},
-		}
-		_ = handler.RouteToDLQ(context.Background(), msg, errors.New("err"))
-
-		var payload map[string]any
-		Expect(json.Unmarshal(mock.publishData, &payload)).To(Succeed())
-		headers, ok := payload["headers"].(map[string]any)
-		Expect(ok).To(BeTrue())
-		vals, ok := headers["X-Custom"].([]any)
-		Expect(ok).To(BeTrue())
-		Expect(vals).To(ConsistOf("val1"))
-	})
-
-		It("includes reply in payload when present", func() {
+		It("includes headers in payload when present", func() {
 			msg := &nats.Msg{
 				Subject: "test",
 				Data:    []byte("data"),
-				Reply:   "reply.subject",
+				Header:  nats.Header{"X-Custom": []string{"val1"}},
 			}
 			_ = handler.RouteToDLQ(context.Background(), msg, errors.New("err"))
 
 			var payload map[string]any
 			Expect(json.Unmarshal(mock.publishData, &payload)).To(Succeed())
-			Expect(payload["reply"]).To(Equal("reply.subject"))
+			headers, ok := payload["headers"].(map[string]any)
+			Expect(ok).To(BeTrue())
+			vals, ok := headers["X-Custom"].([]any)
+			Expect(ok).To(BeTrue())
+			Expect(vals).To(ConsistOf("val1"))
 		})
 
 		It("returns error when publish fails", func() {
@@ -239,52 +193,5 @@ var _ = Describe("Config DLQ validation", func() {
 		cfg.NATS.ConsumerRules.AckWait = 30 * time.Second
 		err := cfg.Validate()
 		Expect(err).NotTo(HaveOccurred())
-	})
-})
-
-var _ = Describe("Consumer DLQ handler initialization", func() {
-	It("creates DLQ handler when enabled and subject non-empty", func() {
-		cfg := &config.Config{
-			DLQ: config.DLQConfig{Enabled: true, Subject: "caatsm.dlq"},
-		}
-		var handler DLQHandler
-		if cfg.DLQ.Enabled && cfg.DLQ.Subject != "" {
-			handler = &defaultDLQHandler{
-				dlqSubject: cfg.DLQ.Subject,
-				logger:     zaptest.NewLogger(GinkgoT()),
-				telemetry:  telemetry.NewNoop(),
-			}
-		}
-		Expect(handler).NotTo(BeNil())
-	})
-
-	It("does not create DLQ handler when subject is empty", func() {
-		cfg := &config.Config{
-			DLQ: config.DLQConfig{Enabled: true, Subject: ""},
-		}
-		var handler DLQHandler
-		if cfg.DLQ.Enabled && cfg.DLQ.Subject != "" {
-			handler = &defaultDLQHandler{
-				dlqSubject: cfg.DLQ.Subject,
-				logger:     zaptest.NewLogger(GinkgoT()),
-				telemetry:  telemetry.NewNoop(),
-			}
-		}
-		Expect(handler).To(BeNil())
-	})
-
-	It("does not create DLQ handler when disabled", func() {
-		cfg := &config.Config{
-			DLQ: config.DLQConfig{Enabled: false, Subject: "caatsm.dlq"},
-		}
-		var handler DLQHandler
-		if cfg.DLQ.Enabled && cfg.DLQ.Subject != "" {
-			handler = &defaultDLQHandler{
-				dlqSubject: cfg.DLQ.Subject,
-				logger:     zaptest.NewLogger(GinkgoT()),
-				telemetry:  telemetry.NewNoop(),
-			}
-		}
-		Expect(handler).To(BeNil())
 	})
 })

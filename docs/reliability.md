@@ -12,7 +12,7 @@ enabled = true
 subject = "caatsm.dlq"
 ```
 
-- When `dlq.enabled` is `true` and `dlq.subject` is non-empty, **permanent** failures are routed to the DLQ subject.  
+- When `dlq.enabled` is `true` and `dlq.subject` is non-empty, the service creates a dedicated `<stream>_DLQ` JetStream stream with Limits retention. Its capacity and retention are independent of the business WorkQueue stream.
 - A permanent failure is indicated by wrapping an error with `app.Permanent` and is treated as a **poison message**.
 
 Behaviour:
@@ -23,14 +23,13 @@ Behaviour:
      - `subject`, `stream`, `consumer`
      - `error` (stringified cause)
      - `received_at` (DLQ event time)
-     - `body` (raw message body)
-     - `transport_msg_id` (NATS `Nats-Msg-Id` header, if set)
-     - `nats_sequence` (JetStream stream sequence number)
-     - `deliveries` (JetStream delivery count)
-     - `reply` (NATS reply subject, if present)
-     - `headers` (NATS message headers, if any)
+     - `schema_version`, `message_id` (the `Nats-Msg-Id` header, or the stable source stream sequence)
+     - `stream_sequence`, `consumer_sequence`, and `delivery_count`
+     - `error`, `headers`, and `body_base64` (lossless message bytes)
    - The payload is published to `dlq.subject` using JetStream.  
-   - The original message is **ACKed**, so it will not be redelivered.
+   - The original message is **ACKed only after** JetStream confirms the DLQ publish.
+   - If the DLQ publish fails before `max_deliver` is exhausted, the original is delayed with NAK for another attempt. At `max_deliver`, it remains unacknowledged in the source stream and increments `caatsm_dlq_terminal_failures_total`; recover it manually according to the runbook.
+   - With DLQ disabled, failed messages are retained in the source stream and increment `caatsm_dlq_disabled_messages_total`; operators must either enable DLQ or recover them manually.
 
 The DLQ subject should be consumed by an offline repair/analysis tool or operational dashboard that can:
 
@@ -105,7 +104,7 @@ Recommended pattern:
 
 - Keep `max_deliver` modest (e.g. 5).  
 - Use a backoff array such as `[5s, 30s, 2m]`.  
-- Treat messages that still fail after `max_deliver` as candidates for DLQ, via the permanent error/poison message path where applicable.
+- Route a message that reaches `max_deliver` to DLQ. If that publish fails, JetStream will not automatically retry it; use the terminal-failure alert and recover the retained source message manually.
 
 ### JetStream Availability and Auto-Recovery (Dev vs Prod)
 
@@ -149,4 +148,3 @@ Dashboards should combine:
 - Message rates, error rates, and DLQ rates.  
 - NATS consumer statistics (pending, redelivered, ack_pending).  
 - DB health indicators (latency, error counts, connection usage).
-
