@@ -187,7 +187,7 @@ groups:
 
             Check NATS JetStream connectivity and publisher logs.
 
-      # Warning: DLQ publish failures (messages lost)
+      # Warning: DLQ publish failures (the original message is retained)
       - alert: DLQPublishFailures
         expr: rate(caatsm_dlq_publish_failures_total[5m]) > 0
         for: 2m
@@ -197,13 +197,25 @@ groups:
         annotations:
           summary: "DLQ publish failures detected"
           description: |
-            Failed messages cannot be published to DLQ - messages may be lost!
+            Failed messages cannot be published to DLQ. The original message is retained for recovery.
             Failure rate: {{ $value | humanize }} msgs/sec
 
             Stream: {{ $labels.stream }}
             Consumer: {{ $labels.consumer }}
 
             Check DLQ subject configuration and NATS JetStream health.
+
+      - alert: DLQTerminalFailures
+        expr: increase(caatsm_dlq_terminal_failures_total[5m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+          component: dlq
+        annotations:
+          summary: "DLQ terminal failure requires manual recovery"
+          description: |
+            A message exhausted its delivery limit and could not be routed to DLQ.
+            Recover the retained message from the source stream after restoring DLQ health.
 
   - name: caatsm_aftn_validation_details
     interval: 1m

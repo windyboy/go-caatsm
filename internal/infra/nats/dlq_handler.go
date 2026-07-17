@@ -3,6 +3,7 @@ package nats
 import (
 	"caatsm/internal/infra/telemetry"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -15,13 +16,11 @@ import (
 // making it easy to mock in tests without requiring the full JetStreamContext.
 type dlqPublisher interface {
 	Publish(subj string, data []byte, opts ...nats.PubOpt) (*nats.PubAck, error)
-	StreamNameBySubject(subj string, opts ...nats.JSOpt) (string, error)
 }
 
-// DLQHandler defines the interface for dead letter queue operations
+// DLQHandler defines the DLQ operation used by the consumer.
 type DLQHandler interface {
 	RouteToDLQ(ctx context.Context, msg *nats.Msg, cause error) error
-	ValidateDLQ() error
 }
 
 // defaultDLQHandler implements DLQHandler interface
@@ -34,38 +33,44 @@ type defaultDLQHandler struct {
 	telemetry    telemetry.Recorder
 }
 
+type dlqPayload struct {
+	SchemaVersion    string      `json:"schema_version"`
+	MessageID        string      `json:"message_id"`
+	Subject          string      `json:"subject"`
+	Stream           string      `json:"stream"`
+	Consumer         string      `json:"consumer"`
+	StreamSequence   uint64      `json:"stream_sequence"`
+	ConsumerSequence uint64      `json:"consumer_sequence"`
+	DeliveryCount    uint64      `json:"delivery_count"`
+	Error            string      `json:"error"`
+	Headers          nats.Header `json:"headers"`
+	BodyBase64       string      `json:"body_base64"`
+	ReceivedAt       time.Time   `json:"received_at"`
+}
+
 func (h *defaultDLQHandler) RouteToDLQ(ctx context.Context, msg *nats.Msg, cause error) error {
-	return h.routeToDLQInternal(ctx, msg, cause)
-}
-
-func (h *defaultDLQHandler) ValidateDLQ() error {
-	return h.validateDLQInternal()
-}
-
-func (h *defaultDLQHandler) routeToDLQInternal(ctx context.Context, msg *nats.Msg, cause error) error {
-	payload := map[string]any{
-		"subject":          msg.Subject,
-		"stream":           h.streamName,
-		"consumer":         h.consumerName,
-		"error":            cause.Error(),
-		"received_at":      time.Now().UTC(),
-		"body":             string(msg.Data),
-		"transport_msg_id": msg.Header.Get("Nats-Msg-Id"),
+	headers := make(nats.Header, len(msg.Header))
+	for key, values := range msg.Header {
+		headers[key] = append([]string(nil), values...)
 	}
-	// Enrich with JetStream metadata when available
+	payload := dlqPayload{
+		SchemaVersion: "v1",
+		MessageID:     msg.Header.Get("Nats-Msg-Id"),
+		Subject:       msg.Subject,
+		Stream:        h.streamName,
+		Consumer:      h.consumerName,
+		Error:         cause.Error(),
+		Headers:       headers,
+		BodyBase64:    base64.StdEncoding.EncodeToString(msg.Data),
+		ReceivedAt:    time.Now().UTC(),
+	}
 	if meta, err := msg.Metadata(); err == nil {
-		payload["nats_sequence"] = meta.Sequence.Stream
-		payload["deliveries"] = meta.NumDelivered
-	}
-	if msg.Reply != "" {
-		payload["reply"] = msg.Reply
-	}
-	if len(msg.Header) > 0 {
-		headers := make(map[string][]string, len(msg.Header))
-		for k, v := range msg.Header {
-			headers[k] = v
+		payload.StreamSequence = meta.Sequence.Stream
+		payload.ConsumerSequence = meta.Sequence.Consumer
+		payload.DeliveryCount = meta.NumDelivered
+		if payload.MessageID == "" {
+			payload.MessageID = fmt.Sprintf("%s:%d", h.streamName, meta.Sequence.Stream)
 		}
-		payload["headers"] = headers
 	}
 
 	data, err := json.Marshal(payload)
@@ -87,22 +92,5 @@ func (h *defaultDLQHandler) routeToDLQInternal(ctx context.Context, msg *nats.Ms
 	}
 
 	h.telemetry.RecordDLQMessage(ctx, h.streamName, h.consumerName)
-	return nil
-}
-
-func (h *defaultDLQHandler) validateDLQInternal() error {
-	if h.publisher == nil {
-		return fmt.Errorf("JetStream context is nil")
-	}
-
-	_, err := h.publisher.StreamNameBySubject(h.dlqSubject)
-	if err != nil {
-		return fmt.Errorf("DLQ subject %s not bound to any JetStream stream: %w", h.dlqSubject, err)
-	}
-
-	h.logger.Info("DLQ configuration validated",
-		zap.String("dlq_subject", h.dlqSubject),
-	)
-
 	return nil
 }

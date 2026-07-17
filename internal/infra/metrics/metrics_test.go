@@ -50,6 +50,8 @@ var _ = Describe("Metrics", func() {
 			RecordRetry("stream1", "consumer1", RetryReasonProcessorError)
 			RecordDLQMessage("stream1", "consumer1")
 			RecordDLQPublishFailure("stream1", "consumer1")
+			RecordDLQTerminalFailure("stream1", "consumer1")
+			RecordDLQDisabled("stream1", "consumer1")
 			RecordPublishFailure("flightPlan")
 			RecordDBQuery("insert_one", DBResultOK, 10*time.Millisecond)
 			RecordJSAPICall("publish")
@@ -66,6 +68,8 @@ var _ = Describe("Metrics", func() {
 
 			Expect(testutil.ToFloat64(dlqMessagesTotal.WithLabelValues("stream1", "consumer1"))).To(BeNumerically("==", 1))
 			Expect(testutil.ToFloat64(dlqPublishFailures.WithLabelValues("stream1", "consumer1"))).To(BeNumerically("==", 1))
+			Expect(testutil.ToFloat64(dlqTerminalFailures.WithLabelValues("stream1", "consumer1"))).To(BeNumerically("==", 1))
+			Expect(testutil.ToFloat64(dlqDisabled.WithLabelValues("stream1", "consumer1"))).To(BeNumerically("==", 1))
 
 			Expect(testutil.ToFloat64(publishFailuresTotal.WithLabelValues("flightplan"))).To(BeNumerically("==", 1))
 
@@ -97,6 +101,8 @@ func resetMetricsForTest() {
 	jsAPICallsTotal = nil
 	dlqMessagesTotal = nil
 	dlqPublishFailures = nil
+	dlqTerminalFailures = nil
+	dlqDisabled = nil
 	publishFailuresTotal = nil
 	dbQueriesTotal = nil
 	dbQueryLatency = nil

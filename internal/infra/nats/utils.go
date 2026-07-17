@@ -1,27 +1,12 @@
 package nats
 
 import (
-	"context"
 	"errors"
 	"net/url"
 	"strings"
-	"time"
 
 	"github.com/nats-io/nats.go"
 )
-
-// sleepWithContext sleeps for the specified duration, but returns early if the context is canceled.
-// Returns true if the full duration was slept, false if the context was canceled.
-func sleepWithContext(ctx context.Context, duration time.Duration) bool {
-	timer := time.NewTimer(duration)
-	defer timer.Stop()
-	select {
-	case <-timer.C:
-		return true
-	case <-ctx.Done():
-		return false
-	}
-}
 
 // isJetStreamResourceNotFound checks if an error indicates missing JetStream resources.
 func isJetStreamResourceNotFound(err error) bool {

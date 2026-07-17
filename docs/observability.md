@@ -28,6 +28,12 @@ The service exposes Prometheus metrics via the monitoring HTTP server (default `
 - `caatsm_dlq_publish_failures_total{stream,consumer}`  
   Count of failures when attempting to publish messages to the DLQ.
 
+- `caatsm_dlq_terminal_failures_total{stream,consumer}`
+  Count of messages retained in the source stream after DLQ routing cannot be retried.
+
+- `caatsm_dlq_disabled_messages_total{stream,consumer}`
+  Count of failed messages retained because DLQ routing is disabled.
+
 - `caatsm_publish_failures_total{category}`  
   Count of general publish failures (not DLQ-specific), labelled by message category.
 
@@ -281,4 +287,3 @@ Logging is done with Zap. The `internal/infra/log` package standardises fields v
   - `fatal` – programming errors, schema mismatches, or configuration issues requiring operator attention.
 
 Handler and consumer logs should always be emitted through `WithMessageContext` to ensure these fields are present where applicable.
-

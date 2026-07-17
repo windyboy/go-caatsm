@@ -12,6 +12,7 @@ import (
 
 	"caatsm/internal/adapter/dto"
 	"caatsm/internal/adapter/parser"
+	weatherparser "caatsm/internal/adapter/parser/weather"
 	"caatsm/internal/app"
 	"caatsm/internal/infra/config"
 	loginfra "caatsm/internal/infra/log"
@@ -19,6 +20,7 @@ import (
 	postgresinfra "caatsm/internal/infra/postgres"
 	telemetryinfra "caatsm/internal/infra/telemetry"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/nats-io/nats.go"
 	tc "github.com/testcontainers/testcontainers-go"
@@ -82,7 +84,7 @@ func TestJetStreamToTimescaleFlow(t *testing.T) {
 	}
 
 	telemetryRecorder := telemetryinfra.NewNoop()
-	proc := app.NewMessageProcessor(parser.ProvideParser(), repo, publisher, telemetryRecorder, logger, cfg)
+	proc := app.NewMessageProcessor(parser.ProvideParser(weatherparser.NewWeatherParser()), repo, publisher, telemetryRecorder, logger, cfg)
 	consumer, err := natsinfra.ProvideConsumer(conn, js, proc, cfg, telemetryRecorder, logger)
 	if err != nil {
 		t.Fatalf("failed to init consumer: %v", err)

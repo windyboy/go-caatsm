@@ -8,7 +8,9 @@ import (
 	"testing"
 	"time"
 
+	loginfra "caatsm/internal/infra/log"
 	natsinfra "caatsm/internal/infra/nats"
+	telemetryinfra "caatsm/internal/infra/telemetry"
 
 	"github.com/nats-io/nats.go"
 	"github.com/stretchr/testify/assert"
@@ -37,33 +39,19 @@ func TestNATSConsumerRecovery(t *testing.T) {
 	js, err := nc.JetStream()
 	require.NoError(t, err)
 
-	// Test stream recovery
-	streamManager := natsinfra.NewStreamManager(js, "TEST_STREAM", []string{"test.subject"}, nil)
-	err = streamManager.EnsureStream(nil) // nil uses default stream configuration
-	assert.NoError(t, err)
+	cfg := buildTestConfig(natsURL, "postgres://unused")
+	logger, err := loginfra.ProvideLogger(cfg)
+	require.NoError(t, err)
+	defer logger.Sync()
 
-	// Test consumer recovery
-	consumerManager := natsinfra.NewConsumerManager(js, "TEST_STREAM", "test-consumer", "test.subject", nil)
-	consumerConfig := &nats.ConsumerConfig{
-		Durable:   "test-consumer",
-		AckPolicy: nats.AckExplicitPolicy,
-	}
-	err = consumerManager.EnsureConsumer(consumerConfig)
-	assert.NoError(t, err)
+	_, err = natsinfra.ProvideConsumer(nc, js, nil, cfg, telemetryinfra.NewNoop(), logger)
+	require.NoError(t, err)
 
-	// Test pull subscription creation
-	sub, err := consumerManager.CreatePullSubscription()
-	assert.NoError(t, err)
-	sub.Unsubscribe()
-
-	// Test recovery when resources don't exist
-	// Delete the consumer and try recovery
-	err = js.DeleteConsumer("TEST_STREAM", "test-consumer")
+	err = js.DeleteConsumer(cfg.NATS.Stream, cfg.NATS.Consumer)
 	if err != nil && !errors.Is(err, nats.ErrConsumerNotFound) {
 		require.NoError(t, err)
 	}
 
-	// This should recreate the consumer
-	_, err = consumerManager.CreatePullSubscriptionWithRecovery(streamManager, consumerConfig)
+	_, err = natsinfra.ProvideConsumer(nc, js, nil, cfg, telemetryinfra.NewNoop(), logger)
 	assert.NoError(t, err)
 }

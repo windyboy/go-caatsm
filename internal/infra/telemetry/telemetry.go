@@ -39,6 +39,8 @@ type Recorder interface {
 
 	// RecordDLQPublishFailure records a DLQ publish failure.
 	RecordDLQPublishFailure(ctx context.Context, stream, consumer string)
+	RecordDLQTerminalFailure(ctx context.Context, stream, consumer string)
+	RecordDLQDisabled(ctx context.Context, stream, consumer string)
 
 	// RecordJSAPICall records a JetStream API call.
 	RecordJSAPICall(operation string)
@@ -99,6 +101,8 @@ func (n *noopRecorder) RecordDLQMessage(ctx context.Context, stream, consumer st
 
 func (n *noopRecorder) RecordDLQPublishFailure(ctx context.Context, stream, consumer string) {
 }
+func (n *noopRecorder) RecordDLQTerminalFailure(ctx context.Context, stream, consumer string) {}
+func (n *noopRecorder) RecordDLQDisabled(ctx context.Context, stream, consumer string)        {}
 
 func (n *noopRecorder) RecordJSAPICall(operation string) {
 }
@@ -166,6 +170,16 @@ func (c *compositeRecorder) RecordDLQPublishFailure(ctx context.Context, stream,
 		r.RecordDLQPublishFailure(ctx, stream, consumer)
 	}
 }
+func (c *compositeRecorder) RecordDLQTerminalFailure(ctx context.Context, stream, consumer string) {
+	for _, r := range c.recorders {
+		r.RecordDLQTerminalFailure(ctx, stream, consumer)
+	}
+}
+func (c *compositeRecorder) RecordDLQDisabled(ctx context.Context, stream, consumer string) {
+	for _, r := range c.recorders {
+		r.RecordDLQDisabled(ctx, stream, consumer)
+	}
+}
 
 func (c *compositeRecorder) RecordJSAPICall(operation string) {
 	for _, r := range c.recorders {
@@ -219,6 +233,12 @@ func (p *promRecorder) RecordDLQMessage(ctx context.Context, stream, consumer st
 
 func (p *promRecorder) RecordDLQPublishFailure(ctx context.Context, stream, consumer string) {
 	obsmetrics.RecordDLQPublishFailure(stream, consumer)
+}
+func (p *promRecorder) RecordDLQTerminalFailure(ctx context.Context, stream, consumer string) {
+	obsmetrics.RecordDLQTerminalFailure(stream, consumer)
+}
+func (p *promRecorder) RecordDLQDisabled(ctx context.Context, stream, consumer string) {
+	obsmetrics.RecordDLQDisabled(stream, consumer)
 }
 
 func (p *promRecorder) RecordJSAPICall(operation string) {
@@ -320,6 +340,8 @@ func (o *otelRecorder) RecordDLQMessage(ctx context.Context, stream, consumer st
 func (o *otelRecorder) RecordDLQPublishFailure(ctx context.Context, stream, consumer string) {
 	// Intentionally a no-op: this metric is already exposed via the Prometheus recorder (promRecorder).
 }
+func (o *otelRecorder) RecordDLQTerminalFailure(ctx context.Context, stream, consumer string) {}
+func (o *otelRecorder) RecordDLQDisabled(ctx context.Context, stream, consumer string)        {}
 
 func (o *otelRecorder) RecordJSAPICall(operation string) {
 	// Intentionally a no-op: this metric is already exposed via the Prometheus recorder (promRecorder).
@@ -329,5 +351,3 @@ func (o *otelRecorder) RecordAFTNValidationError(ctx context.Context, errorType 
 	// AFTN validation metrics are primarily tracked via Prometheus.
 	// This is a no-op for OTEL recorder.
 }
-
-
