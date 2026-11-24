@@ -207,5 +207,3 @@ func TestRunSeedMixedPublishesCount(t *testing.T) {
 		t.Fatalf("expected %d published messages, got %d", cfg.Count, published)
 	}
 }
-
-

@@ -27,31 +27,36 @@ The NATS integration provides a streamlined, production-ready message processing
 
 ## Architecture
 
-### Architecture
+> See [`docs/architecture.md`](architecture.md) for the authoritative 3-layer architecture blueprint, stream topology, and consumer-side interface design.
 
-The NATS integration follows simplified Clean Architecture with focused components:
+### Architecture Overview
+
+In `internal/nats/`, message consumption and publishing are consolidated with consumer-side `MessageHandler` and `Recorder` interfaces:
 
 ```
-┌─────────────────────────────────────┐
-│         Application Layer           │
-│   (Business logic & processing)     │
-├─────────────────────────────────────┤
-│         Infrastructure Layer        │
-│   (NATS implementation)             │
-│                                     │
-│   ┌─────────────────────────────┐   │
-│   │        Consumer             │   │
-│   │   ┌─────────────────────┐   │   │
-│   │   │  MessageFetcher     │   │   │
-│   │   │  MessageProcessor   │   │   │
-│   │   │  DLQHandler         │   │   │
-│   │   └─────────────────────┘   │   │
-│   └─────────────────────────────┘   │
-│                                     │
-│   ┌─────────────────────────────┐   │
-│   │       Publisher             │   │
-│   └─────────────────────────────┘   │
-└─────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────┐
+│                Pipeline Layer (internal/pipeline)         │
+│                    Processor.Handle()                     │
+└──────────────────────────▲────────────────────────────────┘
+                           │ implements nats.MessageHandler
+┌──────────────────────────┴────────────────────────────────┐
+│                  NATS Layer (internal/nats)               │
+│                                                           │
+│  ┌─────────────────────────────────────────────────────┐  │
+│  │                     Consumer                        │  │
+│  │  - Inbound/Outbound/DLQ 3-stream topology           │  │
+│  │  - ShouldAutoProvision() prod read-only check       │  │
+│  │  - Start(ctx) / processBatch() / processMsg()       │  │
+│  │  - ConsumerMonitor (lag, message gap, seq gap)      │  │
+│  │  - defaultDLQHandler (RouteToDLQ)                   │  │
+│  └─────────────────────────────────────────────────────┘  │
+│                                                           │
+│  ┌─────────────────────────────────────────────────────┐  │
+│  │                     Publisher                       │  │
+│  │  - Implements pipeline.Publisher                    │  │
+│  │  - Injects W3C TraceContext headers                 │  │
+│  └─────────────────────────────────────────────────────┘  │
+└───────────────────────────────────────────────────────────┘
 ```
 
 ### Component Interaction
@@ -59,8 +64,7 @@ The NATS integration follows simplified Clean Architecture with focused componen
 ```
 ┌──────────────┐
 │   Publisher  │
-│              │
-│ 1. Serialize │
+│ 1. Marshal   │
 │ 2. Publish   │
 └──────┬───────┘
        │
@@ -83,195 +87,61 @@ The NATS integration follows simplified Clean Architecture with focused componen
           │ Fetch Batch
           ▼
 ┌─────────────────────────────────────┐
-│         Consumer                    │
-│                                     │
-│  ┌──────────────────────────────┐   │
-│  │   MessageFetcher             │   │
-│  │   - FetchBatch()             │   │
-│  │   - HandleFetchError()       │   │
-│  └──────────┬───────────────────┘   │
-│             │                       │
-│  ┌──────────▼───────────────────┐   │
-│  │   MessageProcessor           │   │
-│  │   - ProcessBatch()           │   │
-│  │   - ProcessMessage()         │   │
-│  └──────────┬───────────────────┘   │
-│             │                       │
-│  ┌──────────▼───────────────────┐   │
-│  │   DLQHandler                 │   │
-│  │   - RouteToDLQ()             │   │
-│  └──────────────────────────────┘   │
-└─────────────────────────────────────┘
-          │
-          │ ACK/NAK
-          ▼
-┌─────────────────────────────────────┐
-│    Application Processor            │
-│    (Business Logic)                 │
+│        Consumer (consumer.go)       │
+│  - PullSubscribe + Fetch loop       │
+│  - ConsumerMonitor.TrackMessage     │
+│  - processMsg -> processor.Handle() │
+│  - Ack / DLQ+Ack / NakWithDelay     │
 └─────────────────────────────────────┘
 ```
 
-### Architecture Principles
+*(Note: Currently `Consumer.ensureInfrastructure()` binds inbound `subscription.topic`, outbound `publisher.topic`, and `dlq.subject` to the single `WorkQueuePolicy` stream `TELEGRAM`. Splitting these into 3 dedicated streams is planned in `docs/architecture.md`.)*
 
-1. **Dependency Inversion**: High-level modules (Consumer, Publisher) depend on abstractions (interfaces), not concrete implementations
-2. **Separation of Concerns**: Each component has a single responsibility:
-    - `MessageFetcher`: Handles message retrieval
-    - `MessageProcessor`: Handles message processing logic
-    - `DLQHandler`: Handles dead letter queue routing
-3. **Testability**: All components can be mocked and tested independently
-4. **Extensibility**: New implementations can be added without modifying existing code
+### Design Goals
+
+1. **Cohesion**: Pull subscription, batch processing, backoff, and DLQ routing live inside `Consumer` with focused helpers (`ConsumerMonitor`, `DLQHandler`).
+2. **Separation of Concerns**:
+   - `Consumer`: Stream/consumer setup, pull loop, ACK/NAK/DLQ handling.
+   - `ConsumerMonitor`: Pending backlog, message gap, and sequence gap metrics.
+   - `defaultDLQHandler`: Dead-letter payload construction and publishing.
+   - `Publisher`: Downstream JSON publishing with `Nats-Msg-Id` deduplication.
+3. **Target Decoupling**: Decoupling `Consumer` from concrete `*app.MessageProcessor` via a `MessageHandler` interface is planned in `docs/architecture.md` (Phase 1).
 
 ## Logic Flow
 
 ### Consumer Processing Flow
 
-The consumer follows a simplified processing loop:
-
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    Consumer Start                           │
-│  1. Initialize components (Fetcher, Processor, DLQ)        │
-│  2. Start main processing loop                              │
+│  1. ensureInfrastructure() (AddStream / AddConsumer)        │
+│  2. Start ConsumerMonitor goroutine                         │
+│  3. Create PullSubscribe + record initial NumPending        │
 └──────────────────────┬──────────────────────────────────────┘
                        │
                        ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                    Main Loop                                │
 │                                                             │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │  Step 1: Check Context                               │  │
-│  │  - If cancelled, exit gracefully                     │  │
-│  └──────────────────┬───────────────────────────────────┘  │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │  Step 1: Check Context                               │   │
+│  │  - If cancelled, return nil                          │   │
+│  └──────────────────┬───────────────────────────────────┘   │
 │                     │                                       │
-│  ┌──────────────────▼───────────────────────────────────┐  │
-│  │  Step 2: Fetch Batch                                 │  │
-│  │  - Fetch up to BatchSize messages                    │  │
-│  │  - Wait up to BatchTimeout                           │  │
-│  │  - Handle fetch errors with backoff                  │  │
-│  └──────────────────┬───────────────────────────────────┘  │
+│  ┌──────────────────▼───────────────────────────────────┐   │
+│  │  Step 2: Fetch Batch                                 │   │
+│  │  - sub.Fetch(batchSize, MaxWait(batchTimeout))       │   │
+│  │  - nats.ErrTimeout -> continue                       │   │
+│  │  - Other error -> warn log + 100ms sleep + continue  │   │
+│  └──────────────────┬───────────────────────────────────┘   │
 │                     │                                       │
-│         ┌───────────┴───────────┐                          │
-│         │                       │                          │
-│    Success                  Error                          │
-│         │                       │                          │
-│         │              ┌────────▼────────┐                │
-│         │              │ Apply Backoff   │                │
-│         │              │ Continue Loop   │                │
-│         │              └─────────────────┘                │
-│         │                                                 │
-│         └──────────────────┬──────────────────────────────┘
-│                            │
-│  ┌─────────────────────────▼─────────────────────────────┐  │
-│  │  Step 3: Process Batch                               │  │
-│  │  - For each message in batch:                        │  │
-│  │    * Extract message ID                              │  │
-│  │    * Call processor.Handle()                         │  │
-│  │    * Handle result (ACK/NAK/DLQ)                     │  │
-│  └──────────────────┬───────────────────────────────────┘  │
-│                     │                                       │
-│         ┌───────────┴───────────┐                          │
-│         │                       │                          │
-│    Success                  Error                          │
-│         │                       │                          │
-│         │              ┌────────▼────────┐                │
-│         │              │ Classify Error  │                │
-│         │              └────────┬────────┘                │
-│         │                       │                          │
-│         │         ┌─────────────┴─────────────┐          │
-│         │         │                           │          │
-│         │    Permanent                    Transient      │
-│         │         │                           │          │
-│         │  ┌──────▼──────┐          ┌────────▼──────┐   │
-│         │  │ Route to DLQ│          │ NAK with delay│   │
-│         │  │ ACK message │          └────────────────┘   │
-│         │  └──────┬──────┘                              │
-│         │         │                                       │
-│         └─────────┴───────────────────────────────────────┘
-│                     │
-│                     └─────────── Loop ─────────────────────┘
-└─────────────────────────────────────────────────────────────┘
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Consumer Start                           │
-│  1. Initialize components (Fetcher, Processor, DLQ)        │
-│  2. Create/validate JetStream resources                     │
-│  3. Start advisory DLQ handler (if enabled)                 │
-│  4. Start metrics collection goroutine                      │
-└──────────────────────┬──────────────────────────────────────┘
-                       │
-                       ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    Main Loop                                │
-│                                                             │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │  Step 1: Check Context                               │  │
-│  │  - If cancelled, exit gracefully                     │  │
-│  └──────────────────┬───────────────────────────────────┘  │
-│                     │                                       │
-│  ┌──────────────────▼───────────────────────────────────┐  │
-│  │  Step 2: Fetch Batch                                 │  │
-│  │  - Fetch up to BatchSize messages                    │  │
-│  │  - Wait up to BatchTimeout                           │  │
-│  │  - Handle fetch errors with recovery                 │  │
-│  └──────────────────┬───────────────────────────────────┘  │
-│                     │                                       │
-│         ┌───────────┴───────────┐                          │
-│         │                       │                          │
-│    Success                  Error                          │
-│         │                       │                          │
-│         │              ┌────────▼────────┐                │
-│         │              │ Handle Error    │                │
-│         │              │ - Classify type │                │
-│         │              │ - Apply backoff │                │
-│         │              │ - Recover if dev│                │
-│         │              └────────┬────────┘                │
-│         │                       │                          │
-│         │              ┌────────▼────────┐                │
-│         │              │ Continue?       │                │
-│         │              └────────┬────────┘                │
-│         │                       │                          │
-│         │              Yes      │ No                       │
-│         │              │        │                          │
-│         │              └───┬────┴───┐                      │
-│         │                  │        │                      │
-│         │              Continue   Exit                    │
-│         │                  │                              │
-│         └──────────────────┘                              │
-│                     │                                       │
-│  ┌──────────────────▼───────────────────────────────────┐  │
-│  │  Step 3: Process Batch                               │  │
-│  │  - For each message in batch:                        │  │
-│  │    * Check context                                   │  │
-│  │    * Extract message ID                              │  │
-│  │    * Create tracing span                             │  │
-│  │    * Call processor.Handle()                         │  │
-│  │    * Handle result (ACK/NAK/DLQ)                     │  │
-│  └──────────────────────────────────────────────────────┘  │
-│                     │                                       │
-│         ┌───────────┴───────────┐                          │
-│         │                       │                          │
-│    Success                  Error                          │
-│         │                       │                          │
-│         │              ┌────────▼────────┐                │
-│         │              │ Classify Error  │                │
-│         │              └────────┬────────┘                │
-│         │                       │                          │
-│         │         ┌─────────────┴─────────────┐          │
-│         │         │                           │          │
-│         │    Permanent                    Transient      │
-│         │         │                           │          │
-│         │  ┌──────▼──────┐          ┌────────▼──────┐   │
-│         │  │ Route to DLQ│          │ NAK with delay│   │
-│         │  │ ACK message │          │ Apply backpres│   │
-│         │  └──────┬──────┘          └────────┬──────┘   │
-│         │         │                           │          │
-│         └─────────┴───────────────────────────┘          │
-│                     │                                       │
-│  ┌──────────────────▼───────────────────────────────────┐  │
-│  │  Step 4: Reset Error Streak (if successful)          │  │
-│  └──────────────────┬───────────────────────────────────┘  │
-│                     │                                       │
-│                     └─────────── Loop ─────────────────────┘
+│  ┌──────────────────▼───────────────────────────────────┐   │
+│  │  Step 3: Process Batch                               │   │
+│  │  - For each message in batch:                        │   │
+│  │    * monitor.TrackMessage(msg)                       │   │
+│  │    * processMsg -> processor.Handle(ctx, data, id)   │   │
+│  │    * Handle result (ACK / DLQ+ACK / NAK with delay)  │   │
+│  └──────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -454,50 +324,49 @@ The consumer uses JetStream mode exclusively for persistent, durable message pro
 - **TLS Support**: Secure connections with client certificates
 - **Basic Monitoring**: Essential metrics collection
 
-#### Component Logic
+#### Component Details (`internal/nats/consumer.go`)
 
-**MessageFetcher (`defaultMessageFetcher`)**
-- Fetches batches of messages using `sub.Fetch(batchSize, MaxWait(timeout))`
-- Handles fetch errors with simple exponential backoff
-- Context-aware: respects cancellation signals
+**Fetch Loop (`Consumer.Start`)**
+- Pulls batches via `sub.Fetch(batchSize, nats.Context(ctx), nats.MaxWait(batchTimeout))`
+- Continues immediately on `nats.ErrTimeout`; exits on `context.Canceled`/`DeadlineExceeded`; backs off and triggers JetStream recovery on other fetch errors
 
-**MessageProcessor (`defaultBatchProcessor`)**
+**Batch & Message Handling (`Consumer.processBatch` / `Consumer.processMsg`)**
 - Processes messages sequentially within a batch
-- Extracts message IDs (header → metadata → generated)
-- Calls application processor for business logic
-- Handles ACK/NAK based on processing results
+- Calls `ConsumerMonitor.TrackMessage(msg)` for gap/sequence tracking
+- Extracts upstream W3C `TraceContext` from NATS headers via `otel.GetTextMapPropagator().Extract`
+- Extracts message IDs (`Nats-Msg-Id` header -> `js-<stream_seq>` fallback -> `"unknown"`)
+- Calls `handler.Handle(ctx, msg.Data, msgID)` and handles ACK / NAK-with-backoff / DLQ (falling back to NAK+backoff if `RouteToDLQ` fails)
 
-**DLQHandler (`defaultDLQHandler`)**
-- Routes permanent errors to DLQ with basic metadata
-- Validates DLQ stream exists at startup
-- Publishes DLQ messages with error context
+**DLQHandler (`defaultDLQHandler` in `internal/nats/dlq.go`)**
+- Routes permanent errors (`pipeline.IsPermanent(err)`) to `dlq.subject` (`nats.dlq_stream`) with JSON payload (`subject`, `stream`, `consumer`, `error`, `received_at`, `body`)
+- `ValidateDLQ()` checks stream binding for `dlq.subject` during startup when DLQ is enabled
 
 #### Configuration
 ```toml
-[NATS]
-URL = "nats://localhost:4222"
-Stream = "TELEGRAM"
-Consumer = "telegram-consumer"
+[nats]
+url = "nats://localhost:4222"
+stream = "TELEGRAM"
+consumer = "telegram-consumer"
 
-[NATS.Auth]
-Token = "your-token"  # Optional token authentication
-TLSEnabled = true     # Enable TLS
-TLSCertFile = "/path/to/client.crt"  # Client certificate
-TLSKeyFile = "/path/to/client.key"   # Client private key
-TLSCAFile = "/path/to/ca.crt"        # CA certificate
+[nats.auth]
+token = "your-token"  # Optional token authentication
+tls_enabled = true     # Enable TLS
+tls_cert_file = "/path/to/client.crt"  # Client certificate
+tls_key_file = "/path/to/client.key"   # Client private key
+tls_ca_file = "/path/to/ca.crt"        # CA certificate
 
-[NATS.ConsumerRules]
-AckWait = "30s"
-MaxDeliver = 3
-MaxAckPending = 1000
+[nats.consumer_rules]
+ack_wait = "30s"
+max_deliver = 3
+max_ack_pending = 1000
 
-[DLQ]
-Enabled = true
-Subject = "caatsm.dlq"
+[dlq]
+enabled = true
+subject = "caatsm.dlq"
 
-[App]
-BatchSize = 50
-BatchTimeout = "2s"
+[app]
+batch_size = 50
+batch_timeout = "2s"
 ```
 
 ### Publisher
@@ -513,22 +382,22 @@ The publisher handles message publishing with deduplication and observability.
 #### Component Logic
 
 **Publishing Flow**
-1. **Validation**: Checks that publisher topic is configured
-2. **Serialization**: Marshals message to JSON using `json.Marshal()`
-3. **ID Extraction**: Extracts UUID from message (if `ParsedTelegram` type) or generates new UUID
-4. **Header Attachment**: Sets `Nats-Msg-Id` header for deduplication
-5. **Publishing**: Calls `js.PublishMsg()` to publish to JetStream
-6. **Error Handling**: Classifies errors as transient (`ErrNoResponders`) or permanent
+1. **Validation**: Checks that publisher topic is configured and `msg != nil`
+2. **Serialization**: Marshals `*telegram.Message` to JSON using `json.Marshal()`
+3. **ID Extraction**: Uses `msg.UUID` if non-empty or generates a new UUID
+4. **Header Attachment**: Sets `Nats-Msg-Id` for deduplication and injects W3C TraceContext via `otel.GetTextMapPropagator().Inject`
+5. **Publishing**: Calls `js.PublishMsg(jsMsg, nats.Context(ctx))` to publish to JetStream
+6. **Error Handling**: Classifies `ErrNoResponders`, `ErrTimeout`, connection loss, and context errors as transient; others as `pipeline.Permanent`
 
 **Deduplication Strategy**
 - Uses `Nats-Msg-Id` header for JetStream deduplication
-- Extracts UUID from `ParsedTelegram.Uuid` field if available
+- Extracts UUID from `msg.UUID` (`*telegram.Message`) if available
 - Falls back to generating new UUID if not present
 - JetStream uses this header to prevent duplicate message processing
 
 **Error Classification**
-- **Transient**: `nats.ErrNoResponders` - JetStream temporarily unavailable, should retry
-- **Permanent**: Other errors - configuration issues, should fail fast
+- **Transient**: `nats.ErrNoResponders`, `nats.ErrTimeout`, connection closed/disconnected, context deadline/cancellation - wrapped without `pipeline.Permanent` for retry
+- **Permanent**: Empty topic, marshaling failure, or non-transient broker errors - wrapped with `pipeline.Permanent`
 
 ### Error Handling
 
@@ -543,21 +412,16 @@ The publisher handles message publishing with deduplication and observability.
 ### Dead Letter Queue (DLQ)
 
 #### Features
-- **Rich Metadata**: Includes original message, error details, delivery attempts
-- **Stream Validation**: Validates DLQ stream exists at startup
-- **Advisory Processing**: Handles MaxDeliver exhaustion automatically
-- **Operational Visibility**: Comprehensive logging and metrics
+- **Error Context**: Includes `subject`, `stream`, `consumer`, `error`, `received_at`, and raw `body`
+- **Operational Visibility**: Structured error logging and Prometheus metrics (`caatsm_dlq_messages_total`, `caatsm_dlq_publish_failures_total`)
 
 #### DLQ Message Format
 ```json
 {
-  "transport_msg_id": "uuid",
-  "subject": "original.subject",
+  "subject": "telegram.serial",
   "stream": "TELEGRAM",
   "consumer": "telegram-consumer",
-  "nats_sequence": 12345,
-  "deliveries": 3,
-  "error": "processing failed: invalid format",
+  "error": "parser error: invalid telegram header",
   "received_at": "2024-01-01T12:00:00Z",
   "body": "original message data"
 }
@@ -599,10 +463,10 @@ The publisher handles message publishing with deduplication and observability.
 
 ### Environment Variables
 ```bash
-CAATSM_NATS_URL=nats://localhost:4222
-CAATSM_NATS_TOKEN=your-token  # Optional
-CAATSM_DLQ_ENABLED=true
-CAATSM_DLQ_SUBJECT=caatsm.dlq
+CAATSM_NATS__URL=nats://localhost:4222
+CAATSM_NATS__AUTH__TOKEN=your-token  # Optional
+CAATSM_DLQ__ENABLED=true
+CAATSM_DLQ__SUBJECT=caatsm.dlq
 ```
 
 ### TLS Configuration
@@ -650,9 +514,9 @@ import (
     "context"
     "time"
 
-    "caatsm/internal/infra/config"
-    "caatsm/internal/infra/nats"
-    "caatsm/internal/app"
+    "caatsm/internal/config"
+    "caatsm/internal/nats"
+    "caatsm/internal/pipeline"
     "go.uber.org/zap"
 )
 
@@ -660,15 +524,17 @@ func main() {
     // 1. Load configuration
     cfg := &config.Config{
         NATS: config.NATSConfig{
-            URL:    "nats://localhost:4222",
-            Stream: "TELEGRAM",
-            Consumer: "telegram-consumer",
+            URL:           "nats://localhost:4222",
+            Stream:        "TELEGRAM",
+            PublishStream: "TELEGRAM_OUT",
+            DLQStream:     "TELEGRAM_DLQ",
+            Consumer:      "telegram-consumer",
             Auth: config.NATSAuthConfig{
                 Token: "your-token", // Optional
             },
-            ConsumerRules: config.ConsumerRules{
-                AckWait:    30 * time.Second,
-                MaxDeliver: 3,
+            ConsumerRules: config.ConsumerRulesConfig{
+                AckWait:       30 * time.Second,
+                MaxDeliver:    3,
                 MaxAckPending: 1000,
             },
         },
@@ -682,46 +548,45 @@ func main() {
         },
     }
 
+    logger := zap.NewNop()
+
     // 2. Create NATS connection
-    nc, err := nats.ProvideNATSConn(cfg, zap.NewNop())
+    nc, err := nats.Connect(cfg, logger)
     if err != nil {
         panic(err)
     }
     defer nc.Close()
 
     // 3. Get JetStream context
-    js, err := nats.ProvideJetStream(nc, cfg, zap.NewNop())
+    js, err := nats.JetStream(nc, logger)
     if err != nil {
         panic(err)
     }
 
-    // 4. Create message processor (your business logic)
-    processor := app.NewMessageProcessor(/* dependencies */)
+    // 4. Create pipeline processor (your business logic implementing nats.MessageHandler)
+    handler := pipeline.NewProcessor(/* parser, validator, store, publisher, recorder, logger, opts */)
 
-    // 5. Create logger
-    logger := zap.NewNop()
+    // 5. Create telemetry recorder
+    rec := /* observability.NewRecorder() or nil for noop */
 
-    // 6. Create telemetry recorder
-    telemetry := /* your telemetry implementation */
-
-    // 7. Create consumer
-    consumer, err := nats.ProvideConsumer(
+    // 6. Create consumer
+    consumer, err := nats.NewConsumer(
         nc,
         js,
-        processor,
+        handler,
         cfg,
-        telemetry,
+        rec,
         logger,
     )
     if err != nil {
         panic(err)
     }
 
-    // 8. Start consumer with context
+    // 7. Start consumer with context
     ctx, cancel := context.WithCancel(context.Background())
     defer cancel()
 
-    // 9. Start consuming (blocks until context cancelled)
+    // 8. Start consuming (blocks until context cancelled)
     if err := consumer.Start(ctx); err != nil {
         logger.Error("Consumer stopped", zap.Error(err))
     }
@@ -736,27 +601,28 @@ Simple example of publishing a message:
 package main
 
 import (
-    "caatsm/internal/adapter/dto"
-    "caatsm/internal/infra/nats"
-    "github.com/google/uuid"
+    "context"
+    "fmt"
+
+    "caatsm/internal/pipeline"
+    "caatsm/internal/telegram"
 )
 
-func publishMessage(publisher port.Publisher) error {
+func publishMessage(ctx context.Context, publisher pipeline.Publisher) error {
     // Create message with UUID
-    message := &dto.ParsedTelegram{
-        Uuid: uuid.NewString(), // Used for deduplication
-        Data: []byte("telegram message data"),
-        // ... other fields
-    }
-    
+    message := telegram.NewMessage()
+    message.UUID = telegram.NewUUID() // Used for Nats-Msg-Id deduplication
+    message.Content = "telegram message data"
+
     // Publish - automatically handles:
     // - JSON serialization
     // - UUID header attachment
-    // - Error classification
-    if err := publisher.Publish(message); err != nil {
+    // - W3C TraceContext injection
+    // - Transient vs Permanent error classification
+    if err := publisher.Publish(ctx, message); err != nil {
         return fmt.Errorf("failed to publish: %w", err)
     }
-    
+
     return nil
 }
 ```
@@ -788,14 +654,17 @@ for _, msg := range msgs {
     )
     
     // Step 2c: Process message (your business logic)
-    err := processor.Handle(ctx, msg.Data, msgID)
+    err := handler.Handle(ctx, msg.Data, msgID)
     
     // Step 2d: Handle result
     if err != nil {
-        if app.IsPermanent(err) {
-            // Permanent error: route to DLQ and ACK
-            dlqHandler.RouteToDLQ(ctx, msg, err)
-            msg.Ack()
+        if pipeline.IsPermanent(err) {
+            // Permanent error: route to DLQ; only ACK if DLQ publish succeeds
+            if dlqErr := dlqHandler.RouteToDLQ(ctx, msg, err); dlqErr != nil {
+                msg.NakWithDelay(calculateBackoff(msg))
+            } else {
+                msg.Ack()
+            }
         } else {
             // Transient error: NAK with backoff
             msg.NakWithDelay(calculateBackoff(msg))
@@ -814,22 +683,24 @@ for _, msg := range msgs {
 Different error scenarios and how they're handled:
 
 ```go
-// Scenario 1: Transient Error (Network Issue)
-func processMessage(msg *nats.Msg) error {
-    // Simulate network error
+// Scenario 1: Transient Error (Network / DB Issue)
+func handleMsg(ctx context.Context, raw []byte) error {
+    // Return a normal wrapped error when downstream dependency is temporarily unavailable
     if networkDown {
-        return app.NewTransientError("network unavailable")
+        return fmt.Errorf("network unavailable")
     }
     // Result: Message is NAK'd, will be redelivered with backoff
+    return nil
 }
 
 // Scenario 2: Permanent Error (Invalid Format)
-func processMessage(msg *nats.Msg) error {
+func handleMsgPermanent(ctx context.Context, raw []byte) error {
     var data MyStruct
-    if err := json.Unmarshal(msg.Data, &data); err != nil {
-        return app.NewPermanentError("invalid JSON format")
+    if err := json.Unmarshal(raw, &data); err != nil {
+        return pipeline.Permanent(fmt.Errorf("invalid JSON format: %w", err))
     }
-    // Result: Message routed to DLQ, original message ACK'd
+    // Result: Message routed to DLQ (if enabled), original message ACK'd
+    return nil
 }
 
 // Scenario 3: Backpressure Trigger
@@ -840,26 +711,22 @@ func processMessage(msg *nats.Msg) error {
 
 // Scenario 4: MaxDeliver Exhausted
 // When message fails MaxDeliver times (default: 3):
-// - Message is not automatically handled
+// - JetStream stops redelivering the message
 // - Consider monitoring JetStream consumer info for failed deliveries
 ```
 
 ### Example 5: DLQ Message Structure
 
-What a DLQ message looks like:
+What a DLQ message looks like (matching `internal/nats/dlq.go`):
 
 ```json
 {
-  "transport_msg_id": "550e8400-e29b-41d4-a716-446655440000",
-  "subject": "telegram.orders.12345",
+  "subject": "telegram.serial",
   "stream": "TELEGRAM",
   "consumer": "telegram-consumer",
-  "nats_sequence": 12345,
-  "deliveries": 3,
-  "error": "permanent error: invalid message format",
+  "error": "parser error: invalid telegram header",
   "received_at": "2024-01-15T10:30:00Z",
-  "body": "{\"order_id\":123,\"invalid\":\"data\"}",
-  "advisory_source": false
+  "body": "raw telegram payload"
 }
 ```
 
@@ -933,12 +800,12 @@ How to monitor the consumer:
 
 ### Basic Consumer Setup
 ```go
-consumer, err := natsinfra.ProvideConsumer(
+consumer, err := nats.NewConsumer(
     natsConn,
     jetStream,
-    messageProcessor,
+    processor,
     config,
-    telemetryRecorder,
+    recorder,
     logger,
 )
 if err != nil {
@@ -953,9 +820,8 @@ return consumer.Start(ctx)
 
 ### Publishing Messages
 ```go
-publisher, err := natsinfra.ProvidePublisher(
+publisher, err := nats.NewPublisher(
     jetStream,
-    natsConn,
     config,
     logger,
 )
@@ -963,9 +829,9 @@ if err != nil {
     return err
 }
 
-err = publisher.Publish(&dto.ParsedTelegram{
-    Uuid: uuid.NewString(),
-    Data: telegramData,
+err = publisher.Publish(ctx, &telegram.Message{
+    UUID:    telegram.NewUUID(),
+    Content: telegramText,
 })
 ```
 
@@ -975,13 +841,13 @@ type CustomProcessor struct {
     // implementation
 }
 
-func (p *CustomProcessor) ProcessMessage(ctx context.Context, msg *nats.Msg) error {
+func (p *CustomProcessor) Handle(ctx context.Context, raw []byte, msgID string) error {
     // Business logic here
     if shouldRetry := someCondition(); shouldRetry {
-        return app.NewTransientError("temporary failure")
+        return fmt.Errorf("temporary failure")
     }
-    if isInvalid := validateMessage(msg); isInvalid {
-        return app.NewPermanentError("invalid message format")
+    if isInvalid := validateMessage(raw); isInvalid {
+        return pipeline.Permanent(fmt.Errorf("invalid message format"))
     }
     return nil
 }

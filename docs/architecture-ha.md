@@ -1,20 +1,28 @@
 ## High-Level Architecture and HA / Scaling
 
+> For the full software architecture baseline, dependency rules, and target 3-layer consolidation plan, see [`docs/architecture.md`](architecture.md).
+
 ### Components
 
 - **NATS / JetStream** – message broker providing durable storage and redelivery:
-  - Stream: `TELEGRAM` (configurable via `nats.stream`).  
-  - Consumer: durable pull consumer per deployment (`nats.consumer`).  
+  - Stream: `TELEGRAM` (configurable via `nats.stream`).
+  - Consumer: durable pull consumer per deployment (`nats.consumer`).
   - Subjects:
-    - Inbound telegrams: `subscription.topic` (e.g. `telegram.serial`).  
-    - Parsed telegrams (publisher): `publisher.topic` (e.g. `telegram.json`).  
+    - Inbound telegrams: `subscription.topic` (e.g. `telegram.serial`).
+    - Parsed telegrams (publisher): `publisher.topic` (e.g. `telegram.json`).
     - Dead-letter: `dlq.subject` (e.g. `caatsm.dlq`).
+  - Dedicated JetStream streams isolate workload retention policies:
+    - **Inbound (`nats.stream`, `WorkQueuePolicy`)**: distributes `subscription.topic` messages across queue/durable pull consumers with `AckWait` + `MaxDeliver` retries.
+    - **Outbound (`nats.publish_stream`, `LimitsPolicy`)**: retains republished parsed telegrams on `publisher.topic` so multiple downstream fan-out consumers can subscribe independently.
+    - **DLQ (`nats.dlq_stream`, `LimitsPolicy`)**: retains failed/poison messages routed to `dlq.subject` for audit and replay.
 
 - **Receiver service (`caatsm`)**:
-  - NATS JetStream **pull consumer** (`internal/infra/nats/consumer.go`).  
-  - Telegram parser and domain model (`internal/app`, `internal/adapter/parser`, `internal/domain`).  
-  - PostgreSQL repository (`internal/infra/postgres`).  
-  - Monitoring/observability server (`internal/infra/monitoring`).
+  - CLI entrypoint, OTel bootstrap, explicit dependency wiring, and reverse-order graceful shutdown (`cmd/receiver/main.go`).
+  - NATS JetStream **pull consumer**, publisher, monitor & DLQ handler (`internal/nats/`).
+  - Application orchestration pipeline (`internal/pipeline/`).
+  - Pure zero-IO domain models, composite `Router`, `AFTNValidator`, and aviation/weather parsers (`internal/telegram/`, `internal/telegram/aviation/`, `internal/telegram/weather/`).
+  - PostgreSQL/TimescaleDB repository & 17-column row mapper (`internal/postgres/`).
+  - Consolidated logging, OTel SDK, Prometheus metrics, and HTTP health/metrics server (`internal/observability/`).
 
 ### HA and Failover
 
@@ -64,7 +72,7 @@ Tuning:
    - `/readyz` returns 503, signalling this instance should be removed from traffic.
 
 2. **NATS outage**:
-   - Connection events are logged via `ProvideNATSConn` callbacks.  
+   - Connection events are logged via `nats.Connect` callbacks.  
    - The consumer will stop fetching; once NATS is back and reconnected, consumption resumes.
 
 3. **Single instance crash**:

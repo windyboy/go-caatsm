@@ -6,12 +6,11 @@ The weather parser module provides parsing capabilities for aviation weather rep
 
 ## Architecture
 
-The weather parser follows Clean Architecture principles:
+The weather parser lives cleanly inside the pure-domain `internal/telegram/weather/` package and integrates with `telegram.Router`:
 
-- **Domain Layer** (`internal/domain/weather/`): Core domain types and interfaces
-- **Port Layer** (`internal/port/weather_parser.go`): Parser interface definition
-- **Adapter Layer** (`internal/adapter/parser/weather/`): Parser implementation
-- **Composite Parser** (`internal/adapter/parser/composite.go`): Routes messages to appropriate parser
+- **Weather Domain Types & Errors** (`internal/telegram/weather/types.go`): `Message`, `Metar`, `Taf`, weather element structs (`Wind`, `Visibility`, `Cloud`, `WeatherPhenomenon`, etc.), and typed errors
+- **Weather Parser Implementation** (`internal/telegram/weather/`): Lexer (`lexer.go`), classifier (`classifier.go`), METAR/SPECI parser (`metar_parser.go`), TAF parser (`taf_parser.go`), shared element parser (`common_elements.go`), normalization (`normalize.go`), and unified `Parser` (`parser.go`)
+- **Composite Router** (`internal/telegram/router.go`): `Router` inspects headers via `weather.Classifier` and routes between `weather.Parser` and `aviation.Parser`, converting results to `*telegram.Message`
 
 ## Supported Report Types
 
@@ -75,10 +74,10 @@ The weather parser is automatically integrated via the composite parser. No spec
 ### Message Flow
 
 1. Raw message received
-2. Composite parser checks if message is a weather report
-3. If weather report: parsed by weather parser
-4. If not: parsed by aviation parser (existing behavior)
-5. Parsed result stored in `telegrams` table with `category` = "METAR"/"SPECI"/"TAF"
+2. `telegram.Router` checks whether the payload header matches a weather report (`METAR`/`SPECI`/`TAF`)
+3. If classified as weather: `weather.Parser.Parse(raw)` parses the report and maps it to `*telegram.Message` (`Category` = `"METAR"` / `"SPECI"` / `"TAF"`, `Protocol` = `"WMO"`); any weather parse error is returned directly without falling back to the aviation parser
+4. If `aftn.validation_enabled = true` in config, `AFTNValidator` skips weather messages (`Protocol == "WMO"` or weather categories) instead of misapplying AFTN 6-digit `DDHHMM` validation
+5. Parsed result stored in `aviation.telegrams` table with `category` = `"METAR"` / `"SPECI"` / `"TAF"`
 6. Structured data stored in `body_data` JSONB field
 
 ### Database Storage
@@ -92,16 +91,16 @@ Weather reports are stored in the existing `telegrams` table:
 
 ## Testing
 
-Test files are located in `internal/adapter/parser/weather/`:
+Weather parser unit tests are located in `internal/telegram/weather/`, and composite routing tests are in `internal/telegram/`:
 
-- `classifier_test.go`: Tests report type classification
-- `metar_parser_test.go`: Tests METAR/SPECI parsing
-- `taf_parser_test.go`: Tests TAF parsing
-- `composite_test.go`: Tests composite parser routing
+- `internal/telegram/weather/classifier_test.go`: Tests report type classification
+- `internal/telegram/weather/metar_parser_test.go`: Tests METAR/SPECI parsing
+- `internal/telegram/weather/taf_parser_test.go`: Tests TAF parsing
+- `internal/telegram/router_test.go`: Tests composite router dispatch and error propagation
 
 Run tests:
 ```bash
-go test ./internal/adapter/parser/weather/... -v
+go test ./internal/telegram/... -v
 ```
 
 ## Limitations and Future Enhancements

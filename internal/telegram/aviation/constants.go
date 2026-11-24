@@ -1,0 +1,85 @@
+package aviation
+
+import "regexp"
+
+// Field and protocol constants.
+const (
+	StartIndicatorPrefix = "ZCZC"
+	EndHeaderMarker      = "."
+	BeginPartMarker      = "BEGIN PART"
+
+	Category             = "category"
+	CategoryArrival      = "ARR"
+	CategoryDeparture    = "DEP"
+	CategoryCancellation = "CNL"
+	CategoryDelay        = "DLA"
+	CategoryFlightPlan   = "FPL"
+
+	FlightNumber = "number"
+	Register     = "reg"
+
+	SSR             = "ssr"
+	DepartureCode   = "dep"
+	DepartureTime   = "dep_time"
+	ArrivalCode     = "arr"
+	ArrivalTime     = "arr_time"
+	DestinationCode = "dest"
+	OtherInfo       = "other"
+
+	ReferenceData        = "reference_data"
+	Indicator            = "indicator"
+	AircraftID           = "aircraft"
+	Surveillance         = "surve"
+	Speed                = "speed"
+	Level                = "level"
+	Route                = "route"
+	EstimatedTime        = "estt"
+	AlternateAirport     = "alter"
+	PBN                  = "pbn"
+	NavigationEquipment  = "nav"
+	EstimatedElapsedTime = "eet"
+	SELCALCode           = "sel"
+	PerformanceCategory  = "per"
+	RerouteInformation   = "rif"
+	Remarks              = "remark"
+)
+
+// Parser header line structure limits.
+const (
+	MinHeaderLines           = 3
+	MinStartIndicatorParts   = 3
+	MinPriorityLineParts     = 2
+	MinOriginatorParts       = 2
+	MinOriginatorMatchGroups = 3
+)
+
+// Regular expression patterns for ICAO telegram body parsing.
+const (
+	ArrPatternString = `^\((?P<category>[A-Z]{3})-(?P<number>[A-Z0-9]+)(\/?(?P<ssr>[A-Z0-9]+))?-(?P<dep>[A-Z]{4})-(?P<arr>[A-Z]{4})(?P<arr_time>\d{4})\)$`
+	DepPatternString = `^\((?P<category>[A-Z]{3})-(?P<number>[A-Z0-9]+)(\/(?P<ssr>[A-Z0-9]+))?-(?P<dep>[A-Z]{4})(?P<dep_time>\d{4})-(?P<arr>[A-Z]{4})\)$`
+	FplPatternString = `\((?P<category>[A-Z]{3})-(?P<number>[A-Z]+\d+)-(?P<indicator>[A-Z]{2})\n-(?P<aircraft>[A-Z]+\d+\/?[A-Z]?)\n?-(?P<surve>.*)\n?-(?P<dep>[A-Z]{4})(?P<dep_time>\d{4})\n?-(?P<speed>[A-Z]+\d+)(?P<level>[A-Z0-9]+)\s+(?P<route>(.|\n)+)\n-(?P<dest>[A-Z]{4})(?P<estt>\d{4})\s?(?P<alter>(\s[A-Z]{4})+)\n?-([A-Z]{3}\/(?:[A-Z]{4}\d{4}\s?)+)?(?P<other>(?m)[A-Z]{3}\/(.|\n)*)\)$`
+	CnlPatternString = `^\((?P<category>[A-Z]{3})-(?P<number>\w+\d+)-?(?P<dep>[A-Z]{4})?-?(?P<arr>[A-Z]{4})\)$`
+	DlaPatternString = `^\((?P<category>[A-Z]{3})-(?P<number>\w+\d+)-?(?P<dep>[A-Z]{4})(?P<dep_time>\d{4})?-?(?P<arr>[A-Z]{4})(?P<arr_time>\d{4})?\)$`
+)
+
+// Compiled regular expressions.
+var (
+	ArrPatternExpression = regexp.MustCompile(ArrPatternString)
+	DepPatternExpression = regexp.MustCompile(DepPatternString)
+	FplPatternExpression = regexp.MustCompile(FplPatternString)
+	CnlPatternExpression = regexp.MustCompile(CnlPatternString)
+	DlaPatternExpression = regexp.MustCompile(DlaPatternString)
+
+	categoryRegex      = regexp.MustCompile(`\((?P<category>[A-Z]+)-`)
+	emptyLineRemove    = regexp.MustCompile(`(?m)^\s*$`)
+	bodyOnly           = regexp.MustCompile(`(.|\n)?(ZCZC(.|\n)*)NNNN(.|\n)?$`)
+	originator         = regexp.MustCompile(`(?P<originatorDateTime>[0-9]+)\s(?P<originator>[A-Z]+)`)
+	navPattern         = regexp.MustCompile(`(?m)NAV\/(?P<nav>\w+)`)
+	remarkPattern      = regexp.MustCompile(`(?s)RMK\/(?P<remark>.*)`)
+	selPattern         = regexp.MustCompile(`(?m)SEL\/(?P<sel>\w+)`)
+	regPattern         = regexp.MustCompile(`(?m)REG\/(?P<reg>[A-Z0-9]+)`)
+	pbnPattern         = regexp.MustCompile(`(?m)PBN\/(?P<pbn>[A-Z0-9]+)`)
+	eetPattern         = regexp.MustCompile(`(?s)(-?EET\/(?P<eet>(?:[A-Z]{4}\d{4}\s*)+))`)
+	performancePattern = regexp.MustCompile(`(?s)-?PER\/(?P<per>\w)`)
+	reroutePattern     = regexp.MustCompile(`(?m)RIF\/(?P<rif>.*)[A-Z]{3}\/`)
+)

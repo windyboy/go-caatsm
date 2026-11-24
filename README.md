@@ -2,19 +2,23 @@
 
 Civil Aviation Authority Telegram Message Processor.
 
-High-performance processing for aviation telegrams using Clean Architecture, NATS JetStream, and PostgreSQL/TimescaleDB.
+High-performance processing for aviation telegrams using NATS JetStream and PostgreSQL/TimescaleDB.
+
+> **Architecture Status:** See [`docs/architecture.md`](docs/architecture.md) for the authoritative 3-layer Go-idiomatic architecture specification.
 
 ## Architecture
 
-Clean Architecture with clear separation of concerns:
+3-layer high-cohesion package layout:
 
-- cmd: application entry points
-- internal/domain: core domain types
-- internal/port: interfaces/contracts
-- internal/app: application orchestration
-- internal/adapter: parsing, mapping, DTOs
-- internal/infra: NATS, PostgreSQL, config, logging, metrics, telemetry
-- pkg/di: dependency injection (Wire)
+- `cmd/receiver`: CLI entrypoint (`listen` command), explicit dependency wiring, and graceful shutdown
+- `cmd/seed-telegrams`: synthetic aviation telegram generator
+- `internal/telegram`: pure domain envelope (`Message`), `Router` (composite routing), `AFTNValidator`, plus `aviation/` (ARR/DEP/CNL/DLA/FPL parsers & models) and `weather/` (METAR/SPECI/TAF parsers & models)
+- `internal/pipeline`: `Processor` orchestration pipeline, consumer-side small interfaces (`ports.go`), and permanent/transient error classification
+- `internal/nats`: JetStream pull consumer (inbound/outbound/DLQ 3-stream topology, `ShouldAutoProvision()` prod guard), publisher (OTel TraceContext propagation), DLQ handler, and monitor
+- `internal/postgres`: PostgreSQL/TimescaleDB repository (`pgx`), time-bounded deduplication query, 17-column row mapper, and idempotent schema DDL (`telegrams.ddl`)
+- `internal/config`: Koanf TOML + `CAATSM_*` env configuration with strict production & stream guards
+- `internal/observability`: Zap structured logging, consolidated OpenTelemetry SDK & TraceContext propagator, Prometheus metrics, and HTTP health/metrics server
+- `internal/buildinfo`: build version, commit, and timestamp metadata
 
 ## Features
 
@@ -104,9 +108,9 @@ format = "json"
 
 ## JetStream Notes
 
-- JetStream is required; other modes are not supported.
-- In dev/test (`GO_ENV=dev` or `GO_ENV=test`), the stream and consumer are auto-created.
-- In production, ensure the stream and consumer exist before starting the service.
+- JetStream is required; other modes are not supported (`nats.mode` must be `jetstream` or empty).
+- Stream topology separates inbound (`nats.stream`, `WorkQueuePolicy`), outbound (`nats.publish_stream`, `LimitsPolicy`), and DLQ (`nats.dlq_stream`, `LimitsPolicy`).
+- Provisioning behavior is controlled by `nats.auto_provision` (defaults to auto-create/verify in non-prod, and read-only stream/consumer verification in `prod` via `ShouldAutoProvision()`).
 - Configure retention and delivery behavior under `[nats.stream_limits]` and `[nats.consumer_rules]`.
 
 ## AFTN Validation
@@ -147,6 +151,7 @@ Common flags:
 - `--replay-from`
 - `--ack-wait`
 - `--telemetry-enabled`, `--telemetry-endpoint`, `--telemetry-insecure`
+- `--monitoring-addr`, `--monitoring-disabled`
 
 ## Testing
 
@@ -181,6 +186,8 @@ go run ./cmd/seed-telegrams \
 
 ## Documentation
 
+- `docs/architecture.md` (authoritative architecture baseline & target design)
+- `docs/architecture-ha.md`
 - `docs/dev-guide.md`
 - `docs/prod-guide.md`
 - `docs/nats.md`

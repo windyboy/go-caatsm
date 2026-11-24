@@ -1,20 +1,22 @@
 ## Observability
 
+> Prometheus metrics, `observability.Recorder`, consolidated OTel SDK initialization (`InitOTEL`), and Zap logging live in [`internal/observability/`](../internal/observability).
+
 ### Metrics
 
 The service exposes Prometheus metrics via the monitoring HTTP server (default `:2112`):
 
 - `caatsm_messages_total{stream,consumer,result}`  
-  Total number of messages handled by the receiver, labelled by stream/consumer and result (`ok`, `fail`, `permanent_fail`, `retry`).
+  Total number of messages handled by the receiver, labelled by stream/consumer and result (`ok`, `fail`, `permanent_fail`).
 
 - `caatsm_handle_latency_seconds{stream,consumer}`  
   End-to-end handling latency from NATS receive to handler completion.
 
 - `caatsm_retries_total{stream,consumer,reason}`  
-  Number of retries (NAKs) issued by the consumer, labelled by reason (e.g. `processor_error`).
+  NAK retries triggered by the JetStream consumer, labelled by `reason` (`processor_error`, `dlq_publish_error`).
 
 - `caatsm_js_api_calls_total{operation}`  
-  JetStream API calls performed by the service.
+  JetStream API operations (`fetch`, `publish`, `dlq_publish`, `dlq_validate`, `stream_info`, `consumer_info`, `add_stream`, `add_consumer`, `consumer_lag`).
 
 - `caatsm_db_queries_total{operation,result}`  
   Database operations grouped by operation (`insert_one`, `insert_batch`, `insert_raw`) and result (`ok`, `error`).
@@ -79,12 +81,13 @@ scrape_configs:
 ```
 
 When you run the receiver directly on the host/WSL, ensure the monitoring
-server listens on all interfaces so that Docker can reach it, for example via:
+server listens on all interfaces so that Docker can reach it, for example via CLI flags or TOML config (`--monitoring-addr 0.0.0.0:2112`):
 
 ```bash
 export CAATSM_MONITORING_ADDR=0.0.0.0:2112
-export CAATSM_MONITORING_ENABLE_METRICS=true
-export CAATSM_MONITORING_ENABLE_HEALTH=true
+# Nested snake_case keys use double underscores (`__`):
+export CAATSM_MONITORING__ENABLE_METRICS=true
+export CAATSM_MONITORING__ENABLE_HEALTH=true
 ```
 
 Alternative topologies:
@@ -183,11 +186,11 @@ The application implements production-ready OpenTelemetry tracing with comprehen
 
 #### Configuration
 
-Tracing is configured via the `telemetry` section:
+Tracing is configured via the `telemetry` section and initialized once via `observability.InitOTEL` (`internal/observability/otel.go`, which also configures `propagation.TraceContext` globally):
 
-- `telemetry.enabled` – enables OTEL exporters (default: `false` in dev, `true` in prod)
-- `telemetry.endpoint` – OTLP HTTP endpoint (e.g. `localhost:4318` for dev, `otel-collector.company.com:4318` for prod)
-- `telemetry.insecure` – disables TLS for local/dev (default: `true` in dev, `false` in prod)
+- `telemetry.enabled` – enables OTEL exporters (`true` in `configs/config.dev.toml` and `configs/config.prod.toml`; defaults to `false` when unset)
+- `telemetry.endpoint` – OTLP HTTP endpoint (e.g. `localhost:4318` for dev, `otel-collector.prod:4318` for prod)
+- `telemetry.insecure` – disables TLS for local/dev (`true` in dev, `false` in prod)
 
 #### Sampling Strategy
 
@@ -199,34 +202,36 @@ Environment-based sampling ensures cost-effective production monitoring:
 
 #### Resource Attributes
 
-All spans include comprehensive resource metadata:
-
+Configured in `internal/observability/otel.go` (`createResource`): `service.name`, `service.version`, `service.instance.id`, `service.namespace`, `service.component`, `deployment.environment`, `build.commit`, `build.built_at`, `telemetry.endpoint.configured`, plus env/host/OS/process/container detectors.
 
 #### Key Spans with Semantic Attributes
 
 **NATS Consumer (`caatsm/nats`)**:
-- `Consumer.processMessage`
+- `Consumer.processMsg` (extracts upstream W3C `TraceContext` from NATS message headers)
   - `messaging.system: nats`
-  - `messaging.operation: receive`
-  - `messaging.destination: <subject>`
-  - `messaging.consumer.id: <consumer-name>`
+  - `messaging.message_id: <msg-id>`
   - `caatsm.stream: <stream-name>`
 
-**Application Processor (`caatsm/app`)**:
+**Pipeline Processor (`caatsm/pipeline`)**:
 - `MessageProcessor.Handle`
   - `messaging.system: nats`
   - `messaging.operation: receive`
   - `messaging.message_id: <msg-id>`
   - `caatsm.component: processor`
-  - `caatsm.message.category: <ARR|DEP|FPL|etc>`
+  - `telegram.message_id: <business-msg-id>`
+  - `telegram.category: <ARR|DEP|FPL|METAR|...>`
+  - `telegram.status: <parsed|header_error|body_error|aftn_error>`
+  - `telegram.parsed: <bool>` (on successful parse/validation)
+  - `aftn.error_type: <field|multiple_errors>` (when AFTN validation fails)
+- `Publisher.Publish` (child span injected into outbound NATS headers via `otel.GetTextMapPropagator().Inject`)
 
 **Database Operations (`caatsm/postgres`)**:
 - `Repository.InsertOne`, `Repository.InsertBatch`, `Repository.InsertRaw`
   - `db.system: postgresql`
-  - `db.operation: insert`
+  - `db.operation: insert` (on `InsertOne`)
   - `db.name: aviation`
-  - `db.table: telegrams`
-  - `caatsm.message.id: <telegram-id>`
+  - `db.table: telegrams` / `aviation.telegrams` / `aviation.telegrams_raw`
+  - `caatsm.message.id: <telegram-id>` (on `InsertOne`)
 
 #### OTEL vs Prometheus Metrics
 
@@ -266,7 +271,7 @@ The `otel-collector-dev` Grafana dashboard (provisioned from `configs/grafana-da
 
 ### Structured Logging Contract
 
-Logging is done with Zap. The `internal/infra/log` package standardises fields via `MessageFields`:
+Logging is done with Zap. The `internal/observability` package (`logger.go`) standardises fields via `MessageFields`:
 
 - `service` – logical component (`caatsm-consumer`, `caatsm-processor` etc.).  
 - `transport_msg_id` – NATS/envelope message ID (derived from `Nats-Msg-Id` or JetStream sequence).  

@@ -10,7 +10,7 @@ services:
       - "5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
-      - ./internal/infra/postgres/telegrams.ddl:/docker-entrypoint-initdb.d/01-telegrams.sql:ro
+      - ./internal/postgres/telegrams.ddl:/docker-entrypoint-initdb.d/01-telegrams.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
@@ -31,7 +31,7 @@ services:
         psql --host=postgres --username=caatsm --dbname=aviation --file=/tmp/telegrams.ddl
       "
     volumes:
-      - ./internal/infra/postgres/telegrams.ddl:/tmp/telegrams.ddl:ro
+      - ./internal/postgres/telegrams.ddl:/tmp/telegrams.ddl:ro
     restart: "no"
     networks:
       - devnet
@@ -79,7 +79,25 @@ services:
         until nats --server nats://nats:4222 server ping >/dev/null 2>&1; do sleep 1; done;
         echo 'initializing JetStream...' ;
         nats --server nats://nats:4222 stream add TELEGRAM \
-          --subjects 'telegram.serial,telegram.json' \
+          --subjects 'telegram.serial' \
+          --storage file \
+          --retention workq \
+          --replicas 1 \
+          --max-msgs -1 \
+          --max-bytes -1 \
+          --if-not-exists \
+          --defaults
+        nats --server nats://nats:4222 stream add TELEGRAM_OUT \
+          --subjects 'telegram.json' \
+          --storage file \
+          --retention limits \
+          --replicas 1 \
+          --max-msgs -1 \
+          --max-bytes -1 \
+          --if-not-exists \
+          --defaults
+        nats --server nats://nats:4222 stream add TELEGRAM_DLQ \
+          --subjects 'caatsm.dlq' \
           --storage file \
           --retention limits \
           --replicas 1 \

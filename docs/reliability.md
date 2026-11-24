@@ -2,6 +2,8 @@
 
 This document summarises how the service handles failures, provides resilience, and avoids data loss or duplication.
 
+> For the full reliability gap analysis and target JetStream/pipeline design, see [`docs/architecture.md`](architecture.md).
+
 ### Dead-Letter Queue (DLQ) and Poison Messages
 
 Configuration is defined under `dlq`:
@@ -12,22 +14,21 @@ enabled = true
 subject = "caatsm.dlq"
 ```
 
-- When `dlq.enabled` is `true` and `dlq.subject` is non-empty, **permanent** failures are routed to the DLQ subject.  
-- A permanent failure is indicated by wrapping an error with `app.Permanent` and is treated as a **poison message**.
+- When `dlq.enabled` is `true` and `dlq.subject` is non-empty, **permanent** failures are routed to the DLQ stream (`nats.dlq_stream`, default `TELEGRAM_DLQ`).  
+- A permanent failure is indicated by wrapping an error with `pipeline.Permanent` and is treated as a **poison message**.
 
 Behaviour:
 
-1. The NATS consumer calls `processor.Handle`.  
-2. If an error is returned and `app.IsPermanent(err)` is true:
-   - The original NATS message is copied into a DLQ payload with metadata:
-     - `transport_msg_id` (NATS message ID)  
-     - `subject`, `stream`, `consumer`  
-     - `nats_sequence`, `deliveries`  
-     - `error` (stringified cause)  
-     - `received_at` (DLQ event time)  
+1. The NATS consumer calls `handler.Handle` (`*pipeline.Processor`).
+2. If an error is returned and `pipeline.IsPermanent(err)` is true:
+   - The original NATS message is copied into a JSON DLQ payload (`internal/nats/dlq.go`) with fields:
+     - `subject`, `stream`, `consumer`
+     - `error` (stringified cause)
+     - `received_at` (DLQ event time in UTC)
      - `body` (raw message body)
-   - The payload is published to `dlq.subject` using JetStream.  
-   - The original message is **ACKed**, so it will not be redelivered.
+   - The payload is published to `dlq.subject` (`nats.dlq_stream`, `LimitsPolicy`) using JetStream.
+   - If DLQ publishing succeeds, the original message is **ACKed**, so it will not be redelivered.
+   - If `RouteToDLQ` fails, `Consumer.handleFailure` logs/records `caatsm_dlq_publish_failures_total` and `caatsm_retries_total{reason="dlq_publish_error"}`, applies backpressure, and issues **NAK with backoff** instead of ACKing so no message is silently lost.
 
 The DLQ subject should be consumed by an offline repair/analysis tool or operational dashboard that can:
 
@@ -40,12 +41,11 @@ The DLQ subject should be consumed by an offline repair/analysis tool or operati
 
 Transient errors (not marked permanent) result in:
 
-- Negative acknowledgements with delay (`NakWithDelay`) according to `nats.consumer_rules.backoff`.  
+- Negative acknowledgements with delay (`NakWithDelay`) according to `nats.consumer_rules.backoff`.
 - A retry streak counter inside the consumer:
-  - Each transient error increases `consecutiveProcessErrors`.  
-  - After 10 or more consecutive errors, the consumer applies an additional **sleep**:
-    - `backoff = min(consecutive_errors * 100ms, 5s)`.  
-    - A warning log with the sleep duration and error count is emitted.
+  - Each transient error increases `consecutiveErrors` (`internal/nats/consumer.go`).
+  - After 10 or more consecutive errors (`consecutiveErrors >= 10`), `applyBackpressure` waits (context-aware timer) before issuing NAK:
+    - `delay = min(consecutiveErrors * 100ms, 5s)`.
 
 This combination provides **backpressure** when downstream systems (especially the DB) are in trouble, slowing down consumption instead of aggressively retrying.
 
@@ -99,26 +99,13 @@ Recommended pattern:
 
 ### JetStream Availability and Auto-Recovery (Dev vs Prod)
 
-- When the JetStream API is temporarily unavailable (for example, NATS has just
-  restarted and returns `ErrNoResponders`), the consumer uses an exponential
-  backoff when retrying `Fetch` calls (roughly `1s, 2s, 4s, ...` up to
-  around `30s`) to avoid log spam while allowing the system to recover.
-- At startup the receiver always calls `StreamManager.EnsureStream` and
-  `ConsumerManager.EnsureConsumer`. If the JetStream account allows it,
-  missing streams are created with the configured retention limits
-  (`max_msgs`, `max_bytes`, `max_age`, discard/storage policy, replicas) before
-  the durable consumer is created. This keeps dev/test clusters self-healing
-  after `docker compose down -v` and removes the race where a consumer was
-  created without its stream.
-- When the JetStream account lacks permissions to create protected resources
-  (a common production posture), the same code path fails fast with a clear
-  error message so operators know they must provision the stream out-of-band.
-- On the publishing side, JetStream `ErrNoResponders` and similar errors are
-  treated as temporary by the processor:
-  - Such errors cause the consumer to NAK messages and rely on the configured
-    backoff for retries.
-  - Permanent configuration/permission errors remain mapped to permanent
-    failures and follow the DLQ + ACK flow.
+- When `sub.Fetch(batchSize, nats.Context(ctx), nats.MaxWait(batchTimeout))` encounters a transient fetch error other than `nats.ErrTimeout` or context cancellation, the consumer logs a warning, waits with exponential backoff (`500ms` to `5s`), and attempts JetStream subscription recovery before retrying.
+- At startup, `NewConsumer` checks `cfg.ShouldAutoProvision()` (`auto_provision` override, or `false` when `GO_ENV=prod` and `true` otherwise):
+  - When `true` (dev/test): creates or verifies the inbound (`nats.stream`, `WorkQueuePolicy`), outbound (`nats.publish_stream`, `LimitsPolicy`), and DLQ (`nats.dlq_stream`, `LimitsPolicy`) streams and the durable consumer.
+  - When `false` (`prod`): performs read-only `StreamInfo` / `ConsumerInfo` verification and fails fast if required infrastructure has not been pre-provisioned out-of-band.
+- On the publishing side, `internal/nats/publisher.go` classifies `nats.ErrNoResponders`, `nats.ErrTimeout`, connection errors (`nats.ErrConnectionClosed`/`ErrDisconnected`), and `context.Canceled`/`context.DeadlineExceeded` as transient errors (wrapped without `pipeline.Permanent`), while configuration/marshaling and other broker errors are wrapped with `pipeline.Permanent`.
+  - Transient errors cause the consumer to NAK messages with configured backoff for retries.
+  - Permanent errors are routed through `pipeline.Processor` (`internal/pipeline/processor.go`) to DLQ + ACK.
 
 ### Alerts and Dashboards
 

@@ -19,6 +19,11 @@ mode = "jetstream"
 client = "caatsm-prod-client"
 cluster = "prod-cluster"
 stream = "TELEGRAM"
+# Dedicated outbound and DLQ streams (defaults to "<stream>_OUT" and "<stream>_DLQ")
+# publish_stream = "TELEGRAM_OUT"
+# dlq_stream = "TELEGRAM_DLQ"
+# Production defaults auto_provision to false (streams/consumers must exist out-of-band)
+auto_provision = false
 consumer = "telegram-consumer"
 
 [nats.stream_limits]

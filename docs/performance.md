@@ -295,8 +295,10 @@ Run built-in benchmarks:
 # Run all benchmarks
 go test -bench=. -benchmem ./...
 
-# Run specific benchmark
-go test -bench=BenchmarkParser -benchmem ./internal/adapter/parser
+# Run specific benchmarks
+go test -bench=. -benchmem ./internal/telegram/aviation
+go test -bench=. -benchmem ./internal/pipeline
+go test -bench=. -benchmem ./internal/postgres
 ```
 
 ### Performance Baselines

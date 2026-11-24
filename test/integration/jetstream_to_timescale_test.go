@@ -10,14 +10,12 @@ import (
 	"testing"
 	"time"
 
-	"caatsm/internal/adapter/dto"
-	"caatsm/internal/adapter/parser"
-	"caatsm/internal/app"
-	"caatsm/internal/infra/config"
-	loginfra "caatsm/internal/infra/log"
-	natsinfra "caatsm/internal/infra/nats"
-	postgresinfra "caatsm/internal/infra/postgres"
-	telemetryinfra "caatsm/internal/infra/telemetry"
+	"caatsm/internal/config"
+	natsinfra "caatsm/internal/nats"
+	"caatsm/internal/observability"
+	"caatsm/internal/pipeline"
+	"caatsm/internal/postgres"
+	"caatsm/internal/telegram"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/nats-io/nats.go"
@@ -44,13 +42,13 @@ func TestJetStreamToTimescaleFlow(t *testing.T) {
 	}()
 
 	cfg := buildTestConfig(natsURL, pgURL)
-	logger, err := loginfra.ProvideLogger(cfg)
+	logger, err := observability.NewLogger(cfg)
 	if err != nil {
 		t.Fatalf("failed to init logger: %v", err)
 	}
-	defer logger.Sync()
+	defer func() { _ = logger.Sync() }()
 
-	pool, err := postgresinfra.ProvideDB(cfg, logger)
+	pool, err := postgres.OpenPool(ctx, cfg, logger)
 	if err != nil {
 		t.Fatalf("failed to init postgres: %v", err)
 	}
@@ -60,30 +58,35 @@ func TestJetStreamToTimescaleFlow(t *testing.T) {
 		t.Fatalf("failed to apply schema: %v", err)
 	}
 
-	repo, err := postgresinfra.ProvideRepository(pool, logger)
-	if err != nil {
-		t.Fatalf("failed to init repository: %v", err)
-	}
+	store := postgres.NewRepository(pool, logger)
 
-	conn, err := natsinfra.ProvideNATSConn(cfg, logger)
+	conn, err := natsinfra.Connect(cfg, logger)
 	if err != nil {
 		t.Fatalf("failed to connect nats: %v", err)
 	}
-	defer conn.Drain()
+	defer func() { _ = conn.Drain() }()
 
-	js, err := natsinfra.ProvideJetStream(conn, cfg, logger)
+	js, err := natsinfra.JetStream(conn, logger)
 	if err != nil {
 		t.Fatalf("failed to init jetstream: %v", err)
 	}
 
-	publisher, err := natsinfra.ProvidePublisher(js, conn, cfg, logger)
+	publisher, err := natsinfra.NewPublisher(js, cfg, logger)
 	if err != nil {
 		t.Fatalf("failed to init publisher: %v", err)
 	}
 
-	telemetryRecorder := telemetryinfra.NewNoop()
-	proc := app.NewMessageProcessor(parser.ProvideParser(), repo, publisher, telemetryRecorder, logger, cfg)
-	consumer, err := natsinfra.ProvideConsumer(conn, js, proc, cfg, telemetryRecorder, logger)
+	recorder := observability.NewNoop()
+	proc := pipeline.NewProcessor(
+		telegram.NewRouter(),
+		telegram.NewAFTNValidator(),
+		store,
+		publisher,
+		recorder,
+		logger,
+		pipeline.Options{ValidateAFTN: cfg.AFTN.ValidationEnabled},
+	)
+	consumer, err := natsinfra.NewConsumer(conn, js, proc, cfg, recorder, logger)
 	if err != nil {
 		t.Fatalf("failed to init consumer: %v", err)
 	}
@@ -104,7 +107,6 @@ func TestJetStreamToTimescaleFlow(t *testing.T) {
 		_ = consumer.Shutdown(context.Background())
 	}()
 
-	// Publish a message to the input subject.
 	payload := []byte(`ZCZC TMQ2526 141605
 FF ZBTJZPZX
 141604 ZBACZQZX
@@ -133,7 +135,7 @@ NNNN`)
 			SELECT status FROM aviation.telegrams WHERE message_id = $1 LIMIT 1
 		`, "TMQ2526").Scan(&status)
 		if err == nil {
-			if status == string(dto.MessageStatusParsed) {
+			if status == string(telegram.StatusParsed) {
 				return
 			}
 			t.Logf("message persisted with status=%s, waiting for parsed", status)
@@ -213,12 +215,14 @@ func startNATS(ctx context.Context, t *testing.T) (tc.Container, string) {
 }
 
 func buildTestConfig(natsURL, pgURL string) *config.Config {
+	autoProvision := true
 	cfg := &config.Config{
 		NATS: config.NATSConfig{
-			URL:      natsURL,
-			Mode:     "jetstream",
-			Stream:   "INTEGRATION_TELEGRAM",
-			Consumer: "integration-consumer",
+			URL:           natsURL,
+			Mode:          "jetstream",
+			Stream:        "INTEGRATION_TELEGRAM",
+			Consumer:      "integration-consumer",
+			AutoProvision: &autoProvision,
 			StreamLimits: config.StreamLimitsConfig{
 				MaxMsgs:  1000,
 				MaxBytes: 67108864,
@@ -266,7 +270,6 @@ func buildTestConfig(natsURL, pgURL string) *config.Config {
 		},
 	}
 
-	// Monitoring server disabled for tests.
 	cfg.Monitoring.Disabled = true
 
 	if err := cfg.Validate(); err != nil {
@@ -277,7 +280,7 @@ func buildTestConfig(natsURL, pgURL string) *config.Config {
 }
 
 func applyDDL(ctx context.Context, pool *pgxpool.Pool) error {
-	ddlPath := filepath.Join("..", "..", "internal", "infra", "postgres", "telegrams.ddl")
+	ddlPath := filepath.Join("..", "..", "internal", "postgres", "telegrams.ddl")
 	bytes, err := os.ReadFile(ddlPath)
 	if err != nil {
 		return fmt.Errorf("read ddl: %w", err)

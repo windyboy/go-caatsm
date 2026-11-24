@@ -9,18 +9,16 @@
 - **Coverage**: `make coverage` (>80% target)
 
 ## Code Style & Architecture
-- **Structure**: Clean Architecture (`cmd/`, `internal/{domain,app,adapter,infra}`, `pkg/`).
-- **Parsers**: Composite parser pattern with specialized sub-parsers (aviation, weather).
-- **Domain**: Core domain types include aviation telegrams and weather reports.
+- **Blueprint**: Follow [`docs/architecture.md`](docs/architecture.md) — 3-layer high-cohesion Go layout: `internal/telegram/{aviation,weather}`, `internal/pipeline`, `internal/{nats,postgres,config,observability,buildinfo}`, `cmd/receiver`. Enforce layer boundaries via `.golangci.yml` (`depguard`).
+- **Parsers**: Composite routing (`telegram.Router`) over aviation (ARR/DEP/CNL/DLA/FPL) and weather (METAR/SPECI/TAF); keep `internal/telegram/...` pure Go (stdlib only) with zero external IO/logging.
+- **Interfaces**: Consumer-side small interfaces (*Accept interfaces, return structs*) in `internal/pipeline/ports.go` and `internal/nats/consumer.go`; avoid `any`.
 - **Formatting**: Run `go fmt ./...` and `goimports` before committing.
-- **Naming**: `CamelCase` (exported), `camelCase` (private). Package names match dirs.
-- **Errors**: Wrap with context (`fmt.Errorf("...: %w", err)`). Use `errors.Is`.
-- **Types**: Interface-driven development. Avoid `any`.
-- **Testing**: Ginkgo BDD style (`Describe`, `It`). Table-driven. Mock interfaces.
-- **Observability**: Propagate `context.Context`. Use OpenTelemetry (traces/metrics).
-- **Generated**: NEVER edit `wire_gen.go` or `*_gen.go`.
+- **Naming**: `CamelCase` (exported), `camelCase` (private). Package names match dirs. Avoid package/type name stuttering.
+- **Errors**: Wrap with context (`fmt.Errorf("...: %w", err)`). Use `errors.Is` / `errors.As`.
+- **Testing**: Ginkgo BDD style (`Describe`, `It`) for unit tests; standard `testing` with `-tags=integration` in `test/integration/`. Mock consumer interfaces.
+- **Observability**: Propagate `context.Context`. Use OpenTelemetry (traces/metrics/TraceContext propagation) and Zap structured logging.
 
 ## Cursor Rules (.cursor/rules/do.mdc)
-- **Expertise**: Go, Microservices, Clean Arch, TDD.
+- **Expertise**: Go, Microservices, Pragmatic Layered Modularity, TDD.
 - **Security**: Input validation, secure defaults, retries/backoff.
 - **Perf**: Benchmarks, minimize allocations.

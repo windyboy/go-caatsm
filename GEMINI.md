@@ -2,28 +2,25 @@
 
 ## Project Overview
 
-`go-caatsm` is a high-performance Go application designed to process aviation telegrams (like FPL, ARR, DEP) and weather reports (METAR, SPECI, TAF) from NATS JetStream, parse them, persist them to PostgreSQL/TimescaleDB, and republish the parsed results. It follows Clean Architecture principles to ensure modularity and testability.
+`go-caatsm` is a Go application designed to process aviation telegrams (like FPL, ARR, DEP, CNL, DLA) and weather reports (METAR, SPECI, TAF) from NATS JetStream, parse them, persist them to PostgreSQL/TimescaleDB, and republish the parsed results.
+
+> **Architecture Reference:** See [`docs/architecture.md`](docs/architecture.md) for the authoritative 3-layer Go-idiomatic high-cohesion architecture specification.
 
 ## Architecture
 
-The project is structured using Clean Architecture:
+3-layer Go-idiomatic package layout:
 
-*   **`cmd/`**: Application entry points. `cmd/main` is the primary service, `cmd/seed-telegrams` is a utility for generating test data.
-*   **`internal/domain/`**: Core business logic and types (e.g., `aviation.go`, `fpl.go`, `weather/`). Pure Go, no dependencies on outer layers.
-*   **`internal/app/`**: Application business rules (use cases). `MessageProcessor` orchestrates the flow between ports.
-*   **`internal/adapter/`**: Adapters for external interfaces.
-    *   `parser/`: Logic to parse raw telegram text into domain objects.
-      *   `aviation/`: Aviation telegram parser (ARR, DEP, CNL, DLA, FPL)
-      *   `weather/`: Weather report parser (METAR, SPECI, TAF)
-      *   `composite.go`: Composite parser that routes messages to appropriate parser
-    *   `validator/`: AFTN protocol validation.
-    *   `dto/`: Data Transfer Objects.
-*   **`internal/infra/`**: Infrastructure implementations.
-    *   `nats/`: NATS JetStream consumer and publisher.
-    *   `postgres/`: Database repository using `pgx`.
-    *   `config/`, `log/`, `telemetry/`, `monitoring/`: Cross-cutting concerns.
-*   **`internal/port/`**: Interfaces defining the contracts for repositories, publishers, and parsers.
-*   **`pkg/di/`**: Dependency Injection using Google Wire.
+*   **`cmd/`**: Application entry points.
+    *   `cmd/receiver`: primary service binary (`bin/receiver`), CLI (`listen`), explicit dependency wiring, and graceful shutdown.
+    *   `cmd/seed-telegrams`: utility for generating synthetic aviation telegrams.
+*   **`internal/telegram/`**: Pure zero-IO core domain, parsing, and validation layer:
+    *   `message.go`, `router.go` (`Router` composite dispatcher), `aftn.go` (`AFTNValidator`).
+    *   `aviation/`: ARR, DEP, CNL, DLA, FPL domain models, ICAO validation, and parsers.
+    *   `weather/`: METAR, SPECI, TAF domain models, lexer, classifier, and parsers.
+*   **`internal/pipeline/`**: Core orchestration layer (`Processor` in `processor.go`), consumer-defined small interfaces (`ports.go`), and permanent/transient error classification (`errors.go`).
+*   **`internal/nats/`**: NATS JetStream consumer, publisher, monitor, connection/auth helpers, and DLQ handler (inbound/outbound/DLQ 3-stream topology, `ShouldAutoProvision()` prod guard, OTel TraceContext propagation).
+*   **`internal/postgres/`**: PostgreSQL/TimescaleDB repository using `pgx` (`InsertOne`, `InsertBatch`, `InsertRaw`), internal 17-column row mapper, and `telegrams.ddl`.
+*   **`internal/config/`, `internal/observability/`, `internal/buildinfo/`**: Koanf TOML/env config (`CAATSM_*`), Zap logger, consolidated OpenTelemetry SDK, Prometheus metrics + HTTP health server, and build metadata.
 
 ## Tech Stack
 
@@ -79,16 +76,15 @@ Configuration is managed via TOML files in `configs/` and environment variables.
 
 ## Key Files & Directories
 
-*   `cmd/main/main.go`: Application entry point. Sets up config, DI, and starts the listener.
-*   `internal/app/processor.go`: `MessageProcessor` - The core orchestration logic.
-*   `internal/adapter/parser/`: Contains parsers for aviation telegrams and weather reports (composite pattern).
-*   `internal/infra/nats/consumer.go`: JetStream consumer implementation.
-*   `internal/infra/postgres/telegrams.ddl`: Database schema.
-*   `docs/`: Extensive documentation (Architecture, NATS, Dev Guide).
+*   `cmd/receiver/main.go`: Application entry point. Sets up config, observability, explicit wiring, and starts the JetStream consumer.
+*   `internal/pipeline/processor.go`: `Processor` - The core message orchestration logic.
+*   `internal/telegram/`: Pure zero-IO domain models, composite `Router`, `AFTNValidator`, plus `aviation/` and `weather/` parsers.
+*   `internal/nats/consumer.go`: JetStream consumer implementation (inbound/outbound/DLQ 3-stream topology, `ShouldAutoProvision()` prod guard).
+*   `internal/postgres/telegrams.ddl`: Database schema.
+*   `docs/`: Extensive documentation (`architecture.md`, Architecture HA, NATS, Dev Guide, Observability).
 
 ## Notes for AI Agent
 
-*   **Conventions:** Follow existing patterns in `internal/`. Use `internal/port` for interfaces.
-*   **Testing:** New features must include Ginkgo tests. Integration tests should be added for infrastructure components.
-*   **DI:** If adding new components, update `pkg/di/wire.go` and run `task wire` (or `task generate`).
-*   **Safety:** Always check `go.mod` before adding imports.
+*   **Architecture Direction:** Follow the 3-layer Go-idiomatic architecture in [`docs/architecture.md`](docs/architecture.md) (pure zero-IO core domain/parsers in `internal/telegram`, consumer-defined small interfaces in `internal/pipeline` and `internal/nats`, explicit wiring in `cmd/receiver`, enforced by `.golangci.yml` `depguard` rules).
+*   **Testing:** New features must include tests (Ginkgo BDD for unit tests; standard `testing` with `-tags=integration` in `test/integration/`).
+*   **Safety:** Always check `go.mod` before adding imports. Keep `internal/telegram/...` strictly stdlib-only.

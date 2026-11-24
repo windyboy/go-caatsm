@@ -11,6 +11,10 @@ mode = "jetstream"
 client = "serial-client"
 cluster = "tele-cluster"
 stream = "TELEGRAM"
+# Optional dedicated outbound and DLQ streams (default: "<stream>_OUT" and "<stream>_DLQ")
+# publish_stream = "TELEGRAM_OUT"
+# dlq_stream = "TELEGRAM_DLQ"
+# auto_provision = true
 consumer = "telegram-consumer"
 
 [nats.stream_limits]

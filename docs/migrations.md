@@ -6,7 +6,7 @@ This document describes the database schema management and migration strategy fo
 
 The application currently uses DDL (Data Definition Language) files for schema management:
 
-- **Schema file**: `internal/infra/postgres/telegrams.ddl`
+- **Schema file**: `internal/postgres/telegrams.ddl`
 - **Manual execution**: Schema changes are applied manually using `psql` or similar tools
 - **Version control**: DDL files are version-controlled in the repository
 

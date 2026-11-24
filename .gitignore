@@ -28,8 +28,7 @@ ehthumbs.db
 Thumbs.db
 
 # Go specific
-go.sum
-# go.mod
+# go.mod and go.sum are tracked for reproducible builds
 
 # Test binary, built with `go test -c`
 *.test
@@ -61,7 +60,6 @@ coverprofile.out
 # Generated files
 *_gen.go
 *.pb.go
-pkg/di/wire_gen.go
 
 # Build artifacts
 main

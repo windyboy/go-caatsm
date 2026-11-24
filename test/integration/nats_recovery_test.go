@@ -8,12 +8,17 @@ import (
 	"testing"
 	"time"
 
-	natsinfra "caatsm/internal/infra/nats"
+	"caatsm/internal/config"
+	natsinfra "caatsm/internal/nats"
+	"caatsm/internal/observability"
 
 	"github.com/nats-io/nats.go"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
 )
+
+type noopHandler struct{}
+
+func (noopHandler) Handle(context.Context, []byte, string) error { return nil }
 
 func TestNATSConsumerRecovery(t *testing.T) {
 	if testing.Short() {
@@ -23,47 +28,71 @@ func TestNATSConsumerRecovery(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	defer cancel()
 
-	// Start NATS container
 	natsContainer, natsURL := startNATS(ctx, t)
 	defer func() {
 		_ = natsContainer.Terminate(context.Background())
 	}()
 
-	// Connect to NATS
 	nc, err := nats.Connect(natsURL)
-	require.NoError(t, err)
+	if err != nil {
+		t.Fatalf("connect nats: %v", err)
+	}
 	defer nc.Close()
 
 	js, err := nc.JetStream()
-	require.NoError(t, err)
-
-	// Test stream recovery
-	streamManager := natsinfra.NewStreamManager(js, "TEST_STREAM", []string{"test.subject"}, nil)
-	err = streamManager.EnsureStream(nil) // nil uses default stream configuration
-	assert.NoError(t, err)
-
-	// Test consumer recovery
-	consumerManager := natsinfra.NewConsumerManager(js, "TEST_STREAM", "test-consumer", "test.subject", nil)
-	consumerConfig := &nats.ConsumerConfig{
-		Durable:   "test-consumer",
-		AckPolicy: nats.AckExplicitPolicy,
-	}
-	err = consumerManager.EnsureConsumer(consumerConfig)
-	assert.NoError(t, err)
-
-	// Test pull subscription creation
-	sub, err := consumerManager.CreatePullSubscription()
-	assert.NoError(t, err)
-	sub.Unsubscribe()
-
-	// Test recovery when resources don't exist
-	// Delete the consumer and try recovery
-	err = js.DeleteConsumer("TEST_STREAM", "test-consumer")
-	if err != nil && !errors.Is(err, nats.ErrConsumerNotFound) {
-		require.NoError(t, err)
+	if err != nil {
+		t.Fatalf("jetstream context: %v", err)
 	}
 
-	// This should recreate the consumer
-	_, err = consumerManager.CreatePullSubscriptionWithRecovery(streamManager, consumerConfig)
-	assert.NoError(t, err)
+	autoProvision := true
+	cfg := &config.Config{
+		NATS: config.NATSConfig{
+			URL:           natsURL,
+			Mode:          "jetstream",
+			Stream:        "RECOVERY_TELEGRAM",
+			Consumer:      "recovery-consumer",
+			AutoProvision: &autoProvision,
+			StreamLimits: config.StreamLimitsConfig{
+				MaxMsgs:  1000,
+				MaxBytes: 64 * 1024 * 1024,
+				MaxAge:   time.Hour,
+				Discard:  "old",
+				Storage:  "file",
+				Replicas: 1,
+			},
+			ConsumerRules: config.ConsumerRulesConfig{
+				MaxDeliver:    3,
+				AckWait:       15 * time.Second,
+				MaxAckPending: 128,
+				DeliverPolicy: "all",
+				ReplayPolicy:  "instant",
+			},
+		},
+		Subscription: config.SubscriptionConfig{Topic: "recovery.telegram.serial"},
+		Publisher:    config.PublisherConfig{Topic: "recovery.telegram.json"},
+		DLQ:          config.DLQConfig{Enabled: true, Subject: "recovery.dlq"},
+		App:          config.AppConfig{BatchSize: 1, BatchTimeout: time.Second, MonitorInterval: time.Second},
+	}
+
+	if _, err := natsinfra.NewConsumer(nc, js, noopHandler{}, cfg, observability.NewNoop(), zap.NewNop()); err != nil {
+		t.Fatalf("initial NewConsumer failed: %v", err)
+	}
+
+	for _, name := range []string{"RECOVERY_TELEGRAM", "RECOVERY_TELEGRAM_OUT", "RECOVERY_TELEGRAM_DLQ"} {
+		if _, err := js.StreamInfo(name); err != nil {
+			t.Fatalf("expected stream %s to exist: %v", name, err)
+		}
+	}
+
+	if err := js.DeleteConsumer("RECOVERY_TELEGRAM", "recovery-consumer"); err != nil && !errors.Is(err, nats.ErrConsumerNotFound) {
+		t.Fatalf("delete consumer: %v", err)
+	}
+
+	if _, err := natsinfra.NewConsumer(nc, js, noopHandler{}, cfg, observability.NewNoop(), zap.NewNop()); err != nil {
+		t.Fatalf("recovery NewConsumer failed: %v", err)
+	}
+
+	if _, err := js.ConsumerInfo("RECOVERY_TELEGRAM", "recovery-consumer"); err != nil {
+		t.Fatalf("expected recovered consumer to exist: %v", err)
+	}
 }

@@ -1,0 +1,47 @@
+version: "2"
+
+linters:
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - depguard
+  settings:
+    depguard:
+      rules:
+        telegram-pure-core:
+          files:
+            - "**/internal/telegram/**/*.go"
+          deny:
+            - pkg: "caatsm/internal/config"
+              desc: "internal/telegram must remain zero-dependency pure Go"
+            - pkg: "caatsm/internal/observability"
+              desc: "internal/telegram must remain zero-dependency pure Go"
+            - pkg: "caatsm/internal/nats"
+              desc: "internal/telegram must remain zero-dependency pure Go"
+            - pkg: "caatsm/internal/postgres"
+              desc: "internal/telegram must remain zero-dependency pure Go"
+            - pkg: "go.uber.org/zap"
+              desc: "internal/telegram must not import logging libraries"
+            - pkg: "github.com/nats-io/nats.go"
+              desc: "internal/telegram must not import NATS"
+            - pkg: "github.com/jackc/pgx/v5"
+              desc: "internal/telegram must not import pgx"
+        pipeline-no-infra:
+          files:
+            - "**/internal/pipeline/**/*.go"
+          deny:
+            - pkg: "caatsm/internal/config"
+              desc: "internal/pipeline must accept Options instead of infra config"
+            - pkg: "caatsm/internal/observability"
+              desc: "internal/pipeline must define consumer-side Recorder interface"
+            - pkg: "caatsm/internal/nats"
+              desc: "internal/pipeline must depend only on internal/telegram and ports"
+            - pkg: "caatsm/internal/postgres"
+              desc: "internal/pipeline must depend only on internal/telegram and ports"
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

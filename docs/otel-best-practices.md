@@ -57,12 +57,10 @@ telemetry.insecure: true|false
 
 **NATS Consumer Operations**:
 ```yaml
-Span: Consumer.processMessage
+Span: Consumer.processMsg
 Attributes:
   messaging.system: nats
-  messaging.operation: receive
-  messaging.destination: telegram.serial
-  messaging.consumer.id: telegram-consumer
+  messaging.message_id: <nats-msg-id>
   caatsm.stream: TELEGRAM
 ```
 
@@ -74,7 +72,10 @@ Attributes:
   messaging.operation: receive
   messaging.message_id: <nats-msg-id>
   caatsm.component: processor
-  caatsm.message.category: ARR|DEP|FPL|etc
+  telegram.message_id: <telegram-id>
+  telegram.category: ARR|DEP|FPL|METAR|etc
+  telegram.status: parsed|header_error|body_error|aftn_error
+  telegram.parsed: true|false
 ```
 
 ### Database Spans
@@ -276,7 +277,7 @@ open http://localhost:16686
 
 # Search for caatsm traces
 Service: caatsm
-Operation: Consumer.processMessage OR MessageProcessor.Handle
+Operation: Consumer.processMsg OR MessageProcessor.Handle
 ```
 
 ### Metrics Verification

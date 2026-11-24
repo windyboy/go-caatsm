@@ -3,7 +3,7 @@ version: '3'
 vars:
   build_dir: bin
   binary: '{{.build_dir}}/receiver'
-  cmd: ./cmd/main
+  cmd: ./cmd/receiver
   version:
     sh: echo "${VERSION:-dev}"
   git_commit:
@@ -34,9 +34,9 @@ tasks:
         echo "  Built: {{.build_time}}"
       - |
         go build \
-          -ldflags "-X 'caatsm/internal/infra/buildinfo.Version={{.version}}' \
-                    -X 'caatsm/internal/infra/buildinfo.Commit={{.git_commit}}' \
-                    -X 'caatsm/internal/infra/buildinfo.BuiltAt={{.build_time}}'" \
+          -ldflags "-X 'caatsm/internal/buildinfo.Version={{.version}}' \
+                    -X 'caatsm/internal/buildinfo.Commit={{.git_commit}}' \
+                    -X 'caatsm/internal/buildinfo.BuiltAt={{.build_time}}'" \
           -o {{.binary}} {{.cmd}}
 
   run:
@@ -45,7 +45,7 @@ tasks:
       - task: run-dev
 
   run-dev:
-    desc: 'Run the receiver in development mode (uses core NATS mode by default). Use MONITORING_ADDR=ip:port to set monitoring address'
+    desc: 'Run the receiver in development mode (uses JetStream). Use MONITORING_ADDR=ip:port to set monitoring address'
     vars:
       MONITORING_ADDR:
         sh: echo "${MONITORING_ADDR:-}"
@@ -53,7 +53,7 @@ tasks:
       - build
     cmds:
       - |
-        echo "Running receiver in development mode (NATS mode: core by default)..."
+        echo "Running receiver in development mode (NATS mode: jetstream)..."
       - |
         cmd="GO_ENV=dev {{.binary}} listen"
         if [ -n "${MONITORING_ADDR:-}" ]; then
@@ -154,23 +154,6 @@ tasks:
       - echo "Linting code..."
       - golangci-lint run ./...
 
-  wire:
-    desc: Generate wire dependency injection code
-    cmds:
-      - |
-        if ! command -v wire >/dev/null; then
-          echo "Install wire: go install github.com/google/wire/cmd/wire@latest"
-          exit 1
-        fi
-      - echo "Generating wire code..."
-      - wire ./pkg/di
-
-  generate:
-    desc: Generate all code (wire, etc.)
-    cmds:
-      - task: wire
-      - echo "Code generation complete"
-
   deps:
     desc: Sync go.mod / go.sum
     cmds:
@@ -246,7 +229,7 @@ tasks:
       - up
     env:
       CAATSM_NATS_URL: nats://localhost:4222
-      CAATSM_NATS_MODE: core
+      CAATSM_NATS_MODE: jetstream
       CAATSM_POSTGRES_URL: postgres://caatsm:caatsm@localhost:5432/aviation?sslmode=disable
       CAATSM_TELEMETRY_ENABLED: "true"
       CAATSM_TELEMETRY_ENDPOINT: localhost:4318
@@ -259,11 +242,11 @@ tasks:
         echo "Ensuring observability stack is healthy (Jaeger @ http://localhost:16686)"
         docker compose -f docker-compose.dev.yml ps jaeger otel-collector >/dev/null
         monitoring_addr="${MONITORING_ADDR:-0.0.0.0:2112}"
-        echo "Running receiver with telemetry (mode=${CAATSM_NATS_MODE:-core}, monitoring=${monitoring_addr})"
+        echo "Running receiver with telemetry (mode=${CAATSM_NATS_MODE:-jetstream}, monitoring=${monitoring_addr})"
         echo "Note: Ensure Prometheus is configured to scrape ${monitoring_addr}"
         echo "      If using a different IP, restart Prometheus with: MONITORING_ADDR=${monitoring_addr} task up"
-        CAATSM_NATS_MODE=${CAATSM_NATS_MODE:-core} \
-        go run ./cmd/main listen --monitoring-addr "${monitoring_addr}"
+        CAATSM_NATS_MODE=${CAATSM_NATS_MODE:-jetstream} \
+        go run ./cmd/receiver listen --monitoring-addr "${monitoring_addr}"
 
   seed:
     desc: Generate sample telegrams (publishes to Core NATS by default, compatible with dev mode)

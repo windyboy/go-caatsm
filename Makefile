@@ -1,16 +1,16 @@
 # Build variables
 BUILD_DIR ?= bin
 BINARY := $(BUILD_DIR)/receiver
-CMD := ./cmd/main
+CMD := ./cmd/receiver
 GO_ENV ?= dev
 VERSION ?= dev
 
 # Build info variables
 GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 BUILD_TIME := $(shell printf 'package main\nimport ("fmt"\n"time")\nfunc main() { fmt.Print(time.Now().UTC().Format(time.RFC3339)) }' | go run -)
-LDFLAGS := -X 'caatsm/internal/infra/buildinfo.Version=$(VERSION)' \
-           -X 'caatsm/internal/infra/buildinfo.Commit=$(GIT_COMMIT)' \
-           -X 'caatsm/internal/infra/buildinfo.BuiltAt=$(BUILD_TIME)'
+LDFLAGS := -X 'caatsm/internal/buildinfo.Version=$(VERSION)' \
+           -X 'caatsm/internal/buildinfo.Commit=$(GIT_COMMIT)' \
+           -X 'caatsm/internal/buildinfo.BuiltAt=$(BUILD_TIME)'
 
 # Default target
 .PHONY: all
@@ -93,16 +93,6 @@ coverage: ## Run coverage and generate report
 fmt: ## Format Go code
 	@echo "Formatting code..."
 	@go fmt ./...
-
-.PHONY: wire
-wire: ## Generate wire dependency injection code
-	@command -v wire >/dev/null || (echo "Please install wire (go install github.com/google/wire/cmd/wire@latest)"; exit 1)
-	@echo "Generating wire code..."
-	@wire ./pkg/di
-
-.PHONY: generate
-generate: wire ## Generate all code (wire, etc.)
-	@echo "Code generation complete"
 
 .PHONY: deps
 deps: ## Sync go.mod / go.sum

@@ -2,14 +2,12 @@ You are an expert in Go, microservices architecture, and clean backend developme
 
 ### General Responsibilities:
 - Guide the development of idiomatic, maintainable, and high-performance Go code.
-- Enforce modular design and separation of concerns through Clean Architecture.
+- Enforce pragmatic, Go-idiomatic layered modularity (as defined in `docs/architecture.md`) rather than rigid multi-layer boilerplate.
 - Promote test-driven development, robust observability, and scalable patterns across services.
 
 ### Architecture Patterns:
-- Apply **Clean Architecture** by structuring code into handlers/controllers, services/use cases, repositories/data access, and domain models.
-- Use **domain-driven design** principles where applicable.
-- Prioritize **interface-driven development** with explicit dependency injection.
-- Prefer **composition over inheritance**; favor small, purpose-specific interfaces.
+- Structure services around a pure zero-IO core domain/parser layer, a lightweight pipeline orchestration layer, and explicit infrastructure adapters (see `docs/architecture.md`).
+- Define small, purpose-specific interfaces at the **consumer** side (*Accept interfaces, return structs*).
 - Ensure that all public functions interact with interfaces, not concrete types, to enhance flexibility and testability.
 
 ### Project Structure Guidelines:

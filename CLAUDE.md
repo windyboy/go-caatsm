@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**go-caatsm** is a Civil Aviation Authority Telegram Message Processor - a high-performance, production-ready message processing system for aviation telegrams. It uses Clean Architecture, NATS JetStream for reliable message streaming, and PostgreSQL/TimescaleDB for persistence.
+**go-caatsm** is a Civil Aviation Authority Telegram Message Processor - a message processing system for aviation telegrams and weather reports using NATS JetStream for reliable message streaming and PostgreSQL/TimescaleDB for persistence.
 
-The system processes ICAO-format aviation telegrams (ARR, DEP, CNL, DLA, FPL), parsing raw messages from NATS JetStream, storing them in PostgreSQL, and republishing structured JSON to downstream consumers.
+> **Architecture Blueprint:** [`docs/architecture.md`](docs/architecture.md) is the authoritative reference documenting the historical baseline and the implemented **3-layer Go-idiomatic architecture**.
 
 ## Essential Commands
 
@@ -46,16 +46,12 @@ make coverage             # or: task coverage
 
 ### Code Quality
 ```bash
-# Lint (golangci-lint)
+# Lint (golangci-lint, enforces .golangci.yml depguard rules)
 make lint                 # or: task lint
 
 # Format code
 make fmt                  # or: task fmt
 go fmt ./...
-
-# Regenerate dependency injection (after modifying pkg/di/wire.go)
-make wire                 # or: task wire
-wire ./pkg/di
 ```
 
 ### Development Tools
@@ -79,67 +75,59 @@ task down                 # Stop and remove containers
 
 ## Architecture Overview
 
-### Clean Architecture Layers
+### Package Layout
 
 ```
+cmd/
+├── receiver/         # Primary entrypoint (main.go), CLI (listen), explicit wiring & shutdown
+└── seed-telegrams/   # Synthetic aviation telegram generator
 internal/
-├── domain/           # Pure business entities (no dependencies)
-│   └── aviation.go   # ARR, DEP, CNL, DLA, FPL, Weather domain models
-├── port/             # Interface contracts (Repository, Publisher)
-│   ├── repository.go
-│   └── publisher.go
-├── app/              # Application logic (orchestration)
-│   └── processor.go  # MessageProcessor - main processing pipeline
-├── adapter/          # Interface implementations & data transformations
-│   ├── parser/       # Telegram parsers (composite pattern)
-│   │   ├── aviation/ # Aviation telegrams (ARR, DEP, CNL, DLA, FPL)
-│   │   ├── weather/  # Weather reports (METAR, SPECI, TAF)
-│   │   └── schedule/ # Flight schedule messages
-│   ├── mapper/       # Domain ↔ DTO transformations
-│   └── dto/          # Data Transfer Objects (ParsedTelegram, MessageStatus)
-└── infra/            # Infrastructure concerns
-    ├── nats/         # NATS JetStream consumer & publisher
-    ├── postgres/     # PostgreSQL repository (pgx, batch inserts)
-    ├── config/       # Koanf configuration loading
-    ├── log/          # Zap structured logging
-    ├── telemetry/    # OpenTelemetry traces/metrics
-    ├── metrics/      # Prometheus metrics
-    ├── monitoring/   # Health/metrics HTTP server
-    └── buildinfo/    # Build metadata
+├── telegram/         # Pure zero-IO core domain, routing & validation (stdlib only)
+│   ├── message.go    # Canonical Message envelope, MessageStatus & Protocol constants
+│   ├── router.go     # Composite Router dispatching weather vs aviation
+│   ├── aftn.go       # AFTN protocol validator (4/8-char addr, skips weather reports)
+│   ├── aviation/     # ARR, DEP, CNL, DLA, FPL models, ICAO Validate() & parsers
+│   └── weather/      # METAR, SPECI, TAF models, lexer, classifier & parsers
+├── pipeline/         # Core orchestration pipeline
+│   ├── processor.go  # Processor - Parse -> AFTN Validate -> Persist -> Publish
+│   ├── ports.go      # Consumer-defined small interfaces (Parser, Validator, Store, Publisher, Recorder)
+│   └── errors.go     # Permanent / Transient error helpers
+├── nats/             # NATS JetStream consumer, publisher, monitor, conn & DLQ handler
+├── postgres/         # PostgreSQL/TimescaleDB repository (pgx), internal 17-col mapper & telegrams.ddl
+├── config/           # Koanf TOML + CAATSM_* env configuration & validation
+├── observability/    # Zap logging, consolidated OTel SDK, Prometheus metrics & HTTP health server
+└── buildinfo/        # Build version, commit, and timestamp metadata
 ```
 
-**Dependency Flow**: `infra` → `adapter` → `app` → `domain` ← `port`
-The domain layer has zero external dependencies. All layers depend on interfaces (ports), not concrete implementations.
+**Dependency Rules**: Enforced by `.golangci.yml` (`depguard`): `internal/telegram/...` depends solely on the Go standard library (and internal sibling subpackages via `router.go`); `internal/pipeline` depends only on `internal/telegram`, context/otel/zap (zero infra imports); `internal/{nats,postgres,config,observability}` implement infrastructure without importing `internal/pipeline` concrete types beyond `pipeline.Permanent`/`pipeline.IsPermanent`.
 
 ### Key Components
 
-1. **NATS Consumer** (`internal/infra/nats/consumer.go`)
-   - Pulls messages from JetStream in batches (default: 50)
-   - ACK/NAK handling with automatic retries
-   - Routes to DLQ after max delivery attempts (default: 3)
-   - Monitors consumer lag and pending messages
+1. **NATS Consumer** (`internal/nats/consumer.go`)
+   - Pulls messages from JetStream in batches (default: 50) with context cancellation (`nats.Context(ctx)`) and processes them sequentially via `MessageHandler.Handle`
+   - Separates inbound (`nats.stream`, `WorkQueuePolicy`), outbound (`nats.publish_stream`, `LimitsPolicy`), and DLQ (`nats.dlq_stream`, `LimitsPolicy`) streams; auto-provisions in non-prod and verifies read-only in `prod` (`ShouldAutoProvision()`)
+   - Routes permanent errors (`pipeline.IsPermanent`) to DLQ when enabled; falls back to NAK+backoff retry if DLQ publishing fails
+   - Monitors consumer lag and pending messages (`ConsumerMonitor`)
 
-2. **MessageProcessor** (`internal/app/processor.go`)
-   - Orchestrates: Parse → Persist → Publish
-   - Error categorization: `parsed`, `header_error`, `body_error`, `publish_error`, `repository_error`
-   - Parser failures are permanent (ACK'd, no retry)
-   - Repository failures are transient (NAK'd, retry with backoff)
+2. **Processor** (`internal/pipeline/processor.go`)
+   - Orchestrates: Parse → (optional AFTN Validate) → Persist → Publish
+   - Telegram parse/validation status (`telegram.MessageStatus`): `unknown`, `parsed`, `header_error`, `body_error`, `aftn_error`
+   - Parser and AFTN validation failures are permanent (stored in `aviation.telegrams_raw`, ACK'd, no retry)
+   - Repository failures are transient (NAK'd, retry with backoff); publisher transient vs permanent errors are classified by the underlying publisher (`pipeline.Permanent`)
 
-3. **Parser** (`internal/adapter/parser/`)
-   - Composite parser architecture with specialized sub-parsers
-   - **Aviation Parser** (`internal/adapter/parser/aviation/`) - ICAO telegram formats (ARR, DEP, CNL, DLA, FPL)
-   - **Weather Parser** (`internal/adapter/parser/weather/`) - Weather reports (METAR, SPECI, TAF)
-   - **Schedule Parser** (`internal/adapter/parser/schedule/`) - Flight schedule messages
-   - Uses pattern matching, tokenization, and lexical analysis
-   - Returns structured domain models or error status
+3. **Telegram Router & Parsers** (`internal/telegram/`)
+   - `Router` (`internal/telegram/router.go`) combines `weather.Parser` and `aviation.Parser` (surfacing weather parse errors directly without falling back to `aviation.Parser`)
+   - **Aviation Parser** (`internal/telegram/aviation/`) - ICAO telegram formats (ARR, DEP, CNL, DLA, FPL) with co-located `Validate()`
+   - **Weather Parser** (`internal/telegram/weather/`) - Weather reports (METAR, SPECI, TAF)
+   - Returns `*telegram.Message` (with structured domain data in `BodyData`)
 
-4. **Repository** (`internal/infra/postgres/repository.go`)
-   - PostgreSQL persistence via pgx connection pool
-   - Batch insert support via `COPY FROM`
-   - Stores parsed telegrams in `aviation.telegrams` table
+4. **Repository** (`internal/postgres/repository.go`)
+   - PostgreSQL persistence via `pgxpool.Pool`
+   - `InsertOne` (with 7-day time-bounded deduplication on `(message_id, date_time)`), `InsertBatch` (`COPY FROM`), and `InsertRaw` (for failed/unparsed audit storage)
+   - Internal 17-column row mapping in `internal/postgres/mapper.go`
 
-5. **Monitoring Server** (`internal/infra/monitoring/server.go`)
-   - `GET /livez` - Liveness (process info, no dependencies checked)
+5. **Monitoring Server** (`internal/observability/server.go`)
+   - `GET /livez` - Liveness (process info, no dependency checks)
    - `GET /readyz` - Readiness (pings Postgres & NATS, 503 on failure)
    - `GET /metrics` - Prometheus metrics endpoint
    - Default address: `:2112`
@@ -147,11 +135,12 @@ The domain layer has zero external dependencies. All layers depend on interfaces
 ### Configuration
 
 Uses Koanf for config loading from TOML files + environment variables:
-- Config file: `configs/config.{GO_ENV}.toml` (GO_ENV defaults to `dev`)
-- Env overrides: `CAATSM_` prefix (e.g., `CAATSM_NATS_URL`, `CAATSM_POSTGRES_URL`)
+- Config file: `configs/config.{GO_ENV}.toml` (when present; falls back cleanly to `CAATSM_*` env vars if absent; `GO_ENV` defaults to `dev`)
+- Env overrides: `CAATSM_` prefix with `__` nesting (e.g., `CAATSM_APP__BATCH_SIZE=100`, `CAATSM_MONITORING__ENABLE_METRICS=true`; top-level known prefixes like `CAATSM_NATS_URL` and `CAATSM_POSTGRES_URL` also map automatically)
 - Key settings:
   - `nats.mode`: Must be `"jetstream"` (only supported mode)
-  - `nats.stream`: JetStream stream name (default: `TELEGRAM`)
+  - `nats.stream` / `publish_stream` / `dlq_stream`: Separate streams (defaults: `TELEGRAM`, `TELEGRAM_OUT`, `TELEGRAM_DLQ`)
+  - `nats.auto_provision`: Overrides non-prod/prod default provisioning (`prod` defaults to read-only verification)
   - `nats.consumer`: Durable consumer name (default: `telegram-consumer`)
   - `nats.consumer_rules.max_deliver`: Max retry attempts (default: 3)
   - `dlq.enabled`: Enable Dead-Letter Queue for poison messages
@@ -160,50 +149,31 @@ Uses Koanf for config loading from TOML files + environment variables:
 
 ### Parser Architecture
 
-The system uses a **composite parser pattern** with specialized sub-parsers:
+1. **Composite Router** (`internal/telegram/router.go`)
+   - Inspects payload headers via `weather.Classifier` (`METAR`/`SPECI`/`TAF`) and delegates to `weather.Parser` or `aviation.Parser`
+   - Surfaces parser and validation errors directly without cross-parser fallback
 
-1. **Composite Parser** (`internal/adapter/parser/composite.go`)
-   - Orchestrates multiple specialized parsers
-   - Routes messages to appropriate parser based on content classification
-   - Falls back gracefully if primary parser fails
+2. **Aviation Parser** (`internal/telegram/aviation/`)
+   - Direct RE2 matching and parsing for ARR, DEP, CNL, DLA, FPL message types plus ICAO `Validate()`
+   - Extracts header metadata, flight details, aircraft info, timestamps, and airports
 
-2. **Aviation Parser** (`internal/adapter/parser/aviation/`)
-   - Pattern-based parsing using registry of message type patterns
-   - Tokenizer for breaking down telegram structure
-   - Handles ARR, DEP, CNL, DLA, FPL message types
-   - Extracts flight details, aircraft info, timestamps, airports
+3. **Weather Parser** (`internal/telegram/weather/`)
+   - Lexer/token-based parsing for METAR, SPECI, and TAF reports
+   - Classifies format and extracts weather elements (wind, visibility, clouds, phenomena, temperature, altimeter)
 
-3. **Weather Parser** (`internal/adapter/parser/weather/`)
-   - Lexer-based parsing for weather reports
-   - Classifier to identify METAR, SPECI, or TAF format
-   - Pattern matching for weather elements (wind, visibility, clouds, etc.)
-   - Normalizes weather data into structured format
+### Explicit Wiring & Lifecycle
 
-4. **Schedule Parser** (`internal/adapter/parser/schedule/`)
-   - Extracts flight schedule information
-   - Pattern matching for schedule-specific fields
-   - Handles recurring flight patterns and time ranges
-
-Each parser implements the `Parser` interface from `internal/port/parser.go`, enabling easy extension and testing.
-
-### Dependency Injection
-
-Uses Google Wire for compile-time DI:
-- Wire spec: `pkg/di/wire.go`
-- Generated code: `pkg/di/wire_gen.go` (NEVER edit manually)
-- To add a new dependency:
-  1. Create a `ProvideXxx` function in the appropriate package
-  2. Add it to the `runtimeSet` in `pkg/di/wire.go`
-  3. Run `make wire` or `task wire`
+Dependencies are wired explicitly in `cmd/receiver/main.go` (no code-generated DI), with reverse-order `defer` cleanup closing `pgxpool.Pool`, NATS connection, logger, OTel providers, HTTP monitor server, and `Consumer.Shutdown(ctx)`.
 
 ### Message Processing Flow
 
 ```
-NATS JetStream → Consumer.Fetch(batch) → MessageProcessor.Handle(msg) →
-  ├─ Parser.Parse(raw) → domain model or error status
-  ├─ Repository.Insert(parsed) → Postgres aviation.telegrams
-  ├─ Publisher.Publish(json) → NATS output topic
-  └─ ACK (success) | NAK (transient failure) | ACK (permanent failure)
+NATS JetStream → Consumer.Fetch(ctx, batch) → Processor.Handle(ctx, raw, msgID) →
+  ├─ Router.Parse(raw) → *telegram.Message or error status
+  ├─ AFTNValidator.Validate(msg) (optional, AFTN protocol only)
+  ├─ Store.InsertOne(ctx, msg) → Postgres aviation.telegrams
+  ├─ Publisher.Publish(ctx, msg) → NATS output stream (with OTel TraceContext)
+  └─ ACK (ok / DLQ-routed permanent fail) | NAK with backoff (transient / DLQ fail)
 ```
 
 **Error Handling**:
@@ -252,18 +222,17 @@ Three observability surfaces:
 
 ## Important Development Notes
 
-### Code Style (from .cursor/rules/do.mdc)
-- **Clean Architecture**: Strict layer separation, dependency inversion
-- **Interface-driven**: All public functions interact with interfaces, not concrete types
-- **Error handling**: Always wrap errors with context (`fmt.Errorf("context: %w", err)`)
-- **Context propagation**: Pass `context.Context` everywhere (deadlines, cancellations, tracing)
-- **No global state**: Use constructor functions with DI
-- **Resource cleanup**: Use `defer` for closing resources
-- **Security**: Input validation, secure defaults, retries with exponential backoff
-- **Observability**: Trace all service boundaries (HTTP, NATS, DB), structured logs (JSON)
+### Code Style (aligned with `docs/architecture.md`, `.golangci.yml` & `.cursor/rules/do.mdc`)
+- **Modular 3-Layer Architecture**: Strictly keep `internal/telegram/...` pure stdlib Go with zero external IO/logging, define minimal interfaces at consumers (`internal/pipeline/ports.go`, `internal/nats/consumer.go`), and wire explicitly in `cmd/receiver`.
+- **Interface-driven**: All core pipeline collaborators interact via small consumer interfaces, not concrete types
+- **Error handling**: Always wrap errors with context (`fmt.Errorf("context: %w", err)`) and use `errors.Is` / `errors.As`
+- **Context propagation**: Pass `context.Context` everywhere (deadlines, cancellations, OTel tracing)
+- **No global state**: Construct components explicitly in `cmd/receiver`
+- **Resource cleanup**: Use `defer` for closing resources in reverse initialization order
+- **Security**: Input validation, secure defaults, retries with exponential backoff, sanitized NATS URL logging
+- **Observability**: Trace all service boundaries (NATS Consume -> Pipeline -> DB -> NATS Publish), structured logs (JSON)
 
 ### Never Edit Generated Files
-- `pkg/di/wire_gen.go` - Wire-generated DI code
 - Any `*_gen.go` files - Code generation output
 
 ### Common Gotchas
@@ -271,7 +240,7 @@ Three observability surfaces:
 1. **JetStream-only mode**: The system only supports JetStream mode (`nats.mode = "jetstream"`). Do not attempt to use Core NATS mode.
 
 2. **Production setup**: In production (`GO_ENV=prod`):
-   - Stream and Consumer must be created manually (not auto-created)
+   - `ShouldAutoProvision()` defaults to `false`: startup runs read-only verification of inbound/outbound/DLQ streams and the durable consumer instead of auto-creating them
    - Requires `configs/config.prod.toml` or `CAATSM_*` env vars
    - Enable TLS for NATS/Postgres connections
 
@@ -287,6 +256,7 @@ Three observability surfaces:
 
 ## Additional Documentation
 
+- `docs/architecture.md` - Authoritative architecture design & migration roadmap
 - `README.md` - Comprehensive user guide (setup, configuration, deployment)
 - `AGENTS.md` - Quick reference for AI assistants (commands, style guide)
 - `docs/prod-guide.md` - Production deployment guide
