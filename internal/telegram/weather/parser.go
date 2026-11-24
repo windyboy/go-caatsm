@@ -25,6 +25,9 @@ func (p *Parser) Parse(raw string) (Message, error) {
 	if !ok {
 		return nil, ErrInvalidFormat
 	}
+	if !HasValidEnding(raw) {
+		return nil, fmt.Errorf("%w: missing '=' terminator", ErrInvalidFormat)
+	}
 
 	switch reportType {
 	case "METAR", "SPECI":

@@ -39,7 +39,16 @@ NNNN`
 			Expect(parsedHeader.DateTime).To(Equal("160530"))
 			Expect(parsedHeader.PriorityIndicator).To(Equal("QU"))
 			Expect(parsedHeader.PrimaryAddress).To(Equal("TSNZPCA"))
-			Expect(parsedHeader.SecondaryAddresses).To(Equal(" QU PEKUDCA TSNUOCA TSNZPCA TSNUFCA"))
+			Expect(parsedHeader.SecondaryAddresses).To(Equal("QU PEKUDCA TSNUOCA TSNZPCA TSNUFCA"))
+		})
+
+		It("handles CRLF line endings and multiple addresses on the priority line", func() {
+			msg := "ZCZC TMQ2526 141605\r\nFF ZBTJZPZX ZSSSZPZX ZGGGZPZX\r\n141604 ZBACZQZX\r\n(ARR-JAE7433/A0132-RKSI-ZBTJ1604)\r\nNNNN\r\n\r\n"
+			res, err := Parse(msg)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(res.Parsed).To(BeTrue())
+			Expect(res.Header.PrimaryAddress).To(Equal("ZBTJZPZX"))
+			Expect(res.Header.SecondaryAddresses).To(Equal("ZSSSZPZX ZGGGZPZX"))
 		})
 
 		It("parses header with dot-prefixed originator", func() {
@@ -168,6 +177,7 @@ NNNN`
 			Expect(res.Parsed).To(BeTrue())
 			fplMsg := res.BodyData.(*FPL)
 			Expect(fplMsg.FlightNumber).To(Equal("OKA2861"))
+			Expect(fplMsg.TotalEET).To(Equal("0100"))
 			Expect(fplMsg.Register).To(Equal("B3710"))
 			Expect(fplMsg.Remarks).To(Equal("TCAS"))
 		})

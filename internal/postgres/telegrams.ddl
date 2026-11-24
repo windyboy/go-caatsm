@@ -25,12 +25,10 @@ CREATE TABLE IF NOT EXISTS aviation.telegrams (
 
 SELECT create_hypertable('aviation.telegrams', 'received_at', if_not_exists => TRUE);
 
-CREATE INDEX IF NOT EXISTS idx_telegrams_message_id ON aviation.telegrams (message_id);
 CREATE INDEX IF NOT EXISTS idx_telegrams_date_time ON aviation.telegrams (date_time);
 CREATE INDEX IF NOT EXISTS idx_telegrams_message_id_date_time ON aviation.telegrams (message_id, date_time, received_at DESC);
 CREATE INDEX IF NOT EXISTS idx_telegrams_priority_indicator ON aviation.telegrams (priority_indicator);
 CREATE INDEX IF NOT EXISTS idx_telegrams_primary_address ON aviation.telegrams (primary_address);
-CREATE INDEX IF NOT EXISTS idx_telegrams_received_at ON aviation.telegrams (received_at);
 CREATE INDEX IF NOT EXISTS idx_telegrams_uuid ON aviation.telegrams (uuid);
 
 CREATE TABLE IF NOT EXISTS aviation.telegrams_raw (
@@ -42,3 +40,7 @@ CREATE TABLE IF NOT EXISTS aviation.telegrams_raw (
     metadata JSONB,
     PRIMARY KEY (uuid, received_at)
 );
+
+SELECT create_hypertable('aviation.telegrams_raw', 'received_at', if_not_exists => TRUE);
+
+CREATE INDEX IF NOT EXISTS idx_telegrams_raw_status_received_at ON aviation.telegrams_raw (status, received_at DESC);

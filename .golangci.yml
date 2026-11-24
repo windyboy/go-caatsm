@@ -12,23 +12,13 @@ linters:
     depguard:
       rules:
         telegram-pure-core:
+          list-mode: strict
           files:
             - "**/internal/telegram/**/*.go"
-          deny:
-            - pkg: "caatsm/internal/config"
-              desc: "internal/telegram must remain zero-dependency pure Go"
-            - pkg: "caatsm/internal/observability"
-              desc: "internal/telegram must remain zero-dependency pure Go"
-            - pkg: "caatsm/internal/nats"
-              desc: "internal/telegram must remain zero-dependency pure Go"
-            - pkg: "caatsm/internal/postgres"
-              desc: "internal/telegram must remain zero-dependency pure Go"
-            - pkg: "go.uber.org/zap"
-              desc: "internal/telegram must not import logging libraries"
-            - pkg: "github.com/nats-io/nats.go"
-              desc: "internal/telegram must not import NATS"
-            - pkg: "github.com/jackc/pgx/v5"
-              desc: "internal/telegram must not import pgx"
+            - "!$test"
+          allow:
+            - "$gostd"
+            - "caatsm/internal/telegram"
         pipeline-no-infra:
           files:
             - "**/internal/pipeline/**/*.go"
@@ -41,6 +31,22 @@ linters:
               desc: "internal/pipeline must depend only on internal/telegram and ports"
             - pkg: "caatsm/internal/postgres"
               desc: "internal/pipeline must depend only on internal/telegram and ports"
+        nats-isolation:
+          files:
+            - "**/internal/nats/**/*.go"
+          deny:
+            - pkg: "caatsm/internal/pipeline"
+              desc: "internal/nats must use consumer-side interfaces/behavioral errors without importing pipeline"
+            - pkg: "caatsm/internal/observability"
+              desc: "internal/nats must accept injected Recorder instead of importing observability"
+        postgres-isolation:
+          files:
+            - "**/internal/postgres/**/*.go"
+          deny:
+            - pkg: "caatsm/internal/pipeline"
+              desc: "internal/postgres must stay decoupled from pipeline"
+            - pkg: "caatsm/internal/observability"
+              desc: "internal/postgres must accept injected MetricsRecorder instead of importing observability"
 
 issues:
   max-issues-per-linter: 0

@@ -60,7 +60,21 @@ func parseTaf(raw string) (*Taf, error) {
 		switch {
 		case strings.HasPrefix(upperToken, "PROB"):
 			probStr := strings.TrimPrefix(upperToken, "PROB")
-			pendingProb, _ = strconv.Atoi(probStr)
+			probVal, err := strconv.Atoi(probStr)
+			if err == nil && probVal > 0 && pos+1 < len(tokens) && tafValidityPattern.MatchString(tokens[pos+1]) {
+				period, newPos, pErr := parseRangePeriod("PROB", nil, tokens, pos, taf.ValidFrom, &taf.Warnings)
+				if pErr != nil {
+					taf.Warnings = append(taf.Warnings, fmt.Sprintf("failed to parse PROB period: %v", pErr))
+					pos++
+					continue
+				}
+				period.Probability = probVal
+				taf.Periods = append(taf.Periods, period)
+				pendingProb = 0
+				pos = newPos
+				continue
+			}
+			pendingProb = probVal
 			pos++
 
 		case strings.HasPrefix(upperToken, "FM"):
@@ -141,6 +155,10 @@ func parseTafHeader(tokens []string, raw string) (*Taf, int, error) {
 	}
 	pos++
 
+	if pos < len(tokens) && (strings.EqualFold(tokens[pos], "AMD") || strings.EqualFold(tokens[pos], "COR")) {
+		pos++
+	}
+
 	if pos >= len(tokens) {
 		return nil, 0, ErrMissingStation
 	}
@@ -172,11 +190,12 @@ func parseTafHeader(tokens []string, raw string) (*Taf, int, error) {
 }
 
 func resolveDayTime(base time.Time, day, hour, min int) time.Time {
-	t := time.Date(base.Year(), base.Month(), day, hour, min, 0, 0, time.UTC)
+	year, month := base.Year(), base.Month()
 	if day < base.Day() {
-		t = t.AddDate(0, 1, 0)
+		nextMonth := time.Date(year, month+1, 1, 0, 0, 0, 0, time.UTC)
+		year, month = nextMonth.Year(), nextMonth.Month()
 	}
-	return t
+	return time.Date(year, month, day, hour, min, 0, 0, time.UTC)
 }
 
 func parseFMPeriod(tokens []string, startPos int, validityFrom, validityTo time.Time, warnings *[]string) (TafPeriod, int, error) {
@@ -212,7 +231,7 @@ func parseFMPeriod(tokens []string, startPos int, validityFrom, validityTo time.
 	return period, endPos, nil
 }
 
-// parseRangePeriod handles both compact (e.g. TEMPO2512/2515) and spaced (e.g. TEMPO 2512/2515) periods.
+// parseRangePeriod handles both compact (e.g. TEMPO2512/2515) and spaced (e.g. TEMPO 2512/2515 or PROB30 2512/2515) periods.
 func parseRangePeriod(
 	periodType string,
 	compactPattern *regexp.Regexp,
@@ -226,12 +245,18 @@ func parseRangePeriod(
 	var match []string
 	elemStart := startPos + 1
 
-	if m := compactPattern.FindStringSubmatch(tokens[startPos]); len(m) > 0 {
-		match = m
-	} else if strings.EqualFold(tokens[startPos], periodType) && startPos+1 < len(tokens) {
-		if m := tafValidityPattern.FindStringSubmatch(tokens[startPos+1]); len(m) > 0 {
+	if compactPattern != nil {
+		if m := compactPattern.FindStringSubmatch(tokens[startPos]); len(m) > 0 {
 			match = m
-			elemStart = startPos + 2
+		}
+	}
+	if len(match) == 0 && startPos+1 < len(tokens) {
+		upper := strings.ToUpper(tokens[startPos])
+		if upper == periodType || (periodType == "PROB" && strings.HasPrefix(upper, "PROB")) {
+			if m := tafValidityPattern.FindStringSubmatch(tokens[startPos+1]); len(m) > 0 {
+				match = m
+				elemStart = startPos + 2
+			}
 		}
 	}
 

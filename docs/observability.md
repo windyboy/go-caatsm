@@ -16,10 +16,10 @@ The service exposes Prometheus metrics via the monitoring HTTP server (default `
   NAK retries triggered by the JetStream consumer, labelled by `reason` (`processor_error`, `dlq_publish_error`).
 
 - `caatsm_js_api_calls_total{operation}`  
-  JetStream API operations (`fetch`, `publish`, `dlq_publish`, `dlq_validate`, `stream_info`, `consumer_info`, `add_stream`, `add_consumer`, `consumer_lag`).
+  JetStream API operations (`fetch`, `publish`, `dlq_publish`, `dlq_validate`, `stream_info`, `consumer_info`, `add_stream`, `add_consumer`).
 
 - `caatsm_db_queries_total{operation,result}`  
-  Database operations grouped by operation (`insert_one`, `insert_batch`, `insert_raw`) and result (`ok`, `error`).
+  Database operations grouped by operation (`insert_one`, `insert_batch`, `insert_raw`, `message_exists`) and result (`ok`, `error`).
 
 - `caatsm_db_query_latency_seconds{operation}`  
   DB operation latency.
@@ -213,7 +213,7 @@ Configured in `internal/observability/otel.go` (`createResource`): `service.name
   - `caatsm.stream: <stream-name>`
 
 **Pipeline Processor (`caatsm/pipeline`)**:
-- `MessageProcessor.Handle`
+- `Processor.Handle`
   - `messaging.system: nats`
   - `messaging.operation: receive`
   - `messaging.message_id: <msg-id>`
@@ -269,21 +269,7 @@ The `otel-collector-dev` Grafana dashboard (provisioned from `configs/grafana-da
 
 **Note**: CAATSM application metrics exported via OTEL are displayed in the **CAATSM – Receiver Overview** dashboard for consolidated service monitoring. The OTEL collector dashboard focuses solely on collector infrastructure metrics.
 
-### Structured Logging Contract
+### Structured Logging
 
-Logging is done with Zap. The `internal/observability` package (`logger.go`) standardises fields via `MessageFields`:
-
-- `service` – logical component (`caatsm-consumer`, `caatsm-processor` etc.).  
-- `transport_msg_id` – NATS/envelope message ID (derived from `Nats-Msg-Id` or JetStream sequence).  
-- `telegram_message_id` – business telegram message ID from the payload.  
-- `category` – telegram category (ARR, DEP, FPL, etc.).  
-- `stream`, `consumer`, `subject` – JetStream context.  
-- `nats_sequence` – JetStream stream sequence, when available.  
-- `request_id`, `trace_id` – correlation identifiers.  
-- `error_type` – high-level classification:
-  - `business` – payload/validation/domain issues; not suitable for retry.
-  - `transient` – network/DB/NATS glitches that may succeed on retry.
-  - `fatal` – programming errors, schema mismatches, or configuration issues requiring operator attention.
-
-Handler and consumer logs should always be emitted through `WithMessageContext` to ensure these fields are present where applicable.
+Logging is configured via Zap in [`internal/observability/logger.go`](../internal/observability/logger.go) (`NewLogger`) supporting JSON/console encoding, level selection, file rotation via `lumberjack`, and log sampling. Processor and consumer logs emit structured correlation fields (`service`, `transport_msg_id`, `telegram_message_id`, `category`, `msg_id`, `stream`, `consumer`).
 

@@ -1,6 +1,8 @@
 package telegram
 
 import (
+	"caatsm/internal/telegram/weather"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -29,12 +31,43 @@ var _ = Describe("Router", func() {
 		Expect(taf.Category).To(Equal("TAF"))
 	})
 
+	It("parses lowercase weather reports while preserving RMK remark casing", func() {
+		msg, err := router.Parse("metar kjfk 251200z 35012kt cavok 12/08 q1013 rmk Ao2=")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(msg.Protocol).To(Equal(ProtocolWeather))
+		Expect(msg.Category).To(Equal("METAR"))
+		Expect(msg.Parsed).To(BeTrue())
+		Expect(msg.Status).To(Equal(StatusParsed))
+
+		metar, ok := msg.BodyData.(*weather.Metar)
+		Expect(ok).To(BeTrue())
+		Expect(metar.StationID).To(Equal("KJFK"))
+		Expect(metar.Visibility).NotTo(BeNil())
+		Expect(metar.Visibility.Modifier).To(Equal("CAVOK"))
+		Expect(metar.Temperature).NotTo(BeNil())
+		Expect(metar.Temperature.Value).To(Equal(12.0))
+		Expect(metar.Altimeter).NotTo(BeNil())
+		Expect(metar.Altimeter.Value).To(Equal(1013.0))
+		Expect(metar.Remarks).To(Equal("rmk Ao2"))
+	})
+
 	It("surfaces weather parser errors instead of falling back to aviation parser", func() {
 		msg, err := router.Parse("METAR KJFK BADTIME=")
 		Expect(err).To(HaveOccurred())
 		Expect(err).To(MatchError(ErrBodyParse))
 		Expect(err.Error()).To(ContainSubstring("failed to parse issue time"))
 		Expect(msg).NotTo(BeNil())
+		Expect(msg.Protocol).To(Equal(ProtocolWeather))
+		Expect(msg.Category).To(Equal("METAR"))
+		Expect(msg.Parsed).To(BeFalse())
+		Expect(msg.Status).To(Equal(StatusBodyError))
+	})
+
+	It("keeps weather reports missing '=' terminator on the weather error path", func() {
+		msg, err := router.Parse("METAR KJFK 251200Z 35012KT 10SM FEW020")
+		Expect(err).To(HaveOccurred())
+		Expect(err).To(MatchError(ErrBodyParse))
+		Expect(err.Error()).To(ContainSubstring("missing '='"))
 		Expect(msg.Protocol).To(Equal(ProtocolWeather))
 		Expect(msg.Category).To(Equal("METAR"))
 		Expect(msg.Parsed).To(BeFalse())

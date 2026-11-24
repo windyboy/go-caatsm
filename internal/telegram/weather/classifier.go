@@ -6,13 +6,13 @@ import (
 )
 
 var (
-	metarPattern = regexp.MustCompile(`^(METAR|SPECI)\s+[A-Z0-9]{4}`)
-	tafPattern   = regexp.MustCompile(`^TAF\s+[A-Z0-9]{4}`)
+	metarPattern = regexp.MustCompile(`^(METAR|SPECI)\s+(?:COR\s+)?[A-Z0-9]{4}\b`)
+	tafPattern   = regexp.MustCompile(`^TAF\s+(?:(?:AMD|COR)\s+)?[A-Z0-9]{4}\b`)
 )
 
 // Classify identifies the weather report type from raw text.
 func Classify(raw string) (string, bool) {
-	raw = strings.TrimSpace(raw)
+	raw = strings.ToUpper(strings.TrimSpace(raw))
 	if raw == "" {
 		return "", false
 	}

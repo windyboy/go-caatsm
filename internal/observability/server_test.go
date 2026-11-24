@@ -3,7 +3,9 @@ package observability
 import (
 	"caatsm/internal/buildinfo"
 	"caatsm/internal/config"
+	"context"
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"time"
@@ -19,6 +21,44 @@ var _ = Describe("Server", func() {
 		server, err := NewServer(cfg, zap.NewNop(), nil, nil)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(server).To(BeNil())
+	})
+
+	It("fails synchronously when the monitoring address is already in use", func() {
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		Expect(err).NotTo(HaveOccurred())
+		defer func() { _ = ln.Close() }()
+
+		cfg := &config.Config{
+			Monitoring: config.MonitoringConfig{
+				Addr:          ln.Addr().String(),
+				EnableHealth:  true,
+				EnableMetrics: true,
+			},
+		}
+		server, err := NewServer(cfg, zap.NewNop(), nil, nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(server).NotTo(BeNil())
+
+		err = server.Start(context.Background())
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("listen monitoring server"))
+	})
+
+	It("starts on an ephemeral port and shuts down cleanly", func() {
+		cfg := &config.Config{
+			Monitoring: config.MonitoringConfig{
+				Addr:          "127.0.0.1:0",
+				EnableHealth:  true,
+				EnableMetrics: true,
+			},
+		}
+		server, err := NewServer(cfg, zap.NewNop(), nil, nil)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(server.Start(context.Background())).To(Succeed())
+
+		shutCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+		defer cancel()
+		Expect(server.Shutdown(shutCtx)).To(Succeed())
 	})
 
 	Context("health and liveness handlers", func() {

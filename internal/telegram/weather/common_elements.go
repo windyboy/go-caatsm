@@ -29,9 +29,26 @@ func parseWindAndVisibility(tokens []string) (int, *Wind, *Visibility) {
 	}
 
 	if pos < len(tokens) {
-		if parsed := parseVisibility(tokens[pos]); parsed != nil {
-			visibility = parsed
-			pos++
+		if pos+1 < len(tokens) && mixedVisWholePattern.MatchString(tokens[pos]) {
+			if match := mixedVisFracPattern.FindStringSubmatch(tokens[pos+1]); match != nil {
+				if dist, err := ParseFraction(tokens[pos] + " " + match[1]); err == nil {
+					unit := match[2]
+					if unit == "" {
+						unit = "SM"
+					}
+					visibility = &Visibility{
+						Distance: dist,
+						Unit:     unit,
+					}
+					pos += 2
+				}
+			}
+		}
+		if visibility == nil {
+			if parsed := parseVisibility(tokens[pos]); parsed != nil {
+				visibility = parsed
+				pos++
+			}
 		}
 	}
 
@@ -48,6 +65,14 @@ func parsePhenomena(tokens []string) (int, []Phenomenon) {
 				Intensity:  match[1],
 				Descriptor: match[2],
 				Weather:    match[3],
+			})
+			pos++
+			continue
+		}
+		if match := vicinityDescPattern.FindStringSubmatch(tokens[pos]); match != nil {
+			phenomena = append(phenomena, Phenomenon{
+				Intensity:  match[1],
+				Descriptor: match[2],
 			})
 			pos++
 			continue

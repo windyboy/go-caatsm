@@ -1,6 +1,8 @@
 package weather
 
 import (
+	"time"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -42,5 +44,58 @@ var _ = Describe("METAR Parser", func() {
 		Expect(m3.Temperature.Value).To(Equal(-5.0))
 		Expect(m3.Dewpoint.Value).To(Equal(-10.0))
 		Expect(m3.Warnings).ToNot(BeEmpty())
+	})
+
+	It("parses rain phenomena RA/RASN, RVR warnings, CAVOK, mixed fractions, vicinity VCSH, METAR COR, and warnings before RMK", func() {
+		m, err := parseMetar("METAR COR KJFK 251200Z 24015KT R24L/1200FT +TSRA BKN020 20/18 Q1013=", "METAR")
+		Expect(err).ToNot(HaveOccurred())
+		Expect(m.Modifier).To(Equal("COR"))
+		Expect(m.Phenomena).To(HaveLen(1))
+		Expect(m.Phenomena[0].Intensity).To(Equal("+"))
+		Expect(m.Phenomena[0].Descriptor).To(Equal("TS"))
+		Expect(m.Phenomena[0].Weather).To(Equal("RA"))
+		Expect(m.Warnings).To(ContainElement("RVR not parsed: R24L/1200FT"))
+
+		mCavok, err := parseMetar("METAR ZBAA 251200Z 18005MPS CAVOK 18/05 Q1020=", "METAR")
+		Expect(err).ToNot(HaveOccurred())
+		Expect(mCavok.Visibility).NotTo(BeNil())
+		Expect(mCavok.Visibility.Modifier).To(Equal("CAVOK"))
+		Expect(mCavok.Visibility.Distance).To(Equal(9999.0))
+
+		mFrac, err := parseMetar("METAR KJFK 251200Z 24015KT 1 1/2SM RA VCSH EXTRA RMK SLP012=", "METAR")
+		Expect(err).ToNot(HaveOccurred())
+		Expect(mFrac.Visibility.Distance).To(Equal(1.5))
+		Expect(mFrac.Visibility.Unit).To(Equal("SM"))
+		Expect(mFrac.Phenomena).To(HaveLen(2))
+		Expect(mFrac.Phenomena[0].Weather).To(Equal("RA"))
+		Expect(mFrac.Phenomena[1].Intensity).To(Equal("VC"))
+		Expect(mFrac.Phenomena[1].Descriptor).To(Equal("SH"))
+		Expect(mFrac.Warnings).To(ContainElement("unrecognized token: EXTRA"))
+		Expect(mFrac.Remarks).To(Equal("RMK SLP012"))
+	})
+
+	It("handles UTC backward and forward month rollovers and validates timestamps", func() {
+		dec1 := time.Date(2025, 12, 1, 0, 5, 0, 0, time.UTC)
+		prevMonth, err := parseTimeAt("302350Z", dec1)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(prevMonth.Year()).To(Equal(2025))
+		Expect(prevMonth.Month()).To(Equal(time.November))
+		Expect(prevMonth.Day()).To(Equal(30))
+
+		dec31 := time.Date(2025, 12, 31, 23, 50, 0, 0, time.UTC)
+		nextMonth, err := parseTimeAt("010010Z", dec31)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(nextMonth.Year()).To(Equal(2026))
+		Expect(nextMonth.Month()).To(Equal(time.January))
+
+		feb := time.Date(2025, 2, 18, 12, 0, 0, 0, time.UTC)
+		_, badDay := parseTimeAt("311200Z", feb)
+		Expect(badDay).To(HaveOccurred())
+
+		_, badLeap := parseTimeAt("291200Z", time.Date(2025, 2, 15, 12, 0, 0, 0, time.UTC))
+		Expect(badLeap).To(HaveOccurred())
+
+		_, badHour := parseTimeAt("152500Z", feb)
+		Expect(badHour).To(HaveOccurred())
 	})
 })

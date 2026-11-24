@@ -66,7 +66,7 @@ Attributes:
 
 **Application Processing**:
 ```yaml
-Span: MessageProcessor.Handle
+Span: Processor.Handle
 Attributes:
   messaging.system: nats
   messaging.operation: receive
@@ -277,7 +277,7 @@ open http://localhost:16686
 
 # Search for caatsm traces
 Service: caatsm
-Operation: Consumer.processMsg OR MessageProcessor.Handle
+Operation: Consumer.processMsg OR Processor.Handle
 ```
 
 ### Metrics Verification

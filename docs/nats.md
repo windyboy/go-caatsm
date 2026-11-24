@@ -327,8 +327,9 @@ The consumer uses JetStream mode exclusively for persistent, durable message pro
 #### Component Details (`internal/nats/consumer.go`)
 
 **Fetch Loop (`Consumer.Start`)**
-- Pulls batches via `sub.Fetch(batchSize, nats.Context(ctx), nats.MaxWait(batchTimeout))`
-- Continues immediately on `nats.ErrTimeout`; exits on `context.Canceled`/`DeadlineExceeded`; backs off and triggers JetStream recovery on other fetch errors
+- Binds via `PullSubscribe(..., nats.Bind(stream, consumer))` and pulls batches with `sub.Fetch(batchSize, nats.Context(fetchCtx))`
+- Resets error streak and continues on `nats.ErrTimeout`/`context.DeadlineExceeded`; exits on context cancellation and NAKs remaining unprocessed batch messages on shutdown
+- On transient fetch errors, waits with exponential backoff (`500ms` to `5s`) and re-binds/recovers the JetStream subscription
 
 **Batch & Message Handling (`Consumer.processBatch` / `Consumer.processMsg`)**
 - Processes messages sequentially within a batch
@@ -823,6 +824,7 @@ return consumer.Start(ctx)
 publisher, err := nats.NewPublisher(
     jetStream,
     config,
+    recorder,
     logger,
 )
 if err != nil {

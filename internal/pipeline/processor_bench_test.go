@@ -10,9 +10,8 @@ import (
 
 type benchStore struct{}
 
-func (benchStore) InsertOne(context.Context, *telegram.Message) error     { return nil }
-func (benchStore) InsertBatch(context.Context, []*telegram.Message) error { return nil }
-func (benchStore) InsertRaw(context.Context, *telegram.Message) error     { return nil }
+func (benchStore) InsertOne(context.Context, *telegram.Message) error { return nil }
+func (benchStore) InsertRaw(context.Context, *telegram.Message) error { return nil }
 
 type benchPublisher struct{}
 

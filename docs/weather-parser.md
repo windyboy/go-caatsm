@@ -74,9 +74,9 @@ The weather parser is automatically integrated via the composite parser. No spec
 ### Message Flow
 
 1. Raw message received
-2. `telegram.Router` checks whether the payload header matches a weather report (`METAR`/`SPECI`/`TAF`)
-3. If classified as weather: `weather.Parser.Parse(raw)` parses the report and maps it to `*telegram.Message` (`Category` = `"METAR"` / `"SPECI"` / `"TAF"`, `Protocol` = `"WMO"`); any weather parse error is returned directly without falling back to the aviation parser
-4. If `aftn.validation_enabled = true` in config, `AFTNValidator` skips weather messages (`Protocol == "WMO"` or weather categories) instead of misapplying AFTN 6-digit `DDHHMM` validation
+2. `telegram.Router` checks whether the payload header matches a weather report (`METAR`/`SPECI`/`TAF`, including `COR`/`AMD` modifiers)
+3. If classified as weather: `weather.Parser.Parse(raw)` validates the `=` terminator, parses the report (supporting `CAVOK`, mixed-fraction visibility, vicinity phenomena, RVR warnings, and standalone `PROB` TAF periods), and maps it to `*telegram.Message` (`Category` = `"METAR"` / `"SPECI"` / `"TAF"`, `Protocol` = `"weather"`); any weather parse error (including a missing `=`) is returned directly without falling back to the aviation parser
+4. If `aftn.validation_enabled = true` in config, `AFTNValidator` skips weather messages (`Protocol == "weather"` or weather categories) instead of misapplying AFTN 6-digit `DDHHMM` validation
 5. Parsed result stored in `aviation.telegrams` table with `category` = `"METAR"` / `"SPECI"` / `"TAF"`
 6. Structured data stored in `body_data` JSONB field
 

@@ -182,7 +182,7 @@ The main processor keeps consuming `subscription.topic` (defaults to `telegram.>
 
 4. **Inspect traces**
    - Open <http://localhost:16686>, choose the `caatsm` service, and click “Find Traces”.
-   - Filter by operation name (e.g., `Consumer.processMsg`, `MessageProcessor.Handle`, `Repository.InsertOne`) or by time range to drill into individual telegram processing flows.
+   - Filter by operation name (e.g., `Consumer.processMsg`, `Processor.Handle`, `Repository.InsertOne`) or by time range to drill into individual telegram processing flows.
 
 ## Observability Dashboard Stack
 

@@ -58,7 +58,8 @@ func TestJetStreamToTimescaleFlow(t *testing.T) {
 		t.Fatalf("failed to apply schema: %v", err)
 	}
 
-	store := postgres.NewRepository(pool, logger)
+	recorder := observability.NewNoop()
+	store := postgres.NewRepository(pool, recorder, logger)
 
 	conn, err := natsinfra.Connect(cfg, logger)
 	if err != nil {
@@ -71,12 +72,11 @@ func TestJetStreamToTimescaleFlow(t *testing.T) {
 		t.Fatalf("failed to init jetstream: %v", err)
 	}
 
-	publisher, err := natsinfra.NewPublisher(js, cfg, logger)
+	publisher, err := natsinfra.NewPublisher(js, cfg, recorder, logger)
 	if err != nil {
 		t.Fatalf("failed to init publisher: %v", err)
 	}
 
-	recorder := observability.NewNoop()
 	proc := pipeline.NewProcessor(
 		telegram.NewRouter(),
 		telegram.NewAFTNValidator(),

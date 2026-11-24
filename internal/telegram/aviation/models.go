@@ -145,7 +145,7 @@ type FPL struct {
 	AlternateAirport        string `json:"alternate_airport,omitempty"`
 	OtherInfo               string `json:"other_info,omitempty"`
 	SupplementaryInfo       string `json:"supplementary_info,omitempty"`
-	EstimatedArrivalTime    string `json:"estimated_arrival_time,omitempty"`
+	TotalEET                string `json:"total_eet,omitempty"`
 	PBN                     string `json:"pbn,omitempty"`
 	NavigationEquipment     string `json:"navigation_equipment,omitempty"`
 	EstimatedElapsedTime    string `json:"estimated_elapsed_time,omitempty"`

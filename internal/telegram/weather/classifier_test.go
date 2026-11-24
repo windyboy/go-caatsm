@@ -19,6 +19,14 @@ var _ = Describe("Classifier", func() {
 			t3, ok3 := Classify("TAF KJFK 251200Z 2512/2612 35012KT 10SM FEW020=")
 			Expect(ok3).To(BeTrue())
 			Expect(t3).To(Equal("TAF"))
+
+			t4, ok4 := Classify("taf amd kjfk 251200Z 2512/2612 35012KT CAVOK=")
+			Expect(ok4).To(BeTrue())
+			Expect(t4).To(Equal("TAF"))
+
+			t5, ok5 := Classify("METAR COR KJFK 251200Z 35012KT CAVOK=")
+			Expect(ok5).To(BeTrue())
+			Expect(t5).To(Equal("METAR"))
 		})
 
 		It("returns false for non-weather and empty reports", func() {

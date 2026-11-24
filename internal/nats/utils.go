@@ -1,12 +1,73 @@
 package nats
 
 import (
+	"context"
 	"errors"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/nats-io/nats.go"
 )
+
+const (
+	resultOK            = "ok"
+	resultFail          = "fail"
+	resultPermanentFail = "permanent_fail"
+
+	retryReasonProcessorError = "processor_error"
+	retryReasonDLQError       = "dlq_publish_error"
+)
+
+type permanentIndicator interface {
+	IsPermanent() bool
+}
+
+type permanentError struct {
+	err error
+}
+
+func (e *permanentError) Error() string {
+	if e == nil || e.err == nil {
+		return ""
+	}
+	return e.err.Error()
+}
+
+func (e *permanentError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.err
+}
+
+func (e *permanentError) IsPermanent() bool {
+	return e != nil
+}
+
+func markPermanent(err error) error {
+	if err == nil {
+		return nil
+	}
+	return &permanentError{err: err}
+}
+
+func isPermanentError(err error) bool {
+	var indicator permanentIndicator
+	return errors.As(err, &indicator) && indicator.IsPermanent()
+}
+
+type noopRecorder struct{}
+
+func (noopRecorder) RecordMessageHandled(context.Context, string, string, string, time.Duration) {}
+func (noopRecorder) RecordRetry(context.Context, string, string, string)                         {}
+func (noopRecorder) RecordDLQMessage(context.Context, string, string)                            {}
+func (noopRecorder) RecordDLQPublishFailure(context.Context, string, string)                     {}
+func (noopRecorder) RecordJSAPICall(string)                                                      {}
+func (noopRecorder) RecordNATSConsumerPending(string, string, uint64)                            {}
+func (noopRecorder) RecordMessageGap(string, string, float64)                                    {}
+func (noopRecorder) RecordSequenceGap(string, string, uint64)                                    {}
+func (noopRecorder) RecordSerialReaderHealth(string, string, bool)                               {}
 
 func isJetStreamResourceNotFound(err error) bool {
 	if err == nil {

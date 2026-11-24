@@ -28,7 +28,6 @@ groups:
             No messages have been received from the serial reader for more than 2 minutes.
             This indicates the serial port reader may have crashed or the hardware connection is broken.
 
-            Current gap: {{ with query "caatsm_message_gap_seconds{stream=\"" }}{{ . | first | value | humanizeDuration }}{{ end }}
             Stream: {{ $labels.stream }}
             Consumer: {{ $labels.consumer }}
 
@@ -81,10 +80,12 @@ groups:
       - alert: HighAFTNValidationErrorRate
         expr: |
           (
-            sum(rate(caatsm_aftn_validation_errors_total[5m])) by (stream, consumer)
+            sum(rate(caatsm_aftn_validation_errors_total[5m]))
             /
-            sum(rate(caatsm_processed_total[5m])) by (stream, consumer)
+            clamp_min(sum(rate(caatsm_processed_total[5m])), 1e-9)
           ) > 0.05
+          and
+          sum(rate(caatsm_aftn_validation_errors_total[5m])) > 0
         for: 5m
         labels:
           severity: warning
@@ -148,10 +149,12 @@ groups:
       - alert: HighProcessingFailureRate
         expr: |
           (
-            sum(rate(caatsm_messages_total{result="fail"}[5m])) by (stream, consumer)
+            sum(rate(caatsm_messages_total{result=~"fail|permanent_fail"}[5m])) by (stream, consumer)
             /
-            sum(rate(caatsm_messages_total[5m])) by (stream, consumer)
+            clamp_min(sum(rate(caatsm_messages_total[5m])) by (stream, consumer), 1e-9)
           ) > 0.10
+          and
+          sum(rate(caatsm_messages_total{result=~"fail|permanent_fail"}[5m])) by (stream, consumer) > 0
         for: 5m
         labels:
           severity: warning
@@ -216,7 +219,7 @@ groups:
       # Recording rule: Total processing rate
       - record: caatsm:processing_rate:5m
         expr: |
-          sum(rate(caatsm_processed_total[5m])) by (stream, consumer, status)
+          sum(rate(caatsm_processed_total[5m])) by (status, category)
 
       # Recording rule: Average message gap
       - record: caatsm:message_gap_seconds:avg

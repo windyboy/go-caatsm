@@ -41,9 +41,6 @@ type NATSConfig struct {
 	StreamLimits  StreamLimitsConfig  `koanf:"stream_limits"`
 	ConsumerRules ConsumerRulesConfig `koanf:"consumer_rules"`
 	Auth          NATSAuthConfig      `koanf:"auth"`
-	// Legacy fields
-	Client  string `koanf:"client"`
-	Cluster string `koanf:"cluster"`
 }
 
 // NATSAuthConfig holds NATS authentication configuration.
@@ -165,8 +162,7 @@ type MonitoringConfig struct {
 
 // SubscriptionConfig holds subscription configuration.
 type SubscriptionConfig struct {
-	Topic      string `koanf:"topic"`
-	QueueGroup string `koanf:"queue_group"`
+	Topic string `koanf:"topic"`
 }
 
 // TimeoutsConfig holds timeout configuration.
@@ -269,7 +265,7 @@ func LoadConfig() (*Config, error) {
 		return nil, fmt.Errorf("error unmarshaling config: %w", err)
 	}
 
-	applyDefaults(&cfg)
+	applyDefaults(&cfg, k.Exists("monitoring.enable_health"), k.Exists("monitoring.enable_metrics"))
 
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("config validation failed: %w", err)
@@ -278,7 +274,7 @@ func LoadConfig() (*Config, error) {
 	return &cfg, nil
 }
 
-func applyDefaults(cfg *Config) {
+func applyDefaults(cfg *Config, hasHealthFlag, hasMetricsFlag bool) {
 	if cfg.App.BatchSize == 0 {
 		cfg.App.BatchSize = 50
 	}
@@ -296,9 +292,13 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Log.Level == "" {
 		cfg.Log.Level = "info"
+	} else {
+		cfg.Log.Level = strings.ToLower(strings.TrimSpace(cfg.Log.Level))
 	}
 	if cfg.Log.Format == "" {
 		cfg.Log.Format = "json"
+	} else {
+		cfg.Log.Format = strings.ToLower(strings.TrimSpace(cfg.Log.Format))
 	}
 	if len(cfg.Log.Output) == 0 {
 		cfg.Log.Output = []string{"stdout"}
@@ -345,9 +345,13 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.NATS.StreamLimits.Discard == "" {
 		cfg.NATS.StreamLimits.Discard = "old"
+	} else {
+		cfg.NATS.StreamLimits.Discard = strings.ToLower(strings.TrimSpace(cfg.NATS.StreamLimits.Discard))
 	}
 	if cfg.NATS.StreamLimits.Storage == "" {
 		cfg.NATS.StreamLimits.Storage = "file"
+	} else {
+		cfg.NATS.StreamLimits.Storage = strings.ToLower(strings.TrimSpace(cfg.NATS.StreamLimits.Storage))
 	}
 	if cfg.NATS.StreamLimits.Replicas == 0 {
 		cfg.NATS.StreamLimits.Replicas = 1
@@ -373,10 +377,16 @@ func applyDefaults(cfg *Config) {
 	if cfg.NATS.ConsumerRules.ReplayPolicy == "" {
 		cfg.NATS.ConsumerRules.ReplayPolicy = "instant"
 	}
-	if !cfg.Monitoring.Disabled && cfg.Monitoring.Addr == "" && !cfg.Monitoring.EnableHealth && !cfg.Monitoring.EnableMetrics {
-		cfg.Monitoring.Addr = ":2112"
-		cfg.Monitoring.EnableHealth = true
-		cfg.Monitoring.EnableMetrics = true
+	if !cfg.Monitoring.Disabled {
+		if cfg.Monitoring.Addr == "" {
+			cfg.Monitoring.Addr = ":2112"
+		}
+		if !hasHealthFlag {
+			cfg.Monitoring.EnableHealth = true
+		}
+		if !hasMetricsFlag {
+			cfg.Monitoring.EnableMetrics = true
+		}
 	}
 	if cfg.Monitoring.ReadTimeout == 0 {
 		cfg.Monitoring.ReadTimeout = 5 * time.Second
@@ -407,9 +417,20 @@ func (c *Config) Validate() error {
 	if c.Publisher.Topic == "" {
 		return fmt.Errorf("publisher.topic is required")
 	}
-	if c.Postgres.URL == "" {
-		return fmt.Errorf("postgres.url is required")
+
+	if err := c.validateNATSAuth(); err != nil {
+		return err
 	}
+	if err := c.validateStreamsAndSubjects(); err != nil {
+		return err
+	}
+	if err := c.validatePostgres(); err != nil {
+		return err
+	}
+	if err := c.validateLog(); err != nil {
+		return err
+	}
+
 	if c.App.BatchSize <= 0 {
 		return fmt.Errorf("app.batch_size must be greater than 0")
 	}
@@ -428,6 +449,16 @@ func (c *Config) Validate() error {
 	if c.NATS.StreamLimits.MaxAge < 0 {
 		return fmt.Errorf("nats.stream_limits.max_age must be >= 0")
 	}
+	switch strings.ToLower(strings.TrimSpace(c.NATS.StreamLimits.Discard)) {
+	case "", "old", "new":
+	default:
+		return fmt.Errorf("nats.stream_limits.discard must be 'old' or 'new', got: %s", c.NATS.StreamLimits.Discard)
+	}
+	switch strings.ToLower(strings.TrimSpace(c.NATS.StreamLimits.Storage)) {
+	case "", "file", "memory":
+	default:
+		return fmt.Errorf("nats.stream_limits.storage must be 'file' or 'memory', got: %s", c.NATS.StreamLimits.Storage)
+	}
 	if c.NATS.StreamLimits.Replicas <= 0 {
 		return fmt.Errorf("nats.stream_limits.replicas must be greater than 0")
 	}
@@ -440,12 +471,19 @@ func (c *Config) Validate() error {
 	if c.NATS.ConsumerRules.MaxAckPending < 0 {
 		return fmt.Errorf("nats.consumer.max_ack_pending must be >= 0")
 	}
-	switch strings.ToLower(c.NATS.ConsumerRules.DeliverPolicy) {
+	deliverPolicy := strings.ToLower(strings.TrimSpace(c.NATS.ConsumerRules.DeliverPolicy))
+	switch deliverPolicy {
 	case "", "all", "new", "last", "last_per_subject", "sequence", "time":
 	default:
 		return fmt.Errorf("nats.consumer.deliver_policy must be one of all,new,last,last_per_subject,sequence,time")
 	}
-	switch strings.ToLower(c.NATS.ConsumerRules.ReplayPolicy) {
+	if deliverPolicy == "sequence" && c.NATS.ConsumerRules.StartSequence == 0 {
+		return fmt.Errorf("nats.consumer_rules.start_sequence must be > 0 when deliver_policy is 'sequence'")
+	}
+	if deliverPolicy == "time" && c.NATS.ConsumerRules.StartTime == "" {
+		return fmt.Errorf("nats.consumer_rules.start_time is required when deliver_policy is 'time'")
+	}
+	switch strings.ToLower(strings.TrimSpace(c.NATS.ConsumerRules.ReplayPolicy)) {
 	case "", "instant", "original":
 	default:
 		return fmt.Errorf("nats.consumer.replay_policy must be instant or original")
@@ -474,6 +512,88 @@ func (c *Config) Validate() error {
 	}
 	if c.AFTN.MessageGapThreshold < 0 {
 		return fmt.Errorf("aftn.message_gap_threshold must be >= 0")
+	}
+	return nil
+}
+
+func (c *Config) validateNATSAuth() error {
+	methods := 0
+	if c.NATS.Auth.Token != "" {
+		methods++
+	}
+	if c.NATS.Auth.CredentialsFile != "" {
+		methods++
+	}
+	if c.NATS.Auth.User != "" || c.NATS.Auth.Password != "" {
+		methods++
+		if c.NATS.Auth.Password != "" && c.NATS.Auth.User == "" {
+			return fmt.Errorf("nats.auth.user is required when nats.auth.password is set")
+		}
+	}
+	if methods > 1 {
+		return fmt.Errorf("nats.auth methods (token, credentials_file, user/password) are mutually exclusive")
+	}
+	hasCert := c.NATS.Auth.TLSCertFile != ""
+	hasKey := c.NATS.Auth.TLSKeyFile != ""
+	if hasCert != hasKey {
+		return fmt.Errorf("nats.auth.tls_cert_file and nats.auth.tls_key_file must be set together")
+	}
+	return nil
+}
+
+func (c *Config) validateStreamsAndSubjects() error {
+	inStream := c.NATS.Stream
+	outStream := c.EffectivePublishStream()
+	if outStream == inStream {
+		return fmt.Errorf("nats.publish_stream (%s) must differ from nats.stream (%s)", outStream, inStream)
+	}
+
+	subTopic := c.EffectiveSubscriptionTopic()
+	if c.Publisher.Topic == subTopic {
+		return fmt.Errorf("publisher.topic (%s) must differ from subscription.topic (%s)", c.Publisher.Topic, subTopic)
+	}
+
+	if c.DLQ.Enabled {
+		if strings.TrimSpace(c.DLQ.Subject) == "" {
+			return fmt.Errorf("dlq.subject is required when dlq.enabled=true")
+		}
+		dlqStream := c.EffectiveDLQStream()
+		if dlqStream == inStream || dlqStream == outStream {
+			return fmt.Errorf("nats.dlq_stream (%s) must differ from inbound (%s) and outbound (%s) streams", dlqStream, inStream, outStream)
+		}
+		if c.DLQ.Subject == subTopic || c.DLQ.Subject == c.Publisher.Topic {
+			return fmt.Errorf("dlq.subject (%s) must differ from subscription and publisher topics", c.DLQ.Subject)
+		}
+	}
+	return nil
+}
+
+func (c *Config) validatePostgres() error {
+	if c.Postgres.URL == "" {
+		return fmt.Errorf("postgres.url is required")
+	}
+	if c.Postgres.MinConns < 0 {
+		return fmt.Errorf("postgres.min_conns must be >= 0")
+	}
+	if c.Postgres.MaxConns < 0 {
+		return fmt.Errorf("postgres.max_conns must be >= 0")
+	}
+	if c.Postgres.MaxConns > 0 && c.Postgres.MinConns > c.Postgres.MaxConns {
+		return fmt.Errorf("postgres.min_conns (%d) must not exceed postgres.max_conns (%d)", c.Postgres.MinConns, c.Postgres.MaxConns)
+	}
+	return nil
+}
+
+func (c *Config) validateLog() error {
+	switch strings.ToLower(strings.TrimSpace(c.Log.Level)) {
+	case "", "debug", "info", "warn", "error":
+	default:
+		return fmt.Errorf("log.level must be one of debug,info,warn,error, got: %s", c.Log.Level)
+	}
+	switch strings.ToLower(strings.TrimSpace(c.Log.Format)) {
+	case "", "json", "console":
+	default:
+		return fmt.Errorf("log.format must be json or console, got: %s", c.Log.Format)
 	}
 	return nil
 }

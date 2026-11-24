@@ -187,8 +187,8 @@ func ParseHeader(fullMessage string) (Header, error) {
 		return Header{Content: fullMessage}, err
 	}
 
-	priorityIndicator, primaryAddress := parsePriorityAndPrimary(lines[1])
-	secondaryAddresses, originatorCode, originatorDateTime, body := parseRemainingLines(lines[2:])
+	priorityIndicator, primaryAddress, extraAddrs := parsePriorityAndPrimary(lines[1])
+	secondaryAddresses, originatorCode, originatorDateTime, body := parseRemainingLines(lines[2:], extraAddrs)
 
 	return Header{
 		MessageID:          messageID,
@@ -230,16 +230,42 @@ func extract(data string, exp *regexp.Regexp) map[string]string {
 }
 
 func cleanMessage(text string) string {
-	cleanedText := emptyLineRemove.ReplaceAllString(text, "")
-	cleanText := strings.ReplaceAll(cleanedText, "\n\n", "\n")
-	if match := bodyOnly.FindStringSubmatch(cleanText); len(match) > 2 {
-		bodyContent := match[2]
-		if len(bodyContent) > 0 && bodyContent[len(bodyContent)-1] == '\n' {
-			return bodyContent[:len(bodyContent)-1]
+	text = strings.ReplaceAll(text, "\r\n", "\n")
+	text = strings.ReplaceAll(text, "\r", "\n")
+
+	lines := strings.Split(text, "\n")
+	cleaned := make([]string, 0, len(lines))
+	foundStart := false
+	foundEnd := false
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
 		}
-		return bodyContent
+		if !foundStart {
+			idx := strings.Index(trimmed, StartIndicatorPrefix)
+			if idx < 0 {
+				continue
+			}
+			foundStart = true
+			trimmed = trimmed[idx:]
+		}
+		if endIdx := strings.Index(trimmed, "NNNN"); endIdx >= 0 {
+			before := strings.TrimSpace(trimmed[:endIdx])
+			if before != "" {
+				cleaned = append(cleaned, before)
+			}
+			foundEnd = true
+			break
+		}
+		cleaned = append(cleaned, trimmed)
 	}
-	return ""
+
+	if !foundStart || !foundEnd || len(cleaned) == 0 {
+		return ""
+	}
+	return strings.Join(cleaned, "\n")
 }
 
 func parseStartIndicator(line string) (string, string, string, error) {
@@ -250,12 +276,16 @@ func parseStartIndicator(line string) (string, string, string, error) {
 	return "", "", "", fmt.Errorf("invalid start indicator line format: %s", line)
 }
 
-func parsePriorityAndPrimary(line string) (string, string) {
+func parsePriorityAndPrimary(line string) (string, string, []string) {
 	parts := strings.Fields(line)
 	if len(parts) >= MinPriorityLineParts {
-		return parts[0], parts[1]
+		var extras []string
+		if len(parts) > 2 {
+			extras = parts[2:]
+		}
+		return parts[0], parts[1], extras
 	}
-	return "", ""
+	return "", "", nil
 }
 
 func isOriginatorLine(line string) (originatorCode, dateTime string, isMatch bool) {
@@ -276,14 +306,18 @@ func isBodyStartLine(line string) bool {
 	return strings.HasPrefix(line, BeginPartMarker) || strings.HasPrefix(line, "(")
 }
 
-func parseRemainingLines(lines []string) (string, string, string, string) {
+func parseRemainingLines(lines []string, initialSecondary []string) (string, string, string, string) {
 	var (
-		secondaryAddresses strings.Builder
+		secondaryList      []string
 		originatorCode     string
 		originatorDateTime string
 		body               strings.Builder
 		inBody             bool
 	)
+
+	if len(initialSecondary) > 0 {
+		secondaryList = append(secondaryList, strings.Join(initialSecondary, " "))
+	}
 
 	for _, line := range lines {
 		line = strings.TrimSpace(line)
@@ -312,10 +346,10 @@ func parseRemainingLines(lines []string) (string, string, string, string) {
 			originatorCode = orig
 			continue
 		}
-		secondaryAddresses.WriteString(" " + line)
+		secondaryList = append(secondaryList, line)
 	}
 
-	return secondaryAddresses.String(), originatorCode, originatorDateTime, body.String()
+	return strings.Join(secondaryList, " "), originatorCode, originatorDateTime, body.String()
 }
 
 func getOriginator(line string) (string, string) {
@@ -608,7 +642,7 @@ func (fplParser) Parse(data map[string]string) (Body, error) {
 		AlternateAirport:        GetOptionalField(data, AlternateAirport),
 		OtherInfo:               otherInfo,
 		Register:                otherData[Register],
-		EstimatedArrivalTime:    estTime,
+		TotalEET:                estTime,
 		PBN:                     otherData[PBN],
 		NavigationEquipment:     otherData[NavigationEquipment],
 		EstimatedElapsedTime:    otherData[EstimatedElapsedTime],

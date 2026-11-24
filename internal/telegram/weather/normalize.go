@@ -7,8 +7,12 @@ import (
 	"time"
 )
 
-// ParseTime parses a time string in DDHHmmZ format to time.Time.
+// ParseTime parses a time string in DDHHmmZ format relative to current UTC time.
 func ParseTime(timeStr string) (time.Time, error) {
+	return parseTimeAt(timeStr, time.Now().UTC())
+}
+
+func parseTimeAt(timeStr string, now time.Time) (time.Time, error) {
 	match := timePattern.FindStringSubmatch(timeStr)
 	if len(match) == 0 {
 		return time.Time{}, fmt.Errorf("invalid time format: %s", timeStr)
@@ -27,10 +31,30 @@ func ParseTime(timeStr string) (time.Time, error) {
 		return time.Time{}, fmt.Errorf("invalid minute: %w", err)
 	}
 
-	now := time.Now()
-	t := time.Date(now.Year(), now.Month(), day, hour, min, 0, 0, time.UTC)
-	if day < now.Day()-15 {
-		t = t.AddDate(0, 1, 0)
+	if day < 1 || day > 31 {
+		return time.Time{}, fmt.Errorf("day out of range: %d", day)
+	}
+	if hour < 0 || hour > 23 {
+		return time.Time{}, fmt.Errorf("hour out of range: %d", hour)
+	}
+	if min < 0 || min > 59 {
+		return time.Time{}, fmt.Errorf("minute out of range: %d", min)
+	}
+
+	now = now.UTC()
+	year, month := now.Year(), now.Month()
+	switch {
+	case day > now.Day()+15:
+		prev := time.Date(year, month-1, 1, 0, 0, 0, 0, time.UTC)
+		year, month = prev.Year(), prev.Month()
+	case day < now.Day()-15:
+		next := time.Date(year, month+1, 1, 0, 0, 0, 0, time.UTC)
+		year, month = next.Year(), next.Month()
+	}
+
+	t := time.Date(year, month, day, hour, min, 0, 0, time.UTC)
+	if t.Day() != day {
+		return time.Time{}, fmt.Errorf("invalid day %d for %s %d", day, month, year)
 	}
 	return t, nil
 }
@@ -47,15 +71,34 @@ func ParseTAFValidity(validityStr string, issueTime time.Time) (time.Time, time.
 	toDay, _ := strconv.Atoi(match[3])
 	toHour, _ := strconv.Atoi(match[4])
 
-	year := issueTime.Year()
-	month := issueTime.Month()
-
-	fromTime := time.Date(year, month, fromDay, fromHour, 0, 0, 0, time.UTC)
-	toTime := time.Date(year, month, toDay, toHour, 0, 0, 0, time.UTC)
-
-	if toDay < fromDay {
-		toTime = toTime.AddDate(0, 1, 0)
+	if fromDay < 1 || fromDay > 31 || toDay < 1 || toDay > 31 {
+		return time.Time{}, time.Time{}, fmt.Errorf("TAF validity day out of range: %s", validityStr)
 	}
+	if fromHour < 0 || fromHour > 24 || toHour < 0 || toHour > 24 {
+		return time.Time{}, time.Time{}, fmt.Errorf("TAF validity hour out of range: %s", validityStr)
+	}
+
+	issueUTC := issueTime.UTC()
+	fromYear, fromMonth := issueUTC.Year(), issueUTC.Month()
+	if fromDay < issueUTC.Day()-15 {
+		next := time.Date(fromYear, fromMonth+1, 1, 0, 0, 0, 0, time.UTC)
+		fromYear, fromMonth = next.Year(), next.Month()
+	}
+	if time.Date(fromYear, fromMonth, fromDay, 0, 0, 0, 0, time.UTC).Day() != fromDay {
+		return time.Time{}, time.Time{}, fmt.Errorf("invalid TAF validity start day %d for %s %d", fromDay, fromMonth, fromYear)
+	}
+	fromTime := time.Date(fromYear, fromMonth, fromDay, fromHour, 0, 0, 0, time.UTC)
+
+	toYear, toMonth := fromYear, fromMonth
+	if toDay < fromDay {
+		next := time.Date(toYear, toMonth+1, 1, 0, 0, 0, 0, time.UTC)
+		toYear, toMonth = next.Year(), next.Month()
+	}
+	if time.Date(toYear, toMonth, toDay, 0, 0, 0, 0, time.UTC).Day() != toDay {
+		return time.Time{}, time.Time{}, fmt.Errorf("invalid TAF validity end day %d for %s %d", toDay, toMonth, toYear)
+	}
+	toTime := time.Date(toYear, toMonth, toDay, toHour, 0, 0, 0, time.UTC)
+
 	return fromTime, toTime, nil
 }
 

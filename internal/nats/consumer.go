@@ -2,11 +2,11 @@ package nats
 
 import (
 	"caatsm/internal/config"
-	"caatsm/internal/observability"
-	"caatsm/internal/pipeline"
 	"context"
 	"errors"
 	"fmt"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/nats-io/nats.go"
@@ -21,13 +21,13 @@ type MessageHandler interface {
 	Handle(ctx context.Context, raw []byte, msgID string) error
 }
 
-// Recorder captures consumer-level telemetry metrics.
+// Recorder captures consumer-level and monitor-level telemetry metrics.
 type Recorder interface {
+	MonitorRecorder
 	RecordMessageHandled(ctx context.Context, stream, consumer, result string, elapsed time.Duration)
 	RecordRetry(ctx context.Context, stream, consumer, reason string)
 	RecordDLQMessage(ctx context.Context, stream, consumer string)
 	RecordDLQPublishFailure(ctx context.Context, stream, consumer string)
-	RecordJSAPICall(operation string)
 }
 
 type ackableMsg interface {
@@ -84,7 +84,7 @@ func NewConsumer(
 		logger = zap.NewNop()
 	}
 	if rec == nil {
-		rec = observability.NewNoop()
+		rec = noopRecorder{}
 	}
 
 	c := &Consumer{
@@ -112,7 +112,7 @@ func NewConsumer(
 		c.batchTimeout = 2 * time.Second
 	}
 
-	c.monitor = NewConsumerMonitor(logger, cfg, js, c.streamName, c.consumerName, cfg.App.MonitorInterval)
+	c.monitor = NewConsumerMonitor(logger, cfg, js, c.streamName, c.consumerName, cfg.App.MonitorInterval, rec)
 	if cfg.DLQ.Enabled && cfg.DLQ.Subject != "" {
 		c.dlqHandler = &defaultDLQHandler{
 			js:           js,
@@ -140,20 +140,33 @@ func (c *Consumer) Start(ctx context.Context) error {
 	)
 
 	monitorCtx, cancelMonitor := context.WithCancel(ctx)
-	defer cancelMonitor()
-	go c.monitor.Start(monitorCtx)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		c.monitor.Start(monitorCtx)
+	}()
+	defer func() {
+		cancelMonitor()
+		wg.Wait()
+	}()
 
-	sub, err := c.js.PullSubscribe(c.subject, c.consumerName, nats.BindStream(c.streamName))
+	sub, err := c.subscribe()
 	if err != nil {
-		return fmt.Errorf("failed to subscribe: %w", err)
+		return err
 	}
-	defer func() { _ = sub.Unsubscribe() }()
+	defer func() {
+		if sub != nil {
+			_ = sub.Unsubscribe()
+		}
+	}()
 
 	c.recorder.RecordJSAPICall("consumer_info")
 	if info, err := c.js.ConsumerInfo(c.streamName, c.consumerName); err == nil {
 		c.monitor.RecordInitialPending(info.NumPending)
 	}
 
+	fetchErrorStreak := 0
 	for {
 		select {
 		case <-ctx.Done():
@@ -161,30 +174,96 @@ func (c *Consumer) Start(ctx context.Context) error {
 		default:
 		}
 
+		c.recorder.RecordJSAPICall("fetch")
 		fetchCtx, fetchCancel := context.WithTimeout(ctx, c.batchTimeout)
 		msgs, err := sub.Fetch(c.batchSize, nats.Context(fetchCtx))
 		fetchCancel()
 
 		if err != nil {
-			if ctx.Err() != nil {
+			if ctx.Err() != nil || errors.Is(err, context.Canceled) {
 				return nil
 			}
 			if errors.Is(err, nats.ErrTimeout) || errors.Is(err, context.DeadlineExceeded) {
+				fetchErrorStreak = 0
 				continue
 			}
-			if errors.Is(err, context.Canceled) {
+
+			fetchErrorStreak++
+			delay := fetchBackoff(fetchErrorStreak)
+			c.logger.Warn("Fetch error, retrying with backoff",
+				zap.Int("streak", fetchErrorStreak),
+				zap.Duration("backoff", delay),
+				zap.Error(err),
+			)
+
+			if !sleepWithContext(ctx, delay) {
 				return nil
 			}
-			c.logger.Warn("Fetch error", zap.Error(err))
-			select {
-			case <-time.After(100 * time.Millisecond):
-			case <-ctx.Done():
-				return nil
+
+			if recoveredSub := c.recoverSubscription(sub); recoveredSub != nil {
+				sub = recoveredSub
 			}
 			continue
 		}
 
+		fetchErrorStreak = 0
 		c.processBatch(ctx, msgs)
+	}
+}
+
+func (c *Consumer) subscribe() (*nats.Subscription, error) {
+	sub, err := c.js.PullSubscribe(c.subject, c.consumerName, nats.Bind(c.streamName, c.consumerName))
+	if err != nil {
+		return nil, fmt.Errorf("failed to bind pull subscription on %s/%s: %w", c.streamName, c.consumerName, err)
+	}
+	return sub, nil
+}
+
+func (c *Consumer) recoverSubscription(oldSub *nats.Subscription) *nats.Subscription {
+	if err := c.ensureInfrastructure(); err != nil {
+		c.logger.Warn("JetStream infrastructure check failed during recovery", zap.Error(err))
+		return nil
+	}
+	newSub, err := c.subscribe()
+	if err != nil {
+		c.logger.Warn("Failed to re-subscribe JetStream pull consumer", zap.Error(err))
+		return nil
+	}
+	if oldSub != nil {
+		_ = oldSub.Unsubscribe()
+	}
+	c.logger.Info("Recovered JetStream pull subscription",
+		zap.String("stream", c.streamName),
+		zap.String("consumer", c.consumerName),
+	)
+	return newSub
+}
+
+func fetchBackoff(streak int) time.Duration {
+	if streak <= 1 {
+		return 500 * time.Millisecond
+	}
+	delay := 500 * time.Millisecond
+	for i := 1; i < streak; i++ {
+		if delay >= 5*time.Second {
+			return 5 * time.Second
+		}
+		delay *= 2
+	}
+	if delay > 5*time.Second {
+		return 5 * time.Second
+	}
+	return delay
+}
+
+func sleepWithContext(ctx context.Context, d time.Duration) bool {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return true
+	case <-ctx.Done():
+		return false
 	}
 }
 
@@ -210,9 +289,14 @@ func (c *Consumer) Shutdown(ctx context.Context) error {
 }
 
 func (c *Consumer) processBatch(ctx context.Context, msgs []*nats.Msg) {
-	for _, msg := range msgs {
+	for i, msg := range msgs {
 		select {
 		case <-ctx.Done():
+			for _, rem := range msgs[i:] {
+				if rem != nil {
+					_ = rem.Nak()
+				}
+			}
 			return
 		default:
 			c.monitor.TrackMessage(msg)
@@ -259,13 +343,13 @@ func (c *Consumer) processMsg(ctx context.Context, msg *nats.Msg) {
 			c.logger.Warn("Failed to ACK", zap.String("msg_id", msgID), zap.Error(ackErr))
 		}
 	}
-	c.recorder.RecordMessageHandled(ctx, c.streamName, c.consumerName, observability.ResultOK, time.Since(start))
+	c.recorder.RecordMessageHandled(ctx, c.streamName, c.consumerName, resultOK, time.Since(start))
 }
 
 // handleFailure separates NATS DLQ payload forwarding (*nats.Msg) from ACK/NAK lifecycle (ackableMsg)
 // so unit tests can exercise all branches deterministically.
 func (c *Consumer) handleFailure(ctx context.Context, rawMsg *nats.Msg, acker ackableMsg, msgID string, err error) string {
-	isPermanent := pipeline.IsPermanent(err)
+	isPermanent := isPermanentError(err)
 	c.logger.Error("Processing failed",
 		zap.String("msg_id", msgID),
 		zap.Error(err),
@@ -277,12 +361,12 @@ func (c *Consumer) handleFailure(ctx context.Context, rawMsg *nats.Msg, acker ac
 			if dlqErr := c.dlqHandler.RouteToDLQ(ctx, rawMsg, err); dlqErr != nil {
 				// DLQ write failed: do NOT ACK to prevent silent message loss; NAK with backoff for retry.
 				c.consecutiveErrors++
-				c.recorder.RecordRetry(ctx, c.streamName, c.consumerName, observability.RetryReasonDLQError)
+				c.recorder.RecordRetry(ctx, c.streamName, c.consumerName, retryReasonDLQError)
 				c.applyBackpressure(ctx)
 				if acker != nil {
 					_ = c.nakWithBackoff(acker)
 				}
-				return observability.ResultFail
+				return resultFail
 			}
 		}
 
@@ -292,16 +376,16 @@ func (c *Consumer) handleFailure(ctx context.Context, rawMsg *nats.Msg, acker ac
 				c.logger.Warn("Failed to ACK permanent message", zap.String("msg_id", msgID), zap.Error(ackErr))
 			}
 		}
-		return observability.ResultPermanentFail
+		return resultPermanentFail
 	}
 
 	c.consecutiveErrors++
-	c.recorder.RecordRetry(ctx, c.streamName, c.consumerName, observability.RetryReasonProcessorError)
+	c.recorder.RecordRetry(ctx, c.streamName, c.consumerName, retryReasonProcessorError)
 	c.applyBackpressure(ctx)
 	if acker != nil {
 		_ = c.nakWithBackoff(acker)
 	}
-	return observability.ResultFail
+	return resultFail
 }
 
 func (c *Consumer) nakWithBackoff(msg ackableMsg) error {
@@ -380,6 +464,12 @@ func (c *Consumer) ensureInfrastructure() error {
 		}
 	}
 
+	if c.dlqHandler != nil {
+		if err := c.dlqHandler.ValidateDLQ(); err != nil {
+			return fmt.Errorf("verify DLQ: %w", err)
+		}
+	}
+
 	return nil
 }
 
@@ -406,6 +496,7 @@ func (c *Consumer) verifyInfrastructure() error {
 			return fmt.Errorf("verify DLQ: %w", err)
 		}
 	}
+
 	return nil
 }
 
@@ -427,10 +518,10 @@ func (c *Consumer) ensureStream(name string, subjects []string, retention nats.R
 		Replicas:  c.cfg.NATS.StreamLimits.Replicas,
 		Storage:   nats.FileStorage,
 	}
-	if c.cfg.NATS.StreamLimits.Discard == "new" {
+	if strings.EqualFold(strings.TrimSpace(c.cfg.NATS.StreamLimits.Discard), "new") {
 		streamCfg.Discard = nats.DiscardNew
 	}
-	if c.cfg.NATS.StreamLimits.Storage == "memory" {
+	if strings.EqualFold(strings.TrimSpace(c.cfg.NATS.StreamLimits.Storage), "memory") {
 		streamCfg.Storage = nats.MemoryStorage
 	}
 
@@ -438,6 +529,7 @@ func (c *Consumer) ensureStream(name string, subjects []string, retention nats.R
 	if _, err := c.js.AddStream(streamCfg); err != nil {
 		return fmt.Errorf("add stream %s: %w", name, err)
 	}
+
 	return nil
 }
 

@@ -12,9 +12,10 @@ import (
 
 var _ = Describe("CLI overrides", func() {
 	var (
-		cfg     *appconfig.Config
-		flagSet *flag.FlagSet
-		args    []string
+		cfg      *appconfig.Config
+		flagSet  *flag.FlagSet
+		args     []string
+		applyErr error
 	)
 
 	BeforeEach(func() {
@@ -65,10 +66,11 @@ var _ = Describe("CLI overrides", func() {
 		Expect(err).NotTo(HaveOccurred())
 
 		ctx := cli.NewContext(cli.NewApp(), flagSet, nil)
-		applyCLIOverrides(cfg, ctx)
+		applyErr = applyCLIOverrides(cfg, ctx)
 	})
 
 	It("applies overrides for all critical flags", func() {
+		Expect(applyErr).NotTo(HaveOccurred())
 		Expect(cfg.NATS.URL).To(Equal("nats://override:4222"))
 		Expect(cfg.Subscription.Topic).To(Equal("override.subject"))
 		Expect(cfg.NATS.Stream).To(Equal("STREAM"))
@@ -90,9 +92,33 @@ var _ = Describe("CLI overrides", func() {
 		})
 
 		It("configures deliver policy and start time", func() {
+			Expect(applyErr).NotTo(HaveOccurred())
 			Expect(cfg.NATS.ConsumerRules.DeliverPolicy).To(Equal("time"))
 			Expect(cfg.NATS.ConsumerRules.StartTime).To(Equal("2024-11-15T08:00:00Z"))
 			Expect(cfg.NATS.ConsumerRules.StartSequence).To(Equal(uint64(0)))
+		})
+	})
+
+	Context("with padded time-based replay override", func() {
+		BeforeEach(func() {
+			args = []string{"--replay-from", "  time:2024-11-15T08:00:00Z  "}
+		})
+
+		It("trims leading and trailing whitespace before extracting timestamp", func() {
+			Expect(applyErr).NotTo(HaveOccurred())
+			Expect(cfg.NATS.ConsumerRules.DeliverPolicy).To(Equal("time"))
+			Expect(cfg.NATS.ConsumerRules.StartTime).To(Equal("2024-11-15T08:00:00Z"))
+			Expect(cfg.NATS.ConsumerRules.StartSequence).To(Equal(uint64(0)))
+		})
+	})
+
+	Context("with invalid replay-from value", func() {
+		BeforeEach(func() {
+			args = []string{"--replay-from", "invalid_policy"}
+		})
+
+		It("returns an error instead of silently ignoring", func() {
+			Expect(applyErr).To(HaveOccurred())
 		})
 	})
 })

@@ -67,7 +67,7 @@ func (p *Processor) Handle(ctx context.Context, raw []byte, msgID string) error 
 	}
 
 	tracer := otel.Tracer("caatsm/pipeline")
-	ctx, span := tracer.Start(ctx, "MessageProcessor.Handle")
+	ctx, span := tracer.Start(ctx, "Processor.Handle")
 	defer span.End()
 
 	span.SetAttributes(

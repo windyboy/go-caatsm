@@ -8,8 +8,6 @@ url = "nats://localhost:4222"
 #     * Dead-letter queue (DLQ) support
 #     * Batch processing and consumer monitoring
 mode = "jetstream"
-client = "serial-client"
-cluster = "tele-cluster"
 stream = "TELEGRAM"
 # Optional dedicated outbound and DLQ streams (default: "<stream>_OUT" and "<stream>_DLQ")
 # publish_stream = "TELEGRAM_OUT"
@@ -54,7 +52,6 @@ max_ack_pending = 1000
 
 [subscription]
 topic = "telegram.serial"
-queue_group = "tele-queue"
 
 [publisher]
 topic = "telegram.json"

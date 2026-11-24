@@ -54,8 +54,8 @@ func setupApp() *cli.App {
 					&cli.BoolFlag{Name: "telemetry-enabled", Usage: "Enable OpenTelemetry exporters"},
 					&cli.StringFlag{Name: "telemetry-endpoint", Usage: "OpenTelemetry collector OTLP endpoint"},
 					&cli.BoolFlag{Name: "telemetry-insecure", Usage: "Send OTLP data without TLS"},
-					&cli.StringFlag{Name: "monitoring-addr", Usage: "Monitoring server address (e.g., 0.0.0.0:2112 or :2112)", EnvVars: []string{"CAATSM_MONITORING_ADDR"}},
-					&cli.BoolFlag{Name: "monitoring-disabled", Usage: "Disable monitoring server", EnvVars: []string{"CAATSM_MONITORING_DISABLED"}},
+					&cli.StringFlag{Name: "monitoring-addr", Usage: "Monitoring server address (e.g., 0.0.0.0:2112 or :2112)"},
+					&cli.BoolFlag{Name: "monitoring-disabled", Usage: "Disable monitoring server"},
 				},
 				Action: executeListen,
 			},
@@ -69,7 +69,9 @@ func executeListen(c *cli.Context) error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	applyCLIOverrides(cfg, c)
+	if err := applyCLIOverrides(cfg, c); err != nil {
+		return fmt.Errorf("invalid CLI overrides: %w", err)
+	}
 	if err := cfg.Validate(); err != nil {
 		return fmt.Errorf("invalid configuration after CLI overrides: %w", err)
 	}
@@ -104,13 +106,15 @@ func runListen(parentCtx context.Context, cfg *config.Config) error {
 		}
 	}()
 
+	recorder := observability.NewRecorder(cfg)
+
 	pool, err := postgres.OpenPool(ctx, cfg, logger)
 	if err != nil {
 		return fmt.Errorf("failed to initialize postgres: %w", err)
 	}
 	defer pool.Close()
 
-	store := postgres.NewRepository(pool, logger)
+	store := postgres.NewRepository(pool, recorder, logger)
 
 	nc, err := natsinfra.Connect(cfg, logger)
 	if err != nil {
@@ -123,12 +127,11 @@ func runListen(parentCtx context.Context, cfg *config.Config) error {
 		return fmt.Errorf("failed to initialize JetStream: %w", err)
 	}
 
-	pub, err := natsinfra.NewPublisher(js, cfg, logger)
+	pub, err := natsinfra.NewPublisher(js, cfg, recorder, logger)
 	if err != nil {
 		return fmt.Errorf("failed to initialize publisher: %w", err)
 	}
 
-	recorder := observability.NewRecorder(cfg)
 	router := telegram.NewRouter()
 	aftnValidator := telegram.NewAFTNValidator()
 	processor := pipeline.NewProcessor(
@@ -173,27 +176,31 @@ func runListen(parentCtx context.Context, cfg *config.Config) error {
 	}()
 
 	var runErr error
+	consumerExited := false
 	select {
 	case <-ctx.Done():
 		logger.Info("Received shutdown signal, shutting down", zap.Error(ctx.Err()))
 	case err := <-errChan:
+		consumerExited = true
 		if err != nil {
 			runErr = err
 		}
 		stop()
 	}
 
-	waitTimeout := cfg.App.BatchTimeout + time.Second
-	if waitTimeout < 3*time.Second {
-		waitTimeout = 3 * time.Second
-	}
-	select {
-	case err := <-errChan:
-		if err != nil && !errors.Is(err, context.Canceled) && runErr == nil {
-			runErr = err
+	if !consumerExited {
+		waitTimeout := cfg.App.BatchTimeout + time.Second
+		if waitTimeout < 3*time.Second {
+			waitTimeout = 3 * time.Second
 		}
-	case <-time.After(waitTimeout):
-		logger.Warn("Timed out waiting for consumer loop exit", zap.Duration("timeout", waitTimeout))
+		select {
+		case err := <-errChan:
+			if err != nil && !errors.Is(err, context.Canceled) && runErr == nil {
+				runErr = err
+			}
+		case <-time.After(waitTimeout):
+			logger.Warn("Timed out waiting for consumer loop exit", zap.Duration("timeout", waitTimeout))
+		}
 	}
 
 	drainTimeout := cfg.Timeouts.Close
@@ -209,9 +216,9 @@ func runListen(parentCtx context.Context, cfg *config.Config) error {
 	return runErr
 }
 
-func applyCLIOverrides(cfg *config.Config, c *cli.Context) {
+func applyCLIOverrides(cfg *config.Config, c *cli.Context) error {
 	if cfg == nil || c == nil {
-		return
+		return nil
 	}
 	if flagURL := c.String("nats-url"); flagURL != "" {
 		cfg.NATS.URL = flagURL
@@ -238,7 +245,9 @@ func applyCLIOverrides(cfg *config.Config, c *cli.Context) {
 		cfg.Log.Level = logLevel
 	}
 	if replay := c.String("replay-from"); replay != "" {
-		applyReplayOverride(cfg, replay)
+		if err := applyReplayOverride(cfg, replay); err != nil {
+			return err
+		}
 	}
 	if c.IsSet("ack-wait") {
 		if ack := c.Duration("ack-wait"); ack > 0 {
@@ -255,50 +264,65 @@ func applyCLIOverrides(cfg *config.Config, c *cli.Context) {
 	if c.IsSet("telemetry-insecure") {
 		cfg.Telemetry.Insecure = c.Bool("telemetry-insecure")
 	}
-	if addr := c.String("monitoring-addr"); addr != "" {
-		cfg.Monitoring.Addr = addr
-		cfg.Monitoring.Disabled = false
+	if c.IsSet("monitoring-addr") {
+		if addr := c.String("monitoring-addr"); addr != "" {
+			cfg.Monitoring.Addr = addr
+			cfg.Monitoring.Disabled = false
+		}
 	}
 	if c.IsSet("monitoring-disabled") {
 		cfg.Monitoring.Disabled = c.Bool("monitoring-disabled")
 	}
+	return nil
 }
 
-func applyReplayOverride(cfg *config.Config, value string) {
+func applyReplayOverride(cfg *config.Config, value string) error {
 	if cfg == nil {
-		return
+		return nil
 	}
-	lower := strings.ToLower(strings.TrimSpace(value))
+	trimmed := strings.TrimSpace(value)
+	lower := strings.ToLower(trimmed)
 	switch {
 	case lower == "new":
 		cfg.NATS.ConsumerRules.DeliverPolicy = "new"
 		cfg.NATS.ConsumerRules.StartSequence = 0
 		cfg.NATS.ConsumerRules.StartTime = ""
+		return nil
 	case lower == "all":
 		cfg.NATS.ConsumerRules.DeliverPolicy = "all"
 		cfg.NATS.ConsumerRules.StartSequence = 0
 		cfg.NATS.ConsumerRules.StartTime = ""
+		return nil
 	case lower == "last":
 		cfg.NATS.ConsumerRules.DeliverPolicy = "last"
 		cfg.NATS.ConsumerRules.StartSequence = 0
 		cfg.NATS.ConsumerRules.StartTime = ""
+		return nil
 	case lower == "last_per_subject":
 		cfg.NATS.ConsumerRules.DeliverPolicy = "last_per_subject"
 		cfg.NATS.ConsumerRules.StartSequence = 0
 		cfg.NATS.ConsumerRules.StartTime = ""
+		return nil
 	case strings.HasPrefix(lower, "seq:"):
 		seqStr := strings.TrimPrefix(lower, "seq:")
-		if seq, err := strconv.ParseUint(seqStr, 10, 64); err == nil {
-			cfg.NATS.ConsumerRules.DeliverPolicy = "sequence"
-			cfg.NATS.ConsumerRules.StartSequence = seq
-			cfg.NATS.ConsumerRules.StartTime = ""
+		seq, err := strconv.ParseUint(seqStr, 10, 64)
+		if err != nil || seq == 0 {
+			return fmt.Errorf("invalid --replay-from sequence %q: must be positive integer", value)
 		}
+		cfg.NATS.ConsumerRules.DeliverPolicy = "sequence"
+		cfg.NATS.ConsumerRules.StartSequence = seq
+		cfg.NATS.ConsumerRules.StartTime = ""
+		return nil
 	case strings.HasPrefix(lower, "time:"):
-		ts := strings.TrimSpace(value[5:])
-		if _, err := time.Parse(time.RFC3339, ts); err == nil {
-			cfg.NATS.ConsumerRules.DeliverPolicy = "time"
-			cfg.NATS.ConsumerRules.StartSequence = 0
-			cfg.NATS.ConsumerRules.StartTime = ts
+		ts := strings.TrimSpace(trimmed[5:])
+		if _, err := time.Parse(time.RFC3339, ts); err != nil {
+			return fmt.Errorf("invalid --replay-from timestamp %q: %w", value, err)
 		}
+		cfg.NATS.ConsumerRules.DeliverPolicy = "time"
+		cfg.NATS.ConsumerRules.StartSequence = 0
+		cfg.NATS.ConsumerRules.StartTime = ts
+		return nil
+	default:
+		return fmt.Errorf("invalid --replay-from value %q (expected all|new|last|last_per_subject|seq:<n>|time:<RFC3339>)", value)
 	}
 }

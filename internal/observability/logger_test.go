@@ -46,18 +46,18 @@ var _ = Describe("Logger", func() {
 		Expect(filepath.Dir(logPath)).To(BeADirectory())
 	})
 
-	It("attaches structured MessageFields via WithMessageContext", func() {
-		base, err := NewLogger(&config.Config{Log: config.LogConfig{Level: "info", Format: "json", Output: []string{"stdout"}}})
-		Expect(err).NotTo(HaveOccurred())
-		enriched := WithMessageContext(base, MessageFields{
-			Service:        "caatsm",
-			TransportMsgID: "id-1",
-			BusinessMsgID:  "TMQ1",
-			Category:       "ARR",
-			JSSequence:     42,
-			ErrorType:      ErrorTypeTransient,
+	It("rejects nil config and normalizes uppercase level and format", func() {
+		_, err := NewLogger(nil)
+		Expect(err).To(HaveOccurred())
+
+		logger, err := NewLogger(&config.Config{
+			Log: config.LogConfig{
+				Level:  " DEBUG ",
+				Format: " JSON ",
+				Output: []string{"stdout"},
+			},
 		})
-		Expect(enriched).NotTo(BeNil())
-		Expect(WithMessageContext(nil, MessageFields{})).NotTo(BeNil())
+		Expect(err).NotTo(HaveOccurred())
+		Expect(logger.Core().Enabled(-1)).To(BeTrue()) // zapcore.DebugLevel == -1
 	})
 })

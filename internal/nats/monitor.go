@@ -2,7 +2,6 @@ package nats
 
 import (
 	"caatsm/internal/config"
-	"caatsm/internal/observability"
 	"context"
 	"sync"
 	"time"
@@ -11,11 +10,21 @@ import (
 	"go.uber.org/zap"
 )
 
+// MonitorRecorder captures NATS consumer monitoring metrics.
+type MonitorRecorder interface {
+	RecordJSAPICall(operation string)
+	RecordNATSConsumerPending(stream, consumer string, pending uint64)
+	RecordMessageGap(stream, consumer string, gapSeconds float64)
+	RecordSequenceGap(stream, consumer string, gapSize uint64)
+	RecordSerialReaderHealth(stream, consumer string, healthy bool)
+}
+
 // ConsumerMonitor handles health monitoring and backlog metrics for the consumer.
 type ConsumerMonitor struct {
-	logger *zap.Logger
-	cfg    *config.Config
-	js     nats.JetStreamContext
+	logger   *zap.Logger
+	cfg      *config.Config
+	js       nats.JetStreamContext
+	recorder MonitorRecorder
 
 	streamName      string
 	consumerName    string
@@ -34,6 +43,7 @@ func NewConsumerMonitor(
 	streamName string,
 	consumerName string,
 	monitorInterval time.Duration,
+	rec MonitorRecorder,
 ) *ConsumerMonitor {
 	if logger == nil {
 		logger = zap.NewNop()
@@ -41,10 +51,14 @@ func NewConsumerMonitor(
 	if monitorInterval <= 0 {
 		monitorInterval = 30 * time.Second
 	}
+	if rec == nil {
+		rec = noopRecorder{}
+	}
 	return &ConsumerMonitor{
 		logger:          logger,
 		cfg:             cfg,
 		js:              js,
+		recorder:        rec,
 		streamName:      streamName,
 		consumerName:    consumerName,
 		monitorInterval: monitorInterval,
@@ -61,7 +75,7 @@ func (m *ConsumerMonitor) Start(ctx context.Context) {
 		zap.String("consumer", m.consumerName),
 		zap.Duration("interval", m.monitorInterval),
 	)
-	observability.RecordNATSConsumerPending(m.streamName, m.consumerName, 0)
+	m.recorder.RecordNATSConsumerPending(m.streamName, m.consumerName, 0)
 
 	for {
 		select {
@@ -75,7 +89,7 @@ func (m *ConsumerMonitor) Start(ctx context.Context) {
 
 func (m *ConsumerMonitor) emitStats() {
 	if m.js != nil {
-		observability.RecordJSAPICall("consumer_info")
+		m.recorder.RecordJSAPICall("consumer_info")
 		info, err := m.js.ConsumerInfo(m.streamName, m.consumerName)
 		if err != nil {
 			m.logger.Warn("Failed to fetch consumer info for pending messages metric",
@@ -84,15 +98,15 @@ func (m *ConsumerMonitor) emitStats() {
 				zap.Error(err),
 			)
 		} else {
-			observability.RecordNATSConsumerPending(m.streamName, m.consumerName, info.NumPending)
+			m.recorder.RecordNATSConsumerPending(m.streamName, m.consumerName, info.NumPending)
 		}
 	}
 
 	gapSeconds := m.GetMessageGapSeconds()
 	healthy := m.IsHealthy()
 
-	observability.RecordMessageGap(m.streamName, m.consumerName, gapSeconds)
-	observability.RecordSerialReaderHealth(m.streamName, m.consumerName, healthy)
+	m.recorder.RecordMessageGap(m.streamName, m.consumerName, gapSeconds)
+	m.recorder.RecordSerialReaderHealth(m.streamName, m.consumerName, healthy)
 
 	if !healthy {
 		m.logger.Warn("Serial reader appears stalled - no messages received recently",
@@ -104,32 +118,48 @@ func (m *ConsumerMonitor) emitStats() {
 	}
 }
 
-// TrackMessage updates health and sequence-gap metrics on each received message.
+// TrackMessage updates health and monotonic sequence-gap metrics on newly delivered messages.
 func (m *ConsumerMonitor) TrackMessage(msg *nats.Msg) {
 	if msg == nil {
 		return
 	}
 
+	meta, err := msg.Metadata()
+	if err == nil && meta != nil {
+		m.recordSequenceObservation(meta.Sequence.Stream, meta.NumDelivered, time.Now())
+		return
+	}
+
+	m.mu.Lock()
+	m.lastMessageTime = time.Now()
+	m.mu.Unlock()
+}
+
+func (m *ConsumerMonitor) recordSequenceObservation(currentSeq, numDelivered uint64, observedAt time.Time) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	m.lastMessageTime = time.Now()
+	m.lastMessageTime = observedAt
 
-	if meta, err := msg.Metadata(); err == nil {
-		currentSeq := meta.Sequence.Stream
-		if m.lastMessageSequence > 0 && m.cfg != nil && m.cfg.AFTN.EnableSequenceGapDetection {
-			if currentSeq > m.lastMessageSequence+1 {
-				gapSize := currentSeq - m.lastMessageSequence - 1
-				m.logger.Warn("Message sequence gap detected",
-					zap.String("stream", m.streamName),
-					zap.String("consumer", m.consumerName),
-					zap.Uint64("last_sequence", m.lastMessageSequence),
-					zap.Uint64("current_sequence", currentSeq),
-					zap.Uint64("gap_size", gapSize),
-				)
-				observability.RecordSequenceGap(m.streamName, m.consumerName, gapSize)
-			}
+	// Skip redeliveries and out-of-order replays so they never trigger false sequence gaps
+	// or move the monotonic high-water mark backwards.
+	if numDelivered > 1 || currentSeq == 0 {
+		return
+	}
+	if m.lastMessageSequence > 0 && m.cfg != nil && m.cfg.AFTN.EnableSequenceGapDetection {
+		if currentSeq > m.lastMessageSequence+1 {
+			gapSize := currentSeq - m.lastMessageSequence - 1
+			m.logger.Warn("Message sequence gap detected",
+				zap.String("stream", m.streamName),
+				zap.String("consumer", m.consumerName),
+				zap.Uint64("last_sequence", m.lastMessageSequence),
+				zap.Uint64("current_sequence", currentSeq),
+				zap.Uint64("gap_size", gapSize),
+			)
+			m.recorder.RecordSequenceGap(m.streamName, m.consumerName, gapSize)
 		}
+	}
+	if currentSeq > m.lastMessageSequence {
 		m.lastMessageSequence = currentSeq
 	}
 }
@@ -163,7 +193,7 @@ func (m *ConsumerMonitor) RecordInitialPending(pending uint64) {
 		zap.String("consumer", m.consumerName),
 		zap.Uint64("pending", pending),
 	)
-	observability.RecordNATSConsumerPending(m.streamName, m.consumerName, pending)
+	m.recorder.RecordNATSConsumerPending(m.streamName, m.consumerName, pending)
 }
 
 func (m *ConsumerMonitor) messageGapThreshold() time.Duration {

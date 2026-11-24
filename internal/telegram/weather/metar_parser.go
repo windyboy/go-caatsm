@@ -17,7 +17,7 @@ func parseMetar(raw string, reportType string) (*Metar, error) {
 		return nil, err
 	}
 
-	for pos < len(tokens) && strings.HasPrefix(tokens[pos], "R") {
+	for pos < len(tokens) && rvrPattern.MatchString(tokens[pos]) {
 		metar.Warnings = append(metar.Warnings, fmt.Sprintf("RVR not parsed: %s", tokens[pos]))
 		pos++
 	}
@@ -59,15 +59,11 @@ func parseMetar(raw string, reportType string) (*Metar, error) {
 		}
 	}
 
-	for i := pos; i < len(tokens); i++ {
-		if strings.HasPrefix(strings.ToUpper(tokens[i]), "RMK") {
-			metar.Remarks = strings.Join(tokens[i:], " ")
-			pos = len(tokens)
+	for pos < len(tokens) {
+		if strings.HasPrefix(strings.ToUpper(tokens[pos]), "RMK") {
+			metar.Remarks = strings.Join(tokens[pos:], " ")
 			break
 		}
-	}
-
-	for pos < len(tokens) {
 		metar.Warnings = append(metar.Warnings, fmt.Sprintf("unrecognized token: %s", tokens[pos]))
 		pos++
 	}
@@ -90,6 +86,11 @@ func parseMetarHeader(tokens []string, raw string, reportType string) (*Metar, i
 	}
 	pos++
 
+	if pos < len(tokens) && strings.EqualFold(tokens[pos], "COR") {
+		metar.Modifier = "COR"
+		pos++
+	}
+
 	if pos >= len(tokens) {
 		return nil, 0, ErrMissingStation
 	}
@@ -109,7 +110,9 @@ func parseMetarHeader(tokens []string, raw string, reportType string) (*Metar, i
 
 	if pos < len(tokens) {
 		if match := modifierPattern.FindStringSubmatch(tokens[pos]); match != nil {
-			metar.Modifier = match[1]
+			if metar.Modifier == "" {
+				metar.Modifier = match[1]
+			}
 			pos++
 		}
 	}
@@ -152,6 +155,14 @@ func parseWind(token string) *Wind {
 }
 
 func parseVisibility(token string) *Visibility {
+	if strings.EqualFold(token, "CAVOK") {
+		return &Visibility{
+			Distance: 9999,
+			Unit:     "M",
+			Modifier: "CAVOK",
+		}
+	}
+
 	if match := directionalVisibilityPattern.FindStringSubmatch(token); match != nil {
 		dist, _ := strconv.ParseFloat(match[1], 64)
 		return &Visibility{

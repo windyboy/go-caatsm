@@ -71,8 +71,6 @@ var (
 	DlaPatternExpression = regexp.MustCompile(DlaPatternString)
 
 	categoryRegex      = regexp.MustCompile(`\((?P<category>[A-Z]+)-`)
-	emptyLineRemove    = regexp.MustCompile(`(?m)^\s*$`)
-	bodyOnly           = regexp.MustCompile(`(.|\n)?(ZCZC(.|\n)*)NNNN(.|\n)?$`)
 	originator         = regexp.MustCompile(`(?P<originatorDateTime>[0-9]+)\s(?P<originator>[A-Z]+)`)
 	navPattern         = regexp.MustCompile(`(?m)NAV\/(?P<nav>\w+)`)
 	remarkPattern      = regexp.MustCompile(`(?s)RMK\/(?P<remark>.*)`)

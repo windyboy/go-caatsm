@@ -2,8 +2,6 @@ package nats
 
 import (
 	"caatsm/internal/config"
-	"caatsm/internal/observability"
-	"caatsm/internal/pipeline"
 	"context"
 	"errors"
 	"time"
@@ -49,6 +47,7 @@ type spyRecorder struct {
 	dlqCount     int
 	dlqFailCount int
 	jsCalls      int
+	seqGaps      []uint64
 }
 
 func (s *spyRecorder) RecordMessageHandled(_ context.Context, _, _, result string, _ time.Duration) {
@@ -60,6 +59,12 @@ func (s *spyRecorder) RecordRetry(_ context.Context, _, _, reason string) {
 func (s *spyRecorder) RecordDLQMessage(context.Context, string, string)        { s.dlqCount++ }
 func (s *spyRecorder) RecordDLQPublishFailure(context.Context, string, string) { s.dlqFailCount++ }
 func (s *spyRecorder) RecordJSAPICall(string)                                  { s.jsCalls++ }
+func (s *spyRecorder) RecordNATSConsumerPending(string, string, uint64)        {}
+func (s *spyRecorder) RecordMessageGap(string, string, float64)                {}
+func (s *spyRecorder) RecordSequenceGap(_ string, _ string, gap uint64) {
+	s.seqGaps = append(s.seqGaps, gap)
+}
+func (s *spyRecorder) RecordSerialReaderHealth(string, string, bool) {}
 
 type stubJSInfra struct {
 	nats.JetStreamContext
@@ -67,6 +72,17 @@ type stubJSInfra struct {
 	consumers map[string]*nats.ConsumerInfo
 	addedStr  []string
 	addedCons []string
+}
+
+func (s *stubJSInfra) StreamNameBySubject(subject string, _ ...nats.JSOpt) (string, error) {
+	for name, info := range s.streams {
+		for _, subj := range info.Config.Subjects {
+			if subj == subject {
+				return name, nil
+			}
+		}
+	}
+	return "", nats.ErrStreamNotFound
 }
 
 func (s *stubJSInfra) StreamInfo(name string, _ ...nats.JSOpt) (*nats.StreamInfo, error) {
@@ -186,9 +202,9 @@ var _ = Describe("Consumer", func() {
 				logger:       zap.NewNop(),
 			}
 			acker := &fakeAckMsg{}
-			res := c.handleFailure(context.Background(), &nats.Msg{}, acker, "id-1", pipeline.Permanent(errors.New("bad")))
+			res := c.handleFailure(context.Background(), &nats.Msg{}, acker, "id-1", markPermanent(errors.New("bad")))
 
-			Expect(res).To(Equal(observability.ResultPermanentFail))
+			Expect(res).To(Equal(resultPermanentFail))
 			Expect(dlq.called).To(BeTrue())
 			Expect(acker.acked).To(BeTrue())
 			Expect(acker.nacked).To(BeFalse())
@@ -206,13 +222,13 @@ var _ = Describe("Consumer", func() {
 				backoff:      []time.Duration{2 * time.Second},
 			}
 			acker := &fakeAckMsg{delivered: 1}
-			res := c.handleFailure(context.Background(), &nats.Msg{}, acker, "id-2", pipeline.Permanent(errors.New("bad")))
+			res := c.handleFailure(context.Background(), &nats.Msg{}, acker, "id-2", markPermanent(errors.New("bad")))
 
-			Expect(res).To(Equal(observability.ResultFail))
+			Expect(res).To(Equal(resultFail))
 			Expect(acker.acked).To(BeFalse())
 			Expect(acker.nacked).To(BeTrue())
 			Expect(acker.nakDelay).To(Equal(2 * time.Second))
-			Expect(rec.retries).To(Equal([]string{observability.RetryReasonDLQError}))
+			Expect(rec.retries).To(Equal([]string{retryReasonDLQError}))
 		})
 
 		It("NAKs transient errors with delivery backoff and records retry", func() {
@@ -227,10 +243,62 @@ var _ = Describe("Consumer", func() {
 			acker := &fakeAckMsg{delivered: 2}
 			res := c.handleFailure(context.Background(), &nats.Msg{}, acker, "id-3", errors.New("db down"))
 
-			Expect(res).To(Equal(observability.ResultFail))
+			Expect(res).To(Equal(resultFail))
 			Expect(acker.nacked).To(BeTrue())
 			Expect(acker.nakDelay).To(Equal(5 * time.Second))
-			Expect(rec.retries).To(Equal([]string{observability.RetryReasonProcessorError}))
+			Expect(rec.retries).To(Equal([]string{retryReasonProcessorError}))
+		})
+	})
+
+	Describe("Backoff, Monitor, and Batch Cancellation", func() {
+		It("caps exponential fetch backoff at 5s", func() {
+			Expect(fetchBackoff(1)).To(Equal(500 * time.Millisecond))
+			Expect(fetchBackoff(2)).To(Equal(1 * time.Second))
+			Expect(fetchBackoff(3)).To(Equal(2 * time.Second))
+			Expect(fetchBackoff(4)).To(Equal(4 * time.Second))
+			Expect(fetchBackoff(5)).To(Equal(5 * time.Second))
+			Expect(fetchBackoff(10)).To(Equal(5 * time.Second))
+		})
+
+		It("ignores redeliveries and out-of-order replays in sequence gap detection", func() {
+			rec := &spyRecorder{}
+			cfg := &config.Config{
+				AFTN: config.AFTNConfig{EnableSequenceGapDetection: true},
+			}
+			mon := NewConsumerMonitor(zap.NewNop(), cfg, nil, "TELEGRAM", "c1", time.Second, rec)
+			now := time.Now()
+
+			mon.recordSequenceObservation(10, 1, now)
+			// Redelivery of an older sequence must not lower high-water mark or trigger a gap.
+			mon.recordSequenceObservation(5, 2, now)
+			// Next fresh delivery in sequence: 11 -> no gap.
+			mon.recordSequenceObservation(11, 1, now)
+			Expect(rec.seqGaps).To(BeEmpty())
+
+			// True gap: 11 -> 15 (3 missing).
+			mon.recordSequenceObservation(15, 1, now)
+			Expect(rec.seqGaps).To(Equal([]uint64{3}))
+		})
+
+		It("stops processing remaining batch messages when context is cancelled", func() {
+			ctx, cancel := context.WithCancel(context.Background())
+			handled := 0
+			c := &Consumer{
+				streamName:   "TELEGRAM",
+				consumerName: "c1",
+				recorder:     &spyRecorder{},
+				logger:       zap.NewNop(),
+				monitor:      NewConsumerMonitor(zap.NewNop(), nil, nil, "TELEGRAM", "c1", time.Second, nil),
+				handler: MessageHandlerFunc(func(_ context.Context, _ []byte, _ string) error {
+					handled++
+					cancel()
+					return nil
+				}),
+			}
+
+			msgs := []*nats.Msg{{Data: []byte("m1")}, {Data: []byte("m2")}, {Data: []byte("m3")}}
+			c.processBatch(ctx, msgs)
+			Expect(handled).To(Equal(1))
 		})
 	})
 })

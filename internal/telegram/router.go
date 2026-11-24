@@ -23,7 +23,7 @@ func NewRouter() *Router {
 // Parse classifies and parses rawText into a Message.
 // Always returns a non-nil *Message even on error so failed payloads can be audited.
 func (r *Router) Parse(rawText string) (*Message, error) {
-	if r.weather != nil && r.weather.CanParse(rawText) {
+	if _, isWeather := weather.Classify(rawText); isWeather && r.weather != nil {
 		wMsg, err := r.weather.Parse(rawText)
 		if err != nil {
 			now := time.Now()

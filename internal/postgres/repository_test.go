@@ -11,7 +11,7 @@ import (
 
 var _ = Describe("Repository guards", func() {
 	It("validates nil messages and empty batches safely", func() {
-		repo := NewRepository(nil, zap.NewNop())
+		repo := NewRepository(nil, nil, zap.NewNop())
 		ctx := context.Background()
 
 		Expect(repo.InsertOne(ctx, nil)).To(HaveOccurred())

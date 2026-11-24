@@ -6,6 +6,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"net"
 	"net/http"
 	"time"
 
@@ -70,26 +72,24 @@ func NewServer(
 	return server, nil
 }
 
-// Start launches the monitoring HTTP server in the background.
-func (s *Server) Start(ctx context.Context) error {
+// Start binds the monitoring listener synchronously and serves HTTP requests until Shutdown is called.
+func (s *Server) Start(_ context.Context) error {
 	if s == nil || s.httpServer == nil {
 		return nil
 	}
 
-	go func() {
-		<-ctx.Done()
-		shutCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		_ = s.Shutdown(shutCtx)
-	}()
+	ln, err := net.Listen("tcp", s.httpServer.Addr)
+	if err != nil {
+		return fmt.Errorf("listen monitoring server on %s: %w", s.httpServer.Addr, err)
+	}
 
 	go func() {
 		s.logger.Info("Monitoring server listening",
-			zap.String("addr", s.httpServer.Addr),
+			zap.String("addr", ln.Addr().String()),
 			zap.Bool("metrics", s.cfg.EnableMetrics),
 			zap.Bool("health", s.cfg.EnableHealth),
 		)
-		if err := s.httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := s.httpServer.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			s.logger.Error("Monitoring server exited", zap.Error(err))
 		}
 	}()

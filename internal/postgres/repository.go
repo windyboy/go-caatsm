@@ -1,7 +1,6 @@
 package postgres
 
 import (
-	"caatsm/internal/observability"
 	"caatsm/internal/telegram"
 	"context"
 	"encoding/json"
@@ -18,20 +17,39 @@ import (
 	"go.uber.org/zap"
 )
 
+const (
+	dbResultOK    = "ok"
+	dbResultError = "error"
+)
+
+// MetricsRecorder captures PostgreSQL query telemetry without importing observability directly.
+type MetricsRecorder interface {
+	RecordDBQuery(operation, result string, elapsed time.Duration)
+}
+
+type noopMetricsRecorder struct{}
+
+func (noopMetricsRecorder) RecordDBQuery(string, string, time.Duration) {}
+
 // Repository persists parsed and raw telegrams to PostgreSQL/TimescaleDB.
 type Repository struct {
-	pool   *pgxpool.Pool
-	logger *zap.Logger
+	pool     *pgxpool.Pool
+	recorder MetricsRecorder
+	logger   *zap.Logger
 }
 
 // NewRepository constructs a PostgreSQL Repository.
-func NewRepository(pool *pgxpool.Pool, logger *zap.Logger) *Repository {
+func NewRepository(pool *pgxpool.Pool, rec MetricsRecorder, logger *zap.Logger) *Repository {
+	if rec == nil {
+		rec = noopMetricsRecorder{}
+	}
 	if logger == nil {
 		logger = zap.NewNop()
 	}
 	return &Repository{
-		pool:   pool,
-		logger: logger,
+		pool:     pool,
+		recorder: rec,
+		logger:   logger,
 	}
 }
 
@@ -104,7 +122,7 @@ func (r *Repository) InsertOne(ctx context.Context, msg *telegram.Message) error
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
-		observability.RecordDBQuery("insert_one", observability.DBResultError, elapsed)
+		r.recorder.RecordDBQuery("insert_one", dbResultError, elapsed)
 		r.logger.Error("failed to insert message",
 			zap.String("uuid", msg.UUID),
 			zap.String("message_id", msg.MessageID),
@@ -114,7 +132,7 @@ func (r *Repository) InsertOne(ctx context.Context, msg *telegram.Message) error
 		return fmt.Errorf("failed to insert message: %w", err)
 	}
 
-	observability.RecordDBQuery("insert_one", observability.DBResultOK, elapsed)
+	r.recorder.RecordDBQuery("insert_one", dbResultOK, elapsed)
 
 	if tag.RowsAffected() == 0 {
 		r.logger.Info("Duplicate message skipped",
@@ -170,7 +188,7 @@ func (r *Repository) InsertBatch(ctx context.Context, msgs []*telegram.Message) 
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
-		observability.RecordDBQuery("insert_batch", observability.DBResultError, elapsed)
+		r.recorder.RecordDBQuery("insert_batch", dbResultError, elapsed)
 		r.logger.Error("failed to batch insert messages",
 			zap.Int("attempted", len(msgs)),
 			zap.Duration("elapsed", elapsed),
@@ -179,7 +197,7 @@ func (r *Repository) InsertBatch(ctx context.Context, msgs []*telegram.Message) 
 		return fmt.Errorf("failed to batch insert messages: %w", err)
 	}
 
-	observability.RecordDBQuery("insert_batch", observability.DBResultOK, elapsed)
+	r.recorder.RecordDBQuery("insert_batch", dbResultOK, elapsed)
 	span.SetAttributes(attribute.Int64("db.inserted", copyCount))
 	r.logger.Info("Batch inserted messages",
 		zap.Int("count", int(copyCount)),
@@ -205,8 +223,16 @@ func (r *Repository) InsertRaw(ctx context.Context, msg *telegram.Message) error
 		return fmt.Errorf("postgres pool is nil")
 	}
 
+	var rawUUID uuid.UUID
 	if msg.UUID == "" {
-		msg.UUID = uuid.NewString()
+		rawUUID = uuid.New()
+		msg.UUID = rawUUID.String()
+	} else {
+		var err error
+		rawUUID, err = uuid.Parse(msg.UUID)
+		if err != nil {
+			return fmt.Errorf("invalid UUID for raw telegram: %w", err)
+		}
 	}
 	if msg.ReceivedAt.IsZero() {
 		msg.ReceivedAt = time.Now()
@@ -238,7 +264,7 @@ func (r *Repository) InsertRaw(ctx context.Context, msg *telegram.Message) error
 
 	start := time.Now()
 	_, err = r.pool.Exec(ctx, query,
-		msg.UUID,
+		rawUUID,
 		string(msg.Status),
 		msg.ErrorReason,
 		msg.Content,
@@ -250,7 +276,7 @@ func (r *Repository) InsertRaw(ctx context.Context, msg *telegram.Message) error
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
-		observability.RecordDBQuery("insert_raw", observability.DBResultError, elapsed)
+		r.recorder.RecordDBQuery("insert_raw", dbResultError, elapsed)
 		r.logger.Error("failed to insert raw telegram",
 			zap.String("uuid", msg.UUID),
 			zap.String("status", string(msg.Status)),
@@ -260,7 +286,7 @@ func (r *Repository) InsertRaw(ctx context.Context, msg *telegram.Message) error
 		return fmt.Errorf("failed to insert raw telegram: %w", err)
 	}
 
-	observability.RecordDBQuery("insert_raw", observability.DBResultOK, elapsed)
+	r.recorder.RecordDBQuery("insert_raw", dbResultOK, elapsed)
 	span.SetAttributes(
 		attribute.String("telegram.uuid", msg.UUID),
 		attribute.String("telegram.status", string(msg.Status)),
@@ -289,10 +315,15 @@ func (r *Repository) messageExists(ctx context.Context, messageID, dateTime stri
 	`
 
 	var one int
-	if err := r.pool.QueryRow(ctx, query, messageID, dateTime).Scan(&one); err != nil {
+	start := time.Now()
+	err := r.pool.QueryRow(ctx, query, messageID, dateTime).Scan(&one)
+	elapsed := time.Since(start)
+	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
+			r.recorder.RecordDBQuery("message_exists", dbResultOK, elapsed)
 			return false, nil
 		}
+		r.recorder.RecordDBQuery("message_exists", dbResultError, elapsed)
 		r.logger.Error("failed to check message existence",
 			zap.String("message_id", messageID),
 			zap.String("date_time", dateTime),
@@ -300,5 +331,6 @@ func (r *Repository) messageExists(ctx context.Context, messageID, dateTime stri
 		)
 		return false, err
 	}
+	r.recorder.RecordDBQuery("message_exists", dbResultOK, elapsed)
 	return true, nil
 }

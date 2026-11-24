@@ -190,10 +190,6 @@ func (s *stubStore) InsertOne(_ context.Context, msg *telegram.Message) error {
 	return nil
 }
 
-func (s *stubStore) InsertBatch(context.Context, []*telegram.Message) error {
-	return errors.New("not implemented")
-}
-
 func (s *stubStore) InsertRaw(_ context.Context, msg *telegram.Message) error {
 	if s.rawErr != nil {
 		return s.rawErr

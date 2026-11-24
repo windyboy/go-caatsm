@@ -2,8 +2,6 @@ package nats
 
 import (
 	"caatsm/internal/config"
-	"caatsm/internal/observability"
-	"caatsm/internal/pipeline"
 	"caatsm/internal/telegram"
 	"context"
 	"encoding/json"
@@ -16,17 +14,24 @@ import (
 	"go.uber.org/zap"
 )
 
+// PublishRecorder captures JetStream API calls emitted by Publisher.
+type PublishRecorder interface {
+	RecordJSAPICall(operation string)
+}
+
 // Publisher publishes parsed telegram messages to JetStream with OTel trace propagation.
 type Publisher struct {
-	js     nats.JetStreamContext
-	cfg    *config.Config
-	logger *zap.Logger
+	js       nats.JetStreamContext
+	cfg      *config.Config
+	recorder PublishRecorder
+	logger   *zap.Logger
 }
 
 // NewPublisher creates a NATS JetStream publisher.
 func NewPublisher(
 	js nats.JetStreamContext,
 	cfg *config.Config,
+	rec PublishRecorder,
 	logger *zap.Logger,
 ) (*Publisher, error) {
 	if js == nil {
@@ -35,32 +40,36 @@ func NewPublisher(
 	if cfg == nil {
 		return nil, fmt.Errorf("config is required")
 	}
+	if rec == nil {
+		rec = noopRecorder{}
+	}
 	if logger == nil {
 		logger = zap.NewNop()
 	}
 	return &Publisher{
-		js:     js,
-		cfg:    cfg,
-		logger: logger,
+		js:       js,
+		cfg:      cfg,
+		recorder: rec,
+		logger:   logger,
 	}, nil
 }
 
 // Publish serializes msg, injects OpenTelemetry trace context headers, and publishes to JetStream.
 func (p *Publisher) Publish(ctx context.Context, msg *telegram.Message) error {
 	if msg == nil {
-		return pipeline.Permanent(fmt.Errorf("message must not be nil"))
+		return markPermanent(fmt.Errorf("message must not be nil"))
 	}
 
 	topic := p.cfg.Publisher.Topic
 	if topic == "" {
 		p.logger.Error("publisher topic is not configured")
-		return pipeline.Permanent(fmt.Errorf("publisher topic is not configured"))
+		return markPermanent(fmt.Errorf("publisher topic is not configured"))
 	}
 
 	messageBytes, err := json.Marshal(msg)
 	if err != nil {
 		p.logger.Error("failed to marshal message", zap.String("topic", topic), zap.Error(err))
-		return pipeline.Permanent(fmt.Errorf("failed to marshal message: %w", err))
+		return markPermanent(fmt.Errorf("failed to marshal message: %w", err))
 	}
 
 	jsMsg := nats.NewMsg(topic)
@@ -76,7 +85,7 @@ func (p *Publisher) Publish(ctx context.Context, msg *telegram.Message) error {
 	}
 
 	otel.GetTextMapPropagator().Inject(ctx, natsHeaderCarrier(jsMsg.Header))
-	observability.RecordJSAPICall("publish")
+	p.recorder.RecordJSAPICall("publish")
 
 	if _, err := p.js.PublishMsg(jsMsg, nats.Context(ctx)); err != nil {
 		if isTransientPublishError(err) {
@@ -92,7 +101,7 @@ func (p *Publisher) Publish(ctx context.Context, msg *telegram.Message) error {
 			zap.Int("message_size", len(messageBytes)),
 			zap.Error(err),
 		)
-		return pipeline.Permanent(fmt.Errorf("failed to publish message: %w", err))
+		return markPermanent(fmt.Errorf("failed to publish message: %w", err))
 	}
 
 	p.logger.Debug("Published message",

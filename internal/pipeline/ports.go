@@ -19,7 +19,6 @@ type Validator interface {
 // Store persists parsed and raw/failed telegrams.
 type Store interface {
 	InsertOne(ctx context.Context, msg *telegram.Message) error
-	InsertBatch(ctx context.Context, msgs []*telegram.Message) error
 	InsertRaw(ctx context.Context, msg *telegram.Message) error
 }
 

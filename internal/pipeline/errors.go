@@ -22,6 +22,15 @@ func (e *PermanentError) Unwrap() error {
 	return e.err
 }
 
+// IsPermanent signals that the error is non-retriable.
+func (e *PermanentError) IsPermanent() bool {
+	return e != nil
+}
+
+type permanentIndicator interface {
+	IsPermanent() bool
+}
+
 // Permanent wraps err to mark it as non-retriable.
 func Permanent(err error) error {
 	if err == nil {
@@ -31,7 +40,9 @@ func Permanent(err error) error {
 }
 
 // IsPermanent reports whether err or any wrapped error is permanent.
+// Accepts any error type implementing IsPermanent() bool so lower layers
+// do not need to import internal/pipeline.
 func IsPermanent(err error) bool {
-	var target *PermanentError
-	return errors.As(err, &target)
+	var indicator permanentIndicator
+	return errors.As(err, &indicator) && indicator.IsPermanent()
 }

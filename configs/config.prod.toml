@@ -16,8 +16,6 @@
 url = "nats://nats.prod:4222"
 # Production MUST use JetStream mode for message reliability
 mode = "jetstream"
-client = "caatsm-prod-client"
-cluster = "prod-cluster"
 stream = "TELEGRAM"
 # Dedicated outbound and DLQ streams (defaults to "<stream>_OUT" and "<stream>_DLQ")
 # publish_stream = "TELEGRAM_OUT"
@@ -78,7 +76,6 @@ tls_enabled = true
 
 [subscription]
 topic = "telegram.serial"
-queue_group = "tele-queue"
 
 [publisher]
 topic = "telegram.json"
@@ -158,4 +155,11 @@ health_timeout = "2s"
 enabled = true
 # subject: NATS subject where failed messages will be published for manual inspection
 subject = "caatsm.dlq"
+
+[aftn]
+# Enable AFTN protocol validation in production as needed
+validation_enabled = false
+message_gap_threshold = "2m"
+# Disable single-instance sequence gap detection in multi-replica HA deployments
+enable_sequence_gap_detection = false
 
