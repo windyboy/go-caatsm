@@ -71,7 +71,7 @@ Required values:
 
 Defaults:
 - `nats.stream` defaults to `TELEGRAM`
-- `subscription.topic` defaults to `telegram.>`
+- `subscription.topic` defaults to `telegram.serial`
 - `nats.mode` must be `jetstream` or empty (defaults to JetStream)
 
 Minimal example:

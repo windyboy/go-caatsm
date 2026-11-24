@@ -365,6 +365,9 @@ func applyDefaults(cfg *Config, hasHealthFlag, hasMetricsFlag bool) {
 	if cfg.Timeouts.ReconnectWait == 0 {
 		cfg.Timeouts.ReconnectWait = 5 * time.Second
 	}
+	if cfg.Timeouts.Close == 0 {
+		cfg.Timeouts.Close = 5 * time.Second
+	}
 	if cfg.NATS.ConsumerRules.AckWait == 0 {
 		cfg.NATS.ConsumerRules.AckWait = cfg.Timeouts.AckWait
 	}
@@ -513,6 +516,9 @@ func (c *Config) Validate() error {
 	if c.AFTN.MessageGapThreshold < 0 {
 		return fmt.Errorf("aftn.message_gap_threshold must be >= 0")
 	}
+	if c.Timeouts.Close < 0 {
+		return fmt.Errorf("timeouts.close must be >= 0")
+	}
 	return nil
 }
 
@@ -549,8 +555,8 @@ func (c *Config) validateStreamsAndSubjects() error {
 	}
 
 	subTopic := c.EffectiveSubscriptionTopic()
-	if c.Publisher.Topic == subTopic {
-		return fmt.Errorf("publisher.topic (%s) must differ from subscription.topic (%s)", c.Publisher.Topic, subTopic)
+	if subjectsOverlap(c.Publisher.Topic, subTopic) {
+		return fmt.Errorf("publisher.topic (%s) must not overlap subscription.topic (%s)", c.Publisher.Topic, subTopic)
 	}
 
 	if c.DLQ.Enabled {
@@ -561,11 +567,32 @@ func (c *Config) validateStreamsAndSubjects() error {
 		if dlqStream == inStream || dlqStream == outStream {
 			return fmt.Errorf("nats.dlq_stream (%s) must differ from inbound (%s) and outbound (%s) streams", dlqStream, inStream, outStream)
 		}
-		if c.DLQ.Subject == subTopic || c.DLQ.Subject == c.Publisher.Topic {
-			return fmt.Errorf("dlq.subject (%s) must differ from subscription and publisher topics", c.DLQ.Subject)
+		if subjectsOverlap(c.DLQ.Subject, subTopic) || subjectsOverlap(c.DLQ.Subject, c.Publisher.Topic) {
+			return fmt.Errorf("dlq.subject (%s) must not overlap subscription (%s) or publisher (%s) topics", c.DLQ.Subject, subTopic, c.Publisher.Topic)
 		}
 	}
 	return nil
+}
+
+// subjectsOverlap reports whether two NATS subject patterns can match any common subject.
+func subjectsOverlap(a, b string) bool {
+	a = strings.TrimSpace(a)
+	b = strings.TrimSpace(b)
+	if a == "" || b == "" {
+		return false
+	}
+	ta := strings.Split(a, ".")
+	tb := strings.Split(b, ".")
+	for i := 0; i < len(ta) && i < len(tb); i++ {
+		if ta[i] == ">" || tb[i] == ">" {
+			return true
+		}
+		if ta[i] == "*" || tb[i] == "*" || ta[i] == tb[i] {
+			continue
+		}
+		return false
+	}
+	return len(ta) == len(tb)
 }
 
 func (c *Config) validatePostgres() error {
@@ -598,6 +625,14 @@ func (c *Config) validateLog() error {
 	return nil
 }
 
+// EffectiveCloseTimeout returns the shared graceful-shutdown close timeout.
+func (c *Config) EffectiveCloseTimeout() time.Duration {
+	if c != nil && c.Timeouts.Close > 0 {
+		return c.Timeouts.Close
+	}
+	return 5 * time.Second
+}
+
 // EffectiveSubscriptionTopic returns the active subscription subject.
 func (c *Config) EffectiveSubscriptionTopic() string {
 	if c == nil {
@@ -606,7 +641,7 @@ func (c *Config) EffectiveSubscriptionTopic() string {
 	if topic := c.Subscription.Topic; topic != "" {
 		return topic
 	}
-	return "telegram.>"
+	return "telegram.serial"
 }
 
 // EffectivePublishStream returns the dedicated stream name for outbound parsed telegrams.

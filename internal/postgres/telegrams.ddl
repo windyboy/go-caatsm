@@ -41,6 +41,6 @@ CREATE TABLE IF NOT EXISTS aviation.telegrams_raw (
     PRIMARY KEY (uuid, received_at)
 );
 
-SELECT create_hypertable('aviation.telegrams_raw', 'received_at', if_not_exists => TRUE);
+SELECT create_hypertable('aviation.telegrams_raw', 'received_at', if_not_exists => TRUE, migrate_data => TRUE);
 
 CREATE INDEX IF NOT EXISTS idx_telegrams_raw_status_received_at ON aviation.telegrams_raw (status, received_at DESC);

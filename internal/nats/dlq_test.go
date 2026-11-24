@@ -46,7 +46,7 @@ var _ = Describe("DLQHandler", func() {
 	})
 
 	It("returns error when JetStream context is nil during validation or routing", func() {
-		Expect(handler.ValidateDLQ()).To(HaveOccurred())
+		Expect(handler.ValidateDLQ(context.Background())).To(HaveOccurred())
 		Expect(handler.RouteToDLQ(context.Background(), &nats.Msg{}, errors.New("boom"))).To(HaveOccurred())
 	})
 

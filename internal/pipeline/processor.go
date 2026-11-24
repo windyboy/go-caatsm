@@ -96,6 +96,9 @@ func (p *Processor) Handle(ctx context.Context, raw []byte, msgID string) error 
 			parsed.Comments = fmt.Sprintf("%s; nats_msg_id=%s", parsed.Comments, msgID)
 		}
 	}
+	if parsed.PublishID == "" {
+		parsed.PublishID = derivePublishID(ctx, parsed)
+	}
 	if parsed.ReceivedAt.IsZero() {
 		parsed.ReceivedAt = receivedAt
 	}
@@ -132,7 +135,7 @@ func (p *Processor) Handle(ctx context.Context, raw []byte, msgID string) error 
 		}
 		span.RecordError(parseErr)
 		span.SetStatus(codes.Error, parseErr.Error())
-		p.persistRaw(ctx, parsed)
+		rawErr := p.persistRaw(ctx, parsed)
 		msgLogger.With(zap.String("status", string(parsed.Status))).
 			Warn("Message failed to parse",
 				zap.String("content_preview", truncateContent(parsed.Content, 256)),
@@ -140,6 +143,9 @@ func (p *Processor) Handle(ctx context.Context, raw []byte, msgID string) error 
 			)
 		p.recorder.RecordFailure("parser")
 		p.recorder.RecordProcessingResult(ctx, string(parsed.Status), parsed.Category, time.Since(receivedAt))
+		if rawErr != nil && p.opts.RequireRawAudit {
+			return fmt.Errorf("failed to persist unparsed message for audit: %w", rawErr)
+		}
 		return Permanent(fmt.Errorf("parser error: %w", parseErr))
 	}
 	parsed.ErrorReason = ""
@@ -153,7 +159,7 @@ func (p *Processor) Handle(ctx context.Context, raw []byte, msgID string) error 
 			span.SetStatus(codes.Error, err.Error())
 			span.SetAttributes(attribute.String("aftn.error_type", errType))
 			p.recorder.RecordAFTNValidationError(ctx, errType)
-			p.persistRaw(ctx, parsed)
+			rawErr := p.persistRaw(ctx, parsed)
 			msgLogger.With(zap.String("status", string(parsed.Status))).
 				Warn("AFTN validation failed",
 					zap.String("error_type", errType),
@@ -162,6 +168,9 @@ func (p *Processor) Handle(ctx context.Context, raw []byte, msgID string) error 
 				)
 			p.recorder.RecordFailure("aftn_validator")
 			p.recorder.RecordProcessingResult(ctx, string(parsed.Status), parsed.Category, time.Since(receivedAt))
+			if rawErr != nil && p.opts.RequireRawAudit {
+				return fmt.Errorf("failed to persist AFTN-invalid message for audit: %w", rawErr)
+			}
 			return Permanent(fmt.Errorf("AFTN validation error: %w", err))
 		}
 	}
@@ -205,7 +214,9 @@ func (p *Processor) Handle(ctx context.Context, raw []byte, msgID string) error 
 
 		if IsPermanent(err) {
 			parsed.ErrorReason = err.Error()
-			p.persistRaw(ctx, parsed)
+			if rawErr := p.persistRaw(ctx, parsed); rawErr != nil && p.opts.RequireRawAudit {
+				return fmt.Errorf("failed to persist failed publish message for audit: %w", rawErr)
+			}
 			return err
 		}
 		return fmt.Errorf("transient publish error: %w", err)
@@ -216,9 +227,25 @@ func (p *Processor) Handle(ctx context.Context, raw []byte, msgID string) error 
 	return nil
 }
 
-func (p *Processor) persistRaw(ctx context.Context, msg *telegram.Message) {
+func derivePublishID(ctx context.Context, msg *telegram.Message) string {
+	if pubID := strings.TrimSpace(telegram.PublishIDFromContext(ctx)); pubID != "" {
+		return pubID
+	}
+	if msg != nil && msg.MessageID != "" && msg.DateTime != "" {
+		if msg.Category != "" {
+			return fmt.Sprintf("%s:%s:%s", msg.Category, msg.MessageID, msg.DateTime)
+		}
+		return fmt.Sprintf("%s:%s", msg.MessageID, msg.DateTime)
+	}
+	if msg != nil && msg.UUID != "" {
+		return msg.UUID
+	}
+	return ""
+}
+
+func (p *Processor) persistRaw(ctx context.Context, msg *telegram.Message) error {
 	if msg == nil || p.store == nil {
-		return
+		return nil
 	}
 	if msg.Content == "" && msg.BodyData != nil {
 		msg.Content = fmt.Sprintf("%v", msg.BodyData)
@@ -227,10 +254,15 @@ func (p *Processor) persistRaw(ctx context.Context, msg *telegram.Message) {
 		msg.ReceivedAt = time.Now()
 	}
 	if err := p.store.InsertRaw(ctx, msg); err != nil {
+		p.logger.Error("Failed to persist raw telegram for audit",
+			zap.String("status", string(msg.Status)),
+			zap.String("telegram_message_id", msg.MessageID),
+			zap.Error(err),
+		)
 		if span := trace.SpanFromContext(ctx); span.IsRecording() {
 			span.RecordError(err)
 		}
-		return
+		return err
 	}
 	if span := trace.SpanFromContext(ctx); span.IsRecording() {
 		span.AddEvent("raw telegram persisted",
@@ -239,6 +271,7 @@ func (p *Processor) persistRaw(ctx context.Context, msg *telegram.Message) {
 				attribute.String("telegram.message_id", msg.MessageID),
 			))
 	}
+	return nil
 }
 
 func truncateContent(content string, limit int) string {

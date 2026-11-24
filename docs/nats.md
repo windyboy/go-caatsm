@@ -335,12 +335,22 @@ The consumer uses JetStream mode exclusively for persistent, durable message pro
 - Processes messages sequentially within a batch
 - Calls `ConsumerMonitor.TrackMessage(msg)` for gap/sequence tracking
 - Extracts upstream W3C `TraceContext` from NATS headers via `otel.GetTextMapPropagator().Extract`
-- Extracts message IDs (`Nats-Msg-Id` header -> `js-<stream_seq>` fallback -> `"unknown"`)
-- Calls `handler.Handle(ctx, msg.Data, msgID)` and handles ACK / NAK-with-backoff / DLQ (falling back to NAK+backoff if `RouteToDLQ` fails)
+- Extracts correlation ID (`Nats-Msg-Id` header -> `js-<stream_seq>` fallback -> `"unknown"`) for logs/traces, and derives a deterministic outbound `PublishID` from JetStream record identity (`domain`/`stream`/`stream_sequence`/`timestamp`) so redeliveries deduplicate without colliding when upstream reuses a `Nats-Msg-Id`
+- Calls `handler.Handle(msgCtx, msg.Data, msgID)` and handles ACK / NAK-with-backoff / DLQ (using broker `ConsumerInfo.Config.MaxDeliver` and an independent `DLQPublishTimeout` budget on terminal failures)
 
 **DLQHandler (`defaultDLQHandler` in `internal/nats/dlq.go`)**
-- Routes permanent errors (`pipeline.IsPermanent(err)`) to `dlq.subject` (`nats.dlq_stream`) with JSON payload (`subject`, `stream`, `consumer`, `error`, `received_at`, `body`)
-- `ValidateDLQ()` checks stream binding for `dlq.subject` during startup when DLQ is enabled
+- Routes permanent errors (`IsPermanent()`) and transient errors reaching broker `MaxDeliver` to `dlq.subject` (`nats.dlq_stream`) with JSON payload (`subject`, `stream`, `consumer`, `error`, `received_at`, `body`)
+- `ValidateDLQ(ctx)` checks stream binding for `dlq.subject` during startup and subscription recovery when DLQ is enabled
+
+#### Manual Recovery When Deliveries Exhaust Without DLQ Delivery
+When a message reaches JetStream `MaxDeliver` and either DLQ is disabled or DLQ publishing fails, the consumer does **not** ACK the message and logs an error containing `stream`, `consumer`, `stream_sequence`, `num_delivered`, and `max_deliver`. After the final NAK, JetStream stops redelivering that sequence to the durable consumer while retaining the record in the inbound stream. To inspect and manually recover it:
+```bash
+# 1. Inspect the retained inbound payload by stream sequence from the error log
+nats stream get <stream> <stream_sequence>
+
+# 2. After fixing downstream DB / DLQ availability, republish the payload to the inbound subject (or DLQ subject)
+nats pub <subscription.topic> "<raw_payload>"
+```
 
 #### Configuration
 ```toml

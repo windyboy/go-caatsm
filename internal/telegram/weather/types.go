@@ -72,6 +72,7 @@ type Taf struct {
 	RawTextVal   string     `json:"raw_text"`
 
 	Periods  []TafPeriod `json:"periods"`
+	Modifier string      `json:"modifier,omitempty"`
 	Remarks  string      `json:"remarks,omitempty"`
 	Warnings []string    `json:"warnings,omitempty"`
 }

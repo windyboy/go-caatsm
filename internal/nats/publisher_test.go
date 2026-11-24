@@ -59,6 +59,12 @@ var _ = Describe("Publisher", func() {
 		Expect(js.lastMsg.Subject).To(Equal("telegram.json"))
 		Expect(js.lastMsg.Header.Get("Nats-Msg-Id")).To(Equal("uuid-123"))
 
+		msgWithPublishID := &telegram.Message{UUID: "uuid-new", PublishID: "js-42", Category: "ARR"}
+		Expect(pub.Publish(context.Background(), msgWithPublishID)).To(Succeed())
+		Expect(js.lastMsg.Header.Get("Nats-Msg-Id")).To(Equal("js-42"))
+		Expect(string(js.lastMsg.Data)).NotTo(ContainSubstring("PublishID"))
+		Expect(string(js.lastMsg.Data)).NotTo(ContainSubstring("js-42"))
+
 		js.err = nats.ErrNoResponders
 		errTransient := pub.Publish(context.Background(), msg)
 		Expect(errTransient).To(HaveOccurred())

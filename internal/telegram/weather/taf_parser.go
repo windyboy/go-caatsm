@@ -156,6 +156,7 @@ func parseTafHeader(tokens []string, raw string) (*Taf, int, error) {
 	pos++
 
 	if pos < len(tokens) && (strings.EqualFold(tokens[pos], "AMD") || strings.EqualFold(tokens[pos], "COR")) {
+		taf.Modifier = strings.ToUpper(tokens[pos])
 		pos++
 	}
 

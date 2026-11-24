@@ -82,16 +82,19 @@ func (m *ConsumerMonitor) Start(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			m.emitStats()
+			m.emitStats(ctx)
 		}
 	}
 }
 
-func (m *ConsumerMonitor) emitStats() {
+func (m *ConsumerMonitor) emitStats(ctx context.Context) {
 	if m.js != nil {
 		m.recorder.RecordJSAPICall("consumer_info")
-		info, err := m.js.ConsumerInfo(m.streamName, m.consumerName)
+		info, err := m.js.ConsumerInfo(m.streamName, m.consumerName, nats.Context(ctx))
 		if err != nil {
+			if ctx.Err() != nil {
+				return
+			}
 			m.logger.Warn("Failed to fetch consumer info for pending messages metric",
 				zap.String("stream", m.streamName),
 				zap.String("consumer", m.consumerName),

@@ -88,11 +88,48 @@ func TestNATSConsumerRecovery(t *testing.T) {
 		t.Fatalf("delete consumer: %v", err)
 	}
 
-	if _, err := natsinfra.NewConsumer(nc, js, noopHandler{}, cfg, observability.NewNoop(), zap.NewNop()); err != nil {
+	consumer, err := natsinfra.NewConsumer(nc, js, noopHandler{}, cfg, observability.NewNoop(), zap.NewNop())
+	if err != nil {
 		t.Fatalf("recovery NewConsumer failed: %v", err)
 	}
 
 	if _, err := js.ConsumerInfo("RECOVERY_TELEGRAM", "recovery-consumer"); err != nil {
 		t.Fatalf("expected recovered consumer to exist: %v", err)
+	}
+
+	callbackStarted := make(chan struct{})
+	releaseCallback := make(chan struct{})
+	if _, err := nc.Subscribe("recovery.shutdown", func(*nats.Msg) {
+		close(callbackStarted)
+		<-releaseCallback
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := nc.Publish("recovery.shutdown", nil); err != nil {
+		t.Fatal(err)
+	}
+	shutdownCtx, cancelShutdown := context.WithTimeout(ctx, 5*time.Second)
+	defer cancelShutdown()
+	select {
+	case <-callbackStarted:
+	case <-shutdownCtx.Done():
+		close(releaseCallback)
+		t.Fatal(shutdownCtx.Err())
+	}
+
+	shutdownDone := make(chan error, 1)
+	go func() { shutdownDone <- consumer.Shutdown(shutdownCtx) }()
+	select {
+	case err := <-shutdownDone:
+		close(releaseCallback)
+		t.Fatalf("shutdown returned while callback was active: %v", err)
+	case <-time.After(50 * time.Millisecond):
+		close(releaseCallback)
+	}
+	if err := <-shutdownDone; err != nil {
+		t.Fatal(err)
+	}
+	if !nc.IsClosed() {
+		t.Fatal("shutdown returned before the NATS connection closed")
 	}
 }

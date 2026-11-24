@@ -46,6 +46,8 @@ var _ = Describe("Config", func() {
 		Expect(cfg.NATS.ConsumerRules.AckWait).To(Equal(want))
 		Expect(cfg.EffectivePublishStream()).To(Equal("TELEGRAM_OUT"))
 		Expect(cfg.EffectiveDLQStream()).To(Equal("TELEGRAM_DLQ"))
+		Expect(cfg.EffectiveSubscriptionTopic()).To(Equal("telegram.serial"))
+		Expect(cfg.EffectiveCloseTimeout()).To(Equal(5 * time.Second))
 		Expect(cfg.ShouldAutoProvision()).To(BeTrue())
 	})
 
@@ -212,6 +214,17 @@ var _ = Describe("Config", func() {
 
 		c = validBase()
 		c.Publisher.Topic = "telegram.serial"
+		Expect(c.Validate()).To(HaveOccurred())
+
+		// Wildcard subject overlap between separate streams
+		c = validBase()
+		c.Subscription.Topic = "telegram.>"
+		c.Publisher.Topic = "telegram.json"
+		Expect(c.Validate()).To(HaveOccurred())
+
+		c = validBase()
+		c.DLQ.Enabled = true
+		c.DLQ.Subject = "telegram.*"
 		Expect(c.Validate()).To(HaveOccurred())
 
 		// Invalid log level/format

@@ -61,13 +61,51 @@ var _ = Describe("Processor", func() {
 			originalUUID := telegram.NewUUID()
 			parserStub.value = &telegram.Message{UUID: originalUUID, Parsed: true, Status: telegram.StatusParsed}
 
-			Expect(proc.Handle(ctx, []byte("payload"), "msg-123")).To(Succeed())
+			pubCtx := telegram.WithPublishID(ctx, "js:TELEGRAM:123:1700000000")
+			Expect(proc.Handle(pubCtx, []byte("payload"), "msg-123")).To(Succeed())
 
 			Expect(store.last()).NotTo(BeNil())
 			Expect(store.last().UUID).To(Equal(originalUUID))
+			Expect(store.last().PublishID).To(Equal("js:TELEGRAM:123:1700000000"))
 			Expect(store.last().Comments).To(ContainSubstring("nats_msg_id=msg-123"))
 			Expect(pub.last).NotTo(BeNil())
 			Expect(pub.lastCtx).NotTo(BeNil())
+		})
+
+		It("uses JetStream record PublishID from context across redeliveries and avoids upstream ID collisions", func() {
+			redeliveryCtx := telegram.WithPublishID(ctx, "js:TELEGRAM:99:1700000000")
+			parserStub.value = &telegram.Message{UUID: telegram.NewUUID(), MessageID: "TMQ1", DateTime: "151200", Category: "FPL", Parsed: true, Status: telegram.StatusParsed}
+			Expect(proc.Handle(redeliveryCtx, []byte("payload"), "dup-upstream")).To(Succeed())
+			firstPubID := pub.last.PublishID
+
+			parserStub.value = &telegram.Message{UUID: telegram.NewUUID(), MessageID: "TMQ1", DateTime: "151200", Category: "FPL", Parsed: true, Status: telegram.StatusParsed}
+			Expect(proc.Handle(redeliveryCtx, []byte("payload"), "dup-upstream")).To(Succeed())
+			Expect(pub.last.PublishID).To(Equal(firstPubID))
+			Expect(firstPubID).To(Equal("js:TELEGRAM:99:1700000000"))
+
+			// Distinct inbound JetStream record reusing the same upstream Nats-Msg-Id gets a distinct PublishID.
+			secondRecordCtx := telegram.WithPublishID(ctx, "js:TELEGRAM:100:1700000000")
+			parserStub.value = &telegram.Message{UUID: telegram.NewUUID(), MessageID: "TMQ2", DateTime: "151201", Category: "FPL", Parsed: true, Status: telegram.StatusParsed}
+			Expect(proc.Handle(secondRecordCtx, []byte("payload-2"), "dup-upstream")).To(Succeed())
+			Expect(pub.last.PublishID).To(Equal("js:TELEGRAM:100:1700000000"))
+			Expect(pub.last.PublishID).NotTo(Equal(firstPubID))
+			Expect(pub.last.Comments).To(ContainSubstring("nats_msg_id=dup-upstream"))
+		})
+
+		It("returns transient error when InsertRaw fails and RequireRawAudit is enabled", func() {
+			store.rawErr = errors.New("postgres unavailable")
+			parserStub.value = &telegram.Message{Parsed: false, Status: telegram.StatusBodyError}
+			parserStub.err = errors.New("bad format")
+
+			procNoAuditReq := NewProcessor(parserStub, nil, store, pub, rec, zap.NewNop(), Options{RequireRawAudit: false})
+			err1 := procNoAuditReq.Handle(ctx, []byte("bad"), "msg-audit-1")
+			Expect(err1).To(HaveOccurred())
+			Expect(IsPermanent(err1)).To(BeTrue())
+
+			procAuditReq := NewProcessor(parserStub, nil, store, pub, rec, zap.NewNop(), Options{RequireRawAudit: true})
+			err2 := procAuditReq.Handle(ctx, []byte("bad"), "msg-audit-2")
+			Expect(err2).To(HaveOccurred())
+			Expect(IsPermanent(err2)).To(BeFalse())
 		})
 
 		It("propagates permanent vs transient publish error semantics and counts publisher failure once", func() {

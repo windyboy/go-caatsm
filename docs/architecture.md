@@ -280,7 +280,7 @@ type MessageHandler interface {
 
 3. **PostgreSQL / TimescaleDB 持久化（`internal/postgres`）**：
    - 将行映射逻辑内聚至 `internal/postgres/mapper.go`（或方法内），使用具名字段组装插入参数与 `pgx.CopyFromSource`，消除脆弱的 17 列下标对齐。
-   - 优化幂等去重：`telegrams.ddl` 补充 `(message_id, date_time, received_at)` 联合索引，或在 `messageExists` 查询中限定近期时间窗口（利用 TimescaleDB chunk 裁剪），避免大表全 chunk 扫描；在多副本并发场景下结合唯一约束或冲突处理保证严格幂等。
+   - 优化幂等去重：`telegrams.ddl` 补充 `(message_id, date_time, received_at DESC)` 联合索引，当前 `messageExists` 在 7 天时间窗口内按 `(message_id, date_time, category)` 做尽力去重（利用 TimescaleDB chunk 裁剪避免全表扫描），配合出站确定性 `Nats-Msg-Id` 消除重投重复发布；若后续需要多副本并发下的数据库级原子唯一保证，可再引入包含分区键 `received_at` 的唯一约束或独立去重表。
    - 在 `Consumer` 批量拉取后视需要支持批处理事务 / `InsertBatch` 复用，或明确单条独立 ACK/NAK 语义下使用 `InsertOne`、离线重放/导入工具使用 `InsertBatch`。
 
 4. **配置与可观测性收敛（`internal/config`、`internal/observability`）**：

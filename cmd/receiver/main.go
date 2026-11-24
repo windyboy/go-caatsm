@@ -141,7 +141,10 @@ func runListen(parentCtx context.Context, cfg *config.Config) error {
 		pub,
 		recorder,
 		logger,
-		pipeline.Options{ValidateAFTN: cfg.AFTN.ValidationEnabled},
+		pipeline.Options{
+			ValidateAFTN:    cfg.AFTN.ValidationEnabled,
+			RequireRawAudit: !cfg.DLQ.Enabled,
+		},
 	)
 
 	consumer, err := natsinfra.NewConsumer(nc, js, processor, cfg, recorder, logger)
@@ -188,10 +191,12 @@ func runListen(parentCtx context.Context, cfg *config.Config) error {
 		stop()
 	}
 
+	closeTimeout := cfg.EffectiveCloseTimeout()
 	if !consumerExited {
+		inFlightBudget := closeTimeout + natsinfra.DLQPublishTimeout + time.Second
 		waitTimeout := cfg.App.BatchTimeout + time.Second
-		if waitTimeout < 3*time.Second {
-			waitTimeout = 3 * time.Second
+		if inFlightBudget > waitTimeout {
+			waitTimeout = inFlightBudget
 		}
 		select {
 		case err := <-errChan:
@@ -203,11 +208,7 @@ func runListen(parentCtx context.Context, cfg *config.Config) error {
 		}
 	}
 
-	drainTimeout := cfg.Timeouts.Close
-	if drainTimeout <= 0 {
-		drainTimeout = 3 * time.Second
-	}
-	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), drainTimeout)
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), closeTimeout)
 	defer shutdownCancel()
 	if err := consumer.Shutdown(shutdownCtx); err != nil && runErr == nil {
 		runErr = fmt.Errorf("failed to drain NATS connection: %w", err)

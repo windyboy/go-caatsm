@@ -145,15 +145,17 @@ type FPL struct {
 	AlternateAirport        string `json:"alternate_airport,omitempty"`
 	OtherInfo               string `json:"other_info,omitempty"`
 	SupplementaryInfo       string `json:"supplementary_info,omitempty"`
-	TotalEET                string `json:"total_eet,omitempty"`
-	PBN                     string `json:"pbn,omitempty"`
-	NavigationEquipment     string `json:"navigation_equipment,omitempty"`
-	EstimatedElapsedTime    string `json:"estimated_elapsed_time,omitempty"`
-	SELCALCode              string `json:"selcal_code,omitempty"`
-	Register                string `json:"register,omitempty"`
-	PerformanceCategory     string `json:"performance_category,omitempty"`
-	RerouteInformation      string `json:"reroute_information,omitempty"`
-	Remarks                 string `json:"remarks,omitempty"`
+	// TotalEET holds ICAO Item 16 total estimated elapsed time (HHMM).
+	// The JSON key remains "estimated_arrival_time" for backward compatibility with downstream consumers.
+	TotalEET             string `json:"estimated_arrival_time,omitempty"`
+	PBN                  string `json:"pbn,omitempty"`
+	NavigationEquipment  string `json:"navigation_equipment,omitempty"`
+	EstimatedElapsedTime string `json:"estimated_elapsed_time,omitempty"`
+	SELCALCode           string `json:"selcal_code,omitempty"`
+	Register             string `json:"register,omitempty"`
+	PerformanceCategory  string `json:"performance_category,omitempty"`
+	RerouteInformation   string `json:"reroute_information,omitempty"`
+	Remarks              string `json:"remarks,omitempty"`
 }
 
 // Validate checks required FPL fields (Item 18 fields are optional per ICAO Doc 4444).

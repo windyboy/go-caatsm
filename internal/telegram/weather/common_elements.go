@@ -32,13 +32,9 @@ func parseWindAndVisibility(tokens []string) (int, *Wind, *Visibility) {
 		if pos+1 < len(tokens) && mixedVisWholePattern.MatchString(tokens[pos]) {
 			if match := mixedVisFracPattern.FindStringSubmatch(tokens[pos+1]); match != nil {
 				if dist, err := ParseFraction(tokens[pos] + " " + match[1]); err == nil {
-					unit := match[2]
-					if unit == "" {
-						unit = "SM"
-					}
 					visibility = &Visibility{
 						Distance: dist,
-						Unit:     unit,
+						Unit:     match[2],
 					}
 					pos += 2
 				}

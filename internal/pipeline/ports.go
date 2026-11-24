@@ -38,4 +38,7 @@ type Recorder interface {
 // Options configures Processor pipeline behavior.
 type Options struct {
 	ValidateAFTN bool
+	// RequireRawAudit causes parse/validation/permanent failures to return a transient
+	// error when InsertRaw fails (e.g., when DLQ is disabled and DB audit is the sole safety net).
+	RequireRawAudit bool
 }

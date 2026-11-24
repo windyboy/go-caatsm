@@ -62,6 +62,18 @@ var _ = Describe("METAR Parser", func() {
 		Expect(mCavok.Visibility.Modifier).To(Equal("CAVOK"))
 		Expect(mCavok.Visibility.Distance).To(Equal(9999.0))
 
+		mMetricTemp, err := parseMetar("METAR ZBAA 251200Z 18005MPS 9999 10/05 Q1020=", "METAR")
+		Expect(err).ToNot(HaveOccurred())
+		Expect(mMetricTemp.Visibility).NotTo(BeNil())
+		Expect(mMetricTemp.Visibility.Distance).To(Equal(9999.0))
+		Expect(mMetricTemp.Visibility.Unit).To(Equal("M"))
+		Expect(mMetricTemp.Temperature).NotTo(BeNil())
+		Expect(mMetricTemp.Temperature.Value).To(Equal(10.0))
+		Expect(mMetricTemp.Dewpoint).NotTo(BeNil())
+		Expect(mMetricTemp.Dewpoint.Value).To(Equal(5.0))
+		Expect(mMetricTemp.Altimeter).NotTo(BeNil())
+		Expect(mMetricTemp.Altimeter.Value).To(Equal(1020.0))
+
 		mFrac, err := parseMetar("METAR KJFK 251200Z 24015KT 1 1/2SM RA VCSH EXTRA RMK SLP012=", "METAR")
 		Expect(err).ToNot(HaveOccurred())
 		Expect(mFrac.Visibility.Distance).To(Equal(1.5))

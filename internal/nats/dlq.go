@@ -10,10 +10,13 @@ import (
 	"go.uber.org/zap"
 )
 
+// DLQPublishTimeout is the bounded timeout budget allocated for publishing a dead-letter message.
+const DLQPublishTimeout = 5 * time.Second
+
 // DLQHandler defines dead-letter queue routing and startup validation.
 type DLQHandler interface {
 	RouteToDLQ(ctx context.Context, msg *nats.Msg, cause error) error
-	ValidateDLQ() error
+	ValidateDLQ(ctx context.Context) error
 }
 
 type dlqRecorder interface {
@@ -59,7 +62,7 @@ func (h *defaultDLQHandler) RouteToDLQ(ctx context.Context, msg *nats.Msg, cause
 		return err
 	}
 
-	pubCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	pubCtx, cancel := context.WithTimeout(ctx, DLQPublishTimeout)
 	defer cancel()
 
 	if h.recorder != nil {
@@ -83,14 +86,14 @@ func (h *defaultDLQHandler) RouteToDLQ(ctx context.Context, msg *nats.Msg, cause
 	return nil
 }
 
-func (h *defaultDLQHandler) ValidateDLQ() error {
+func (h *defaultDLQHandler) ValidateDLQ(ctx context.Context) error {
 	if h.js == nil {
 		return fmt.Errorf("JetStream context is nil")
 	}
 	if h.recorder != nil {
 		h.recorder.RecordJSAPICall("dlq_validate")
 	}
-	if _, err := h.js.StreamNameBySubject(h.dlqSubject); err != nil {
+	if _, err := h.js.StreamNameBySubject(h.dlqSubject, nats.Context(ctx)); err != nil {
 		return fmt.Errorf("DLQ subject %s not bound to any JetStream stream: %w", h.dlqSubject, err)
 	}
 	h.logger.Info("DLQ configuration validated", zap.String("dlq_subject", h.dlqSubject))

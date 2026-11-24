@@ -29,6 +29,19 @@ var _ = Describe("Router", func() {
 		taf, err := router.Parse("TAF KJFK 251200Z 2512/2612 35012KT 10SM FEW020=")
 		Expect(err).NotTo(HaveOccurred())
 		Expect(taf.Category).To(Equal("TAF"))
+		Expect(metar.MessageID).NotTo(Equal(taf.MessageID))
+		Expect(metar.MessageID).To(HavePrefix("METAR-KJFK-"))
+		Expect(taf.MessageID).To(HavePrefix("TAF-KJFK-"))
+
+		metarCor, err := router.Parse("METAR COR KJFK 251200Z 35012KT 10SM FEW020 25/18 Q1013=")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(metarCor.MessageID).To(HavePrefix("METAR-COR-KJFK-"))
+		Expect(metarCor.MessageID).NotTo(Equal(metar.MessageID))
+
+		tafAmd, err := router.Parse("TAF AMD KJFK 251200Z 2512/2612 35012KT 10SM FEW020=")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(tafAmd.MessageID).To(HavePrefix("TAF-AMD-KJFK-"))
+		Expect(tafAmd.MessageID).NotTo(Equal(taf.MessageID))
 	})
 
 	It("parses lowercase weather reports while preserving RMK remark casing", func() {

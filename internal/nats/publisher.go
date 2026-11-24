@@ -78,11 +78,14 @@ func (p *Publisher) Publish(ctx context.Context, msg *telegram.Message) error {
 		jsMsg.Header = make(nats.Header)
 	}
 
-	if msg.UUID != "" {
-		jsMsg.Header.Set("Nats-Msg-Id", msg.UUID)
-	} else {
-		jsMsg.Header.Set("Nats-Msg-Id", uuid.NewString())
+	dedupeID := msg.PublishID
+	if dedupeID == "" {
+		dedupeID = msg.UUID
 	}
+	if dedupeID == "" {
+		dedupeID = uuid.NewString()
+	}
+	jsMsg.Header.Set("Nats-Msg-Id", dedupeID)
 
 	otel.GetTextMapPropagator().Inject(ctx, natsHeaderCarrier(jsMsg.Header))
 	p.recorder.RecordJSAPICall("publish")

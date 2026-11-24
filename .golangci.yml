@@ -14,6 +14,7 @@ linters:
         telegram-pure-core:
           list-mode: strict
           files:
+            - "**/internal/telegram/*.go"
             - "**/internal/telegram/**/*.go"
             - "!$test"
           allow:
@@ -21,6 +22,7 @@ linters:
             - "caatsm/internal/telegram"
         pipeline-no-infra:
           files:
+            - "**/internal/pipeline/*.go"
             - "**/internal/pipeline/**/*.go"
           deny:
             - pkg: "caatsm/internal/config"
@@ -33,6 +35,7 @@ linters:
               desc: "internal/pipeline must depend only on internal/telegram and ports"
         nats-isolation:
           files:
+            - "**/internal/nats/*.go"
             - "**/internal/nats/**/*.go"
           deny:
             - pkg: "caatsm/internal/pipeline"
@@ -41,6 +44,7 @@ linters:
               desc: "internal/nats must accept injected Recorder instead of importing observability"
         postgres-isolation:
           files:
+            - "**/internal/postgres/*.go"
             - "**/internal/postgres/**/*.go"
           deny:
             - pkg: "caatsm/internal/pipeline"

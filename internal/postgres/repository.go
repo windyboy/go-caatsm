@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -75,21 +76,23 @@ func (r *Repository) InsertOne(ctx context.Context, msg *telegram.Message) error
 	)
 
 	if msg.MessageID != "" && msg.DateTime != "" {
-		exists, err := r.messageExists(ctx, msg.MessageID, msg.DateTime)
+		exists, err := r.messageExists(ctx, msg)
 		if err != nil {
 			span.RecordError(err)
 			span.SetStatus(codes.Error, err.Error())
 			r.logger.Error("failed to check existing message",
 				zap.String("message_id", msg.MessageID),
 				zap.String("date_time", msg.DateTime),
+				zap.String("category", msg.Category),
 				zap.Error(err),
 			)
 			return fmt.Errorf("failed to check existing message: %w", err)
 		}
 		if exists {
-			r.logger.Info("Duplicate message detected by message_id/date_time; skipping insert",
+			r.logger.Info("Duplicate message detected; skipping insert",
 				zap.String("message_id", msg.MessageID),
 				zap.String("date_time", msg.DateTime),
+				zap.String("category", msg.Category),
 			)
 			return nil
 		}
@@ -298,14 +301,29 @@ func (r *Repository) InsertRaw(ctx context.Context, msg *telegram.Message) error
 	return nil
 }
 
-// messageExists performs a time-bounded idempotency check (7-day TimescaleDB chunk window)
-// using (message_id, date_time).
-func (r *Repository) messageExists(ctx context.Context, messageID, dateTime string) (bool, error) {
-	if messageID == "" || dateTime == "" {
+// messageExists performs a time-bounded idempotency check (7-day TimescaleDB chunk window).
+// For weather reports, it checks both the current structured message_id and the legacy
+// {station}-{issue_time} format, confirming normalized content equality so distinct reports
+// (e.g., original vs COR/AMD or two different COR updates at the same issue time) are preserved.
+func (r *Repository) messageExists(ctx context.Context, msg *telegram.Message) (bool, error) {
+	if msg == nil || msg.MessageID == "" || msg.DateTime == "" {
 		return false, nil
 	}
 
-	const query = `
+	if isWeatherMessage(msg) {
+		return r.weatherMessageExists(ctx, msg)
+	}
+
+	const queryWithCategory = `
+		SELECT 1
+		FROM aviation.telegrams
+		WHERE message_id = $1
+		  AND date_time = $2
+		  AND category = $3
+		  AND received_at >= NOW() - INTERVAL '7 days'
+		LIMIT 1
+	`
+	const queryWithoutCategory = `
 		SELECT 1
 		FROM aviation.telegrams
 		WHERE message_id = $1
@@ -316,7 +334,12 @@ func (r *Repository) messageExists(ctx context.Context, messageID, dateTime stri
 
 	var one int
 	start := time.Now()
-	err := r.pool.QueryRow(ctx, query, messageID, dateTime).Scan(&one)
+	var err error
+	if msg.Category != "" {
+		err = r.pool.QueryRow(ctx, queryWithCategory, msg.MessageID, msg.DateTime, msg.Category).Scan(&one)
+	} else {
+		err = r.pool.QueryRow(ctx, queryWithoutCategory, msg.MessageID, msg.DateTime).Scan(&one)
+	}
 	elapsed := time.Since(start)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -325,12 +348,126 @@ func (r *Repository) messageExists(ctx context.Context, messageID, dateTime stri
 		}
 		r.recorder.RecordDBQuery("message_exists", dbResultError, elapsed)
 		r.logger.Error("failed to check message existence",
-			zap.String("message_id", messageID),
-			zap.String("date_time", dateTime),
+			zap.String("message_id", msg.MessageID),
+			zap.String("date_time", msg.DateTime),
+			zap.String("category", msg.Category),
 			zap.Error(err),
 		)
 		return false, err
 	}
 	r.recorder.RecordDBQuery("message_exists", dbResultOK, elapsed)
 	return true, nil
+}
+
+func (r *Repository) weatherMessageExists(ctx context.Context, msg *telegram.Message) (bool, error) {
+	keys := weatherCandidateMessageIDs(msg)
+	const query = `
+		SELECT content
+		FROM aviation.telegrams
+		WHERE message_id = ANY($1)
+		  AND date_time = $2
+		  AND category = $3
+		  AND received_at >= NOW() - INTERVAL '7 days'
+	`
+
+	start := time.Now()
+	rows, err := r.pool.Query(ctx, query, keys, msg.DateTime, msg.Category)
+	elapsed := time.Since(start)
+	if err != nil {
+		r.recorder.RecordDBQuery("message_exists", dbResultError, elapsed)
+		r.logger.Error("failed to query weather message candidates",
+			zap.Strings("message_ids", keys),
+			zap.String("date_time", msg.DateTime),
+			zap.String("category", msg.Category),
+			zap.Error(err),
+		)
+		return false, err
+	}
+	defer rows.Close()
+
+	var candidates []string
+	for rows.Next() {
+		var content string
+		if scanErr := rows.Scan(&content); scanErr != nil {
+			r.recorder.RecordDBQuery("message_exists", dbResultError, time.Since(start))
+			return false, scanErr
+		}
+		candidates = append(candidates, content)
+	}
+	if rowsErr := rows.Err(); rowsErr != nil {
+		r.recorder.RecordDBQuery("message_exists", dbResultError, time.Since(start))
+		return false, rowsErr
+	}
+	r.recorder.RecordDBQuery("message_exists", dbResultOK, time.Since(start))
+	return matchesWeatherContent(candidates, msg.Content), nil
+}
+
+func isWeatherMessage(msg *telegram.Message) bool {
+	if msg == nil {
+		return false
+	}
+	if msg.Protocol == telegram.ProtocolWeather {
+		return true
+	}
+	switch strings.ToUpper(strings.TrimSpace(msg.Category)) {
+	case "METAR", "SPECI", "TAF":
+		return true
+	default:
+		return false
+	}
+}
+
+// weatherCandidateMessageIDs returns the current weather message_id and, when applicable,
+// the legacy {station}-{issue_time} key used prior to type/modifier-prefixed keys.
+func weatherCandidateMessageIDs(msg *telegram.Message) []string {
+	if msg == nil || msg.MessageID == "" {
+		return nil
+	}
+	keys := []string{msg.MessageID}
+	if legacy := legacyWeatherMessageID(msg.MessageID); legacy != "" && legacy != msg.MessageID {
+		keys = append(keys, legacy)
+	}
+	return keys
+}
+
+func legacyWeatherMessageID(messageID string) string {
+	parts := strings.Split(messageID, "-")
+	// Current format: {TYPE}-{STATION}-{YYYYMMDDHHMMSS} (3 parts)
+	// or {TYPE}-{MODIFIER}-{STATION}-{YYYYMMDDHHMMSS} (4 parts).
+	if len(parts) < 3 {
+		return ""
+	}
+	switch strings.ToUpper(parts[0]) {
+	case "METAR", "SPECI", "TAF":
+		return parts[len(parts)-2] + "-" + parts[len(parts)-1]
+	default:
+		return ""
+	}
+}
+
+func matchesWeatherContent(existingContents []string, incomingContent string) bool {
+	want := normalizeWeatherContent(incomingContent)
+	for _, existing := range existingContents {
+		if normalizeWeatherContent(existing) == want {
+			return true
+		}
+	}
+	return false
+}
+
+// normalizeWeatherContent normalizes CRLF/CR line endings and leading/trailing line whitespace
+// without altering internal report tokens.
+func normalizeWeatherContent(raw string) string {
+	s := strings.ReplaceAll(raw, "\r\n", "\n")
+	s = strings.ReplaceAll(s, "\r", "\n")
+	lines := strings.Split(s, "\n")
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		out = append(out, trimmed)
+	}
+	return strings.Join(out, "\n")
 }

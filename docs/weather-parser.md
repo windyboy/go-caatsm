@@ -87,7 +87,7 @@ Weather reports are stored in the existing `telegrams` table:
 - `category`: "METAR", "SPECI", or "TAF"
 - `body_data`: JSONB containing structured weather data
 - `content`: Original raw text
-- `message_id`: Generated as `{station}-{issue_time}`
+- `message_id`: Generated as `{type}-{station}-{issue_time}` (or `{type}-{modifier}-{station}-{issue_time}` for `COR`/`AMD` reports) so co-timestamped METAR/TAF and amended/corrected reports stay distinct
 
 ## Testing
 

@@ -51,12 +51,19 @@ func (r *Router) Parse(rawText string) (*Message, error) {
 func weatherToMessage(wMsg weather.Message, raw string) *Message {
 	now := time.Now()
 	issueTime := wMsg.IssueTime()
+	reportType := string(wMsg.Type())
+	modifier := weatherModifier(wMsg)
+
+	messageID := fmt.Sprintf("%s-%s-%s", reportType, wMsg.Station(), issueTime.Format("20060102150405"))
+	if modifier != "" {
+		messageID = fmt.Sprintf("%s-%s-%s-%s", reportType, modifier, wMsg.Station(), issueTime.Format("20060102150405"))
+	}
 
 	msg := NewMessage()
 	msg.UUID = NewUUID()
 	msg.Protocol = ProtocolWeather
-	msg.Category = string(wMsg.Type())
-	msg.MessageID = fmt.Sprintf("%s-%s", wMsg.Station(), issueTime.Format("20060102150405"))
+	msg.Category = reportType
+	msg.MessageID = messageID
 	msg.DateTime = issueTime.Format("060102150405")
 	msg.Content = raw
 	msg.Body = raw
@@ -66,6 +73,17 @@ func weatherToMessage(wMsg weather.Message, raw string) *Message {
 	msg.ReceivedAt = now
 	msg.ParsedAt = now
 	return msg
+}
+
+func weatherModifier(wMsg weather.Message) string {
+	switch m := wMsg.(type) {
+	case *weather.Metar:
+		return m.Modifier
+	case *weather.Taf:
+		return m.Modifier
+	default:
+		return ""
+	}
 }
 
 func aviationResultToMessage(res *aviation.Result, raw string) *Message {

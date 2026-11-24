@@ -93,7 +93,7 @@ func sanitizeURLForLogging(rawURL string) string {
 }
 
 func mapDeliverPolicy(value string) nats.DeliverPolicy {
-	switch strings.ToLower(value) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "new":
 		return nats.DeliverNewPolicy
 	case "last":
@@ -110,7 +110,7 @@ func mapDeliverPolicy(value string) nats.DeliverPolicy {
 }
 
 func mapReplayPolicy(value string) nats.ReplayPolicy {
-	switch strings.ToLower(value) {
+	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "original":
 		return nats.ReplayOriginalPolicy
 	default:

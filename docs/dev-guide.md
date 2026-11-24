@@ -152,7 +152,7 @@ docker compose exec nats-box nats sub 'telegram.>'
 docker compose exec nats-box nats consumer info TELEGRAM telegram-consumer
 ```
 
-The main processor keeps consuming `subscription.topic` (defaults to `telegram.>`). Use the seeder to simulate parser failures, publish errors, or replay raw telegrams directly from the database.
+The main processor keeps consuming `subscription.topic` (defaults to `telegram.serial`). Use the seeder to simulate parser failures, publish errors, or replay raw telegrams directly from the database.
 
 ## Tracing with Jaeger
 

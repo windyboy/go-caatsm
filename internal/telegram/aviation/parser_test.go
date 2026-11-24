@@ -180,6 +180,25 @@ NNNN`
 			Expect(fplMsg.TotalEET).To(Equal("0100"))
 			Expect(fplMsg.Register).To(Equal("B3710"))
 			Expect(fplMsg.Remarks).To(Equal("TCAS"))
+
+			blob, err := json.Marshal(fplMsg)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(string(blob)).To(ContainSubstring(`"estimated_arrival_time":"0100"`))
+		})
+
+		It("does not prematurely truncate AFTN messages containing NNNN inside remarks or wrapped lines", func() {
+			msg := "ZCZC TMQ2618 142155\nGG ZBTJZPZX\n150552 ZBTJUOBK\n(FPL-OKA2861-IS\n-MA60/M-SHID/C\n-ZBTJ0030\n-K0420S0450 CG J1 FZ\n-ZSYT0100 ZSQD ZYTL\n-REG/B3710 RMK/TEST NNNN\nCONTINUED REMARK)\nNNNN"
+			res, err := Parse(msg)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(res.Parsed).To(BeTrue())
+			fplMsg := res.BodyData.(*FPL)
+			Expect(fplMsg.Remarks).To(Equal("TEST NNNN\nCONTINUED REMARK"))
+
+			inlineEnd := "ZCZC TMQ2619 142156\nGG ZBTJZPZX\n150553 ZBTJUOBK\n(FPL-OKA2861-IS\n-MA60/M-SHID/C\n-ZBTJ0030\n-K0420S0450 CG J1 FZ\n-ZSYT0100 ZSQD ZYTL\n-REG/B3710 RMK/OK)NNNN"
+			resInline, err := Parse(inlineEnd)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(resInline.Parsed).To(BeTrue())
+			Expect(resInline.BodyData.(*FPL).Remarks).To(Equal("OK"))
 		})
 
 		It("returns non-nil Result with StatusHeaderError on oversized input", func() {

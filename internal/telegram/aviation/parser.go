@@ -251,13 +251,17 @@ func cleanMessage(text string) string {
 			foundStart = true
 			trimmed = trimmed[idx:]
 		}
-		if endIdx := strings.Index(trimmed, "NNNN"); endIdx >= 0 {
-			before := strings.TrimSpace(trimmed[:endIdx])
-			if before != "" {
-				cleaned = append(cleaned, before)
-			}
+		if trimmed == "NNNN" {
 			foundEnd = true
 			break
+		}
+		if strings.HasSuffix(trimmed, "NNNN") {
+			before := strings.TrimSpace(trimmed[:len(trimmed)-len("NNNN")])
+			if strings.HasSuffix(before, ")") {
+				cleaned = append(cleaned, before)
+				foundEnd = true
+				break
+			}
 		}
 		cleaned = append(cleaned, trimmed)
 	}

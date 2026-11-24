@@ -2,6 +2,7 @@ package nats
 
 import (
 	"caatsm/internal/config"
+	"caatsm/internal/telegram"
 	"context"
 	"errors"
 	"fmt"
@@ -57,6 +58,8 @@ type Consumer struct {
 	batchSize         int
 	batchTimeout      time.Duration
 	ackWait           time.Duration
+	maxDeliver        int
+	dlqPublishTimeout time.Duration
 	backoff           []time.Duration
 
 	consecutiveErrors int
@@ -102,6 +105,7 @@ func NewConsumer(
 		batchSize:         cfg.App.BatchSize,
 		batchTimeout:      cfg.App.BatchTimeout,
 		ackWait:           orDefaultDuration(cfg.NATS.ConsumerRules.AckWait, 30*time.Second),
+		maxDeliver:        cfg.NATS.ConsumerRules.MaxDeliver,
 		backoff:           cfg.NATS.ConsumerRules.Backoff,
 	}
 
@@ -124,7 +128,9 @@ func NewConsumer(
 		}
 	}
 
-	if err := c.ensureInfrastructure(); err != nil {
+	initCtx, initCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer initCancel()
+	if err := c.ensureInfrastructure(initCtx); err != nil {
 		return nil, err
 	}
 
@@ -151,7 +157,7 @@ func (c *Consumer) Start(ctx context.Context) error {
 		wg.Wait()
 	}()
 
-	sub, err := c.subscribe()
+	sub, err := c.subscribe(ctx)
 	if err != nil {
 		return err
 	}
@@ -162,7 +168,8 @@ func (c *Consumer) Start(ctx context.Context) error {
 	}()
 
 	c.recorder.RecordJSAPICall("consumer_info")
-	if info, err := c.js.ConsumerInfo(c.streamName, c.consumerName); err == nil {
+	if info, err := c.js.ConsumerInfo(c.streamName, c.consumerName, nats.Context(ctx)); err == nil {
+		c.syncMaxDeliver(info)
 		c.monitor.RecordInitialPending(info.NumPending)
 	}
 
@@ -200,7 +207,7 @@ func (c *Consumer) Start(ctx context.Context) error {
 				return nil
 			}
 
-			if recoveredSub := c.recoverSubscription(sub); recoveredSub != nil {
+			if recoveredSub := c.recoverSubscription(ctx, sub); recoveredSub != nil {
 				sub = recoveredSub
 			}
 			continue
@@ -211,20 +218,23 @@ func (c *Consumer) Start(ctx context.Context) error {
 	}
 }
 
-func (c *Consumer) subscribe() (*nats.Subscription, error) {
-	sub, err := c.js.PullSubscribe(c.subject, c.consumerName, nats.Bind(c.streamName, c.consumerName))
+func (c *Consumer) subscribe(ctx context.Context) (*nats.Subscription, error) {
+	sub, err := c.js.PullSubscribe(c.subject, c.consumerName, nats.Bind(c.streamName, c.consumerName), nats.Context(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("failed to bind pull subscription on %s/%s: %w", c.streamName, c.consumerName, err)
 	}
 	return sub, nil
 }
 
-func (c *Consumer) recoverSubscription(oldSub *nats.Subscription) *nats.Subscription {
-	if err := c.ensureInfrastructure(); err != nil {
+func (c *Consumer) recoverSubscription(ctx context.Context, oldSub *nats.Subscription) *nats.Subscription {
+	if ctx.Err() != nil {
+		return nil
+	}
+	if err := c.ensureInfrastructure(ctx); err != nil {
 		c.logger.Warn("JetStream infrastructure check failed during recovery", zap.Error(err))
 		return nil
 	}
-	newSub, err := c.subscribe()
+	newSub, err := c.subscribe(ctx)
 	if err != nil {
 		c.logger.Warn("Failed to re-subscribe JetStream pull consumer", zap.Error(err))
 		return nil
@@ -274,14 +284,18 @@ func (c *Consumer) Shutdown(ctx context.Context) error {
 	}
 	c.logger.Info("Draining NATS connection...")
 
-	done := make(chan error, 1)
-	go func() {
-		done <- c.conn.Drain()
-	}()
+	closed := c.conn.StatusChanged(nats.CLOSED)
+	defer c.conn.RemoveStatusListener(closed)
+	if err := c.conn.Drain(); err != nil {
+		if errors.Is(err, nats.ErrConnectionClosed) {
+			return nil
+		}
+		return err
+	}
 
 	select {
-	case err := <-done:
-		return err
+	case <-closed:
+		return nil
 	case <-ctx.Done():
 		c.conn.Close()
 		return ctx.Err()
@@ -305,13 +319,27 @@ func (c *Consumer) processBatch(ctx context.Context, msgs []*nats.Msg) {
 	}
 }
 
+func (c *Consumer) inFlightContext(parent context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(parent), c.cfg.EffectiveCloseTimeout())
+}
+
+func (c *Consumer) dlqTimeout() time.Duration {
+	if c.dlqPublishTimeout > 0 {
+		return c.dlqPublishTimeout
+	}
+	return DLQPublishTimeout
+}
+
 func (c *Consumer) processMsg(ctx context.Context, msg *nats.Msg) {
 	start := time.Now()
+	msgCtx, msgCancel := c.inFlightContext(ctx)
+	defer msgCancel()
+
 	if msg != nil && msg.Header != nil {
-		ctx = otel.GetTextMapPropagator().Extract(ctx, natsHeaderCarrier(msg.Header))
+		msgCtx = otel.GetTextMapPropagator().Extract(msgCtx, natsHeaderCarrier(msg.Header))
 	}
 
-	ctx, span := otel.Tracer("caatsm/nats").Start(ctx, "Consumer.processMsg")
+	msgCtx, span := otel.Tracer("caatsm/nats").Start(msgCtx, "Consumer.processMsg")
 	defer span.End()
 
 	msgID := c.resolveMsgID(msg)
@@ -321,48 +349,124 @@ func (c *Consumer) processMsg(ctx context.Context, msg *nats.Msg) {
 		attribute.String("caatsm.stream", c.streamName),
 	)
 
-	var data []byte
-	if msg != nil {
-		data = msg.Data
+	publishID, metaErr := c.deriveInboundPublishID(msg)
+	if metaErr != nil {
+		c.logger.Error("Failed to read JetStream metadata for outbound deduplication key; retrying",
+			zap.String("stream", c.streamName),
+			zap.String("consumer", c.consumerName),
+			zap.String("msg_id", msgID),
+			zap.Error(metaErr),
+		)
+		resultLabel := c.handleFailure(ctx, msgCtx, msg, msg, msgID, fmt.Errorf("read JetStream metadata: %w", metaErr))
+		span.RecordError(metaErr)
+		span.SetStatus(codes.Error, metaErr.Error())
+		c.recorder.RecordMessageHandled(msgCtx, c.streamName, c.consumerName, resultLabel, time.Since(start))
+		return
 	}
+	msgCtx = telegram.WithPublishID(msgCtx, publishID)
 
-	err := c.handler.Handle(ctx, data, msgID)
+	err := c.handler.Handle(msgCtx, msg.Data, msgID)
 	if err != nil {
-		resultLabel := c.handleFailure(ctx, msg, msg, msgID, err)
+		resultLabel := c.handleFailure(ctx, msgCtx, msg, msg, msgID, err)
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
-		c.recorder.RecordMessageHandled(ctx, c.streamName, c.consumerName, resultLabel, time.Since(start))
+		c.recorder.RecordMessageHandled(msgCtx, c.streamName, c.consumerName, resultLabel, time.Since(start))
 		return
 	}
 
 	if c.consecutiveErrors > 0 {
 		c.consecutiveErrors = 0
 	}
-	if msg != nil {
-		if ackErr := msg.Ack(); ackErr != nil {
-			c.logger.Warn("Failed to ACK", zap.String("msg_id", msgID), zap.Error(ackErr))
-		}
+	if ackErr := msg.Ack(); ackErr != nil {
+		c.logger.Warn("Failed to ACK", zap.String("msg_id", msgID), zap.Error(ackErr))
 	}
-	c.recorder.RecordMessageHandled(ctx, c.streamName, c.consumerName, resultOK, time.Since(start))
+	c.recorder.RecordMessageHandled(msgCtx, c.streamName, c.consumerName, resultOK, time.Since(start))
+}
+
+func (c *Consumer) deriveInboundPublishID(msg *nats.Msg) (string, error) {
+	if msg == nil {
+		return "", fmt.Errorf("nil NATS message")
+	}
+	meta, err := msg.Metadata()
+	if err != nil {
+		return "", err
+	}
+	if meta == nil || meta.Sequence.Stream == 0 {
+		return "", fmt.Errorf("missing JetStream stream sequence in message metadata")
+	}
+	return formatInboundPublishID(meta, c.streamName), nil
+}
+
+func formatInboundPublishID(meta *nats.MsgMetadata, fallbackStream string) string {
+	stream := meta.Stream
+	if stream == "" {
+		stream = fallbackStream
+	}
+	ts := meta.Timestamp.UTC().UnixNano()
+	if meta.Domain != "" {
+		return fmt.Sprintf("js:%s:%s:%d:%d", meta.Domain, stream, meta.Sequence.Stream, ts)
+	}
+	return fmt.Sprintf("js:%s:%d:%d", stream, meta.Sequence.Stream, ts)
+}
+
+func deliveryMeta(msg ackableMsg) (streamSeq uint64, numDelivered uint64) {
+	if msg == nil {
+		return 0, 0
+	}
+	meta, err := msg.Metadata()
+	if err != nil || meta == nil {
+		return 0, 0
+	}
+	return meta.Sequence.Stream, meta.NumDelivered
 }
 
 // handleFailure separates NATS DLQ payload forwarding (*nats.Msg) from ACK/NAK lifecycle (ackableMsg)
 // so unit tests can exercise all branches deterministically.
-func (c *Consumer) handleFailure(ctx context.Context, rawMsg *nats.Msg, acker ackableMsg, msgID string, err error) string {
+// shutdownCtx cancels backpressure sleeps on shutdown, while traceCtx carries trace context from which
+// DLQ publishing derives its own independent bounded timeout budget.
+func (c *Consumer) handleFailure(shutdownCtx, traceCtx context.Context, rawMsg *nats.Msg, acker ackableMsg, msgID string, err error) string {
 	isPermanent := isPermanentError(err)
+	streamSeq, numDelivered := deliveryMeta(acker)
+	exhausted := !isPermanent && c.maxDeliver > 0 && numDelivered >= uint64(c.maxDeliver)
+
 	c.logger.Error("Processing failed",
+		zap.String("stream", c.streamName),
+		zap.String("consumer", c.consumerName),
 		zap.String("msg_id", msgID),
-		zap.Error(err),
+		zap.Uint64("stream_sequence", streamSeq),
+		zap.Uint64("num_delivered", numDelivered),
+		zap.Int("max_deliver", c.maxDeliver),
 		zap.Bool("permanent", isPermanent),
+		zap.Bool("max_deliver_exhausted", exhausted),
+		zap.Error(err),
 	)
 
-	if isPermanent {
+	if isPermanent || (exhausted && c.dlqHandler != nil && rawMsg != nil) {
+		dlqCause := err
+		if exhausted {
+			dlqCause = fmt.Errorf("max deliveries (%d) exhausted: %w", c.maxDeliver, err)
+		}
 		if c.dlqHandler != nil && rawMsg != nil {
-			if dlqErr := c.dlqHandler.RouteToDLQ(ctx, rawMsg, err); dlqErr != nil {
-				// DLQ write failed: do NOT ACK to prevent silent message loss; NAK with backoff for retry.
+			dlqPubCtx, dlqCancel := context.WithTimeout(context.WithoutCancel(traceCtx), c.dlqTimeout())
+			dlqErr := c.dlqHandler.RouteToDLQ(dlqPubCtx, rawMsg, dlqCause)
+			dlqCancel()
+			if dlqErr != nil {
+				// DLQ write failed: do NOT ACK to prevent silent message loss; NAK with backoff.
+				if exhausted || (c.maxDeliver > 0 && numDelivered >= uint64(c.maxDeliver)) {
+					c.logger.Error("Delivery attempts exhausted and DLQ publish failed; message retained in inbound stream pending manual recovery",
+						zap.String("stream", c.streamName),
+						zap.String("consumer", c.consumerName),
+						zap.String("msg_id", msgID),
+						zap.Uint64("stream_sequence", streamSeq),
+						zap.Uint64("num_delivered", numDelivered),
+						zap.Int("max_deliver", c.maxDeliver),
+						zap.Error(dlqErr),
+						zap.NamedError("cause", err),
+					)
+				}
 				c.consecutiveErrors++
-				c.recorder.RecordRetry(ctx, c.streamName, c.consumerName, retryReasonDLQError)
-				c.applyBackpressure(ctx)
+				c.recorder.RecordRetry(traceCtx, c.streamName, c.consumerName, retryReasonDLQError)
+				c.applyBackpressure(shutdownCtx)
 				if acker != nil {
 					_ = c.nakWithBackoff(acker)
 				}
@@ -373,19 +477,47 @@ func (c *Consumer) handleFailure(ctx context.Context, rawMsg *nats.Msg, acker ac
 		c.consecutiveErrors = 0
 		if acker != nil {
 			if ackErr := acker.Ack(); ackErr != nil {
-				c.logger.Warn("Failed to ACK permanent message", zap.String("msg_id", msgID), zap.Error(ackErr))
+				c.logger.Warn("Failed to ACK terminal message", zap.String("msg_id", msgID), zap.Error(ackErr))
 			}
 		}
 		return resultPermanentFail
 	}
 
+	if exhausted {
+		c.logger.Error("Delivery attempts exhausted with DLQ unavailable; message retained in inbound stream pending manual recovery",
+			zap.String("stream", c.streamName),
+			zap.String("consumer", c.consumerName),
+			zap.String("msg_id", msgID),
+			zap.Uint64("stream_sequence", streamSeq),
+			zap.Uint64("num_delivered", numDelivered),
+			zap.Int("max_deliver", c.maxDeliver),
+			zap.Error(err),
+		)
+	}
+
 	c.consecutiveErrors++
-	c.recorder.RecordRetry(ctx, c.streamName, c.consumerName, retryReasonProcessorError)
-	c.applyBackpressure(ctx)
+	c.recorder.RecordRetry(traceCtx, c.streamName, c.consumerName, retryReasonProcessorError)
+	c.applyBackpressure(shutdownCtx)
 	if acker != nil {
 		_ = c.nakWithBackoff(acker)
 	}
 	return resultFail
+}
+
+func (c *Consumer) syncMaxDeliver(info *nats.ConsumerInfo) {
+	if info == nil || info.Config.MaxDeliver == 0 {
+		return
+	}
+	brokerMax := info.Config.MaxDeliver
+	if c.cfg != nil && c.cfg.NATS.ConsumerRules.MaxDeliver > 0 && brokerMax != c.cfg.NATS.ConsumerRules.MaxDeliver {
+		c.logger.Warn("Broker consumer max_deliver differs from local config; using broker value",
+			zap.String("stream", c.streamName),
+			zap.String("consumer", c.consumerName),
+			zap.Int("configured_max_deliver", c.cfg.NATS.ConsumerRules.MaxDeliver),
+			zap.Int("broker_max_deliver", brokerMax),
+		)
+	}
+	c.maxDeliver = brokerMax
 }
 
 func (c *Consumer) nakWithBackoff(msg ackableMsg) error {
@@ -423,26 +555,26 @@ func (c *Consumer) applyBackpressure(ctx context.Context) {
 	}
 }
 
-func (c *Consumer) ensureInfrastructure() error {
+func (c *Consumer) ensureInfrastructure(ctx context.Context) error {
 	if !c.cfg.ShouldAutoProvision() {
-		return c.verifyInfrastructure()
+		return c.verifyInfrastructure(ctx)
 	}
 
 	// 1. Inbound stream (WorkQueuePolicy)
-	if err := c.ensureStream(c.streamName, []string{c.subject}, nats.WorkQueuePolicy); err != nil {
+	if err := c.ensureStream(ctx, c.streamName, []string{c.subject}, nats.WorkQueuePolicy); err != nil {
 		return fmt.Errorf("ensure inbound stream: %w", err)
 	}
 
 	// 2. Outbound stream (LimitsPolicy) so multiple downstream consumers can subscribe independently
 	if c.cfg.Publisher.Topic != "" && c.publishStreamName != c.streamName {
-		if err := c.ensureStream(c.publishStreamName, []string{c.cfg.Publisher.Topic}, nats.LimitsPolicy); err != nil {
+		if err := c.ensureStream(ctx, c.publishStreamName, []string{c.cfg.Publisher.Topic}, nats.LimitsPolicy); err != nil {
 			return fmt.Errorf("ensure outbound stream: %w", err)
 		}
 	}
 
 	// 3. Dead-letter stream (LimitsPolicy)
 	if c.cfg.DLQ.Enabled && c.cfg.DLQ.Subject != "" && c.dlqStreamName != c.streamName {
-		if err := c.ensureStream(c.dlqStreamName, []string{c.cfg.DLQ.Subject}, nats.LimitsPolicy); err != nil {
+		if err := c.ensureStream(ctx, c.dlqStreamName, []string{c.cfg.DLQ.Subject}, nats.LimitsPolicy); err != nil {
 			return fmt.Errorf("ensure dlq stream: %w", err)
 		}
 	}
@@ -454,18 +586,24 @@ func (c *Consumer) ensureInfrastructure() error {
 	}
 
 	c.recorder.RecordJSAPICall("consumer_info")
-	if _, err := c.js.ConsumerInfo(c.streamName, c.consumerName); err != nil {
+	info, err := c.js.ConsumerInfo(c.streamName, c.consumerName, nats.Context(ctx))
+	if err != nil {
 		if !isJetStreamResourceNotFound(err) {
 			return fmt.Errorf("inspect consumer: %w", err)
 		}
 		c.recorder.RecordJSAPICall("add_consumer")
-		if _, addErr := c.js.AddConsumer(c.streamName, consumerCfg); addErr != nil {
-			return fmt.Errorf("ensure consumer: %w", addErr)
+		info, err = c.js.AddConsumer(c.streamName, consumerCfg, nats.Context(ctx))
+		if err != nil {
+			return fmt.Errorf("ensure consumer: %w", err)
 		}
 	}
+	c.syncMaxDeliver(info)
 
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if c.dlqHandler != nil {
-		if err := c.dlqHandler.ValidateDLQ(); err != nil {
+		if err := c.dlqHandler.ValidateDLQ(ctx); err != nil {
 			return fmt.Errorf("verify DLQ: %w", err)
 		}
 	}
@@ -473,26 +611,31 @@ func (c *Consumer) ensureInfrastructure() error {
 	return nil
 }
 
-func (c *Consumer) verifyInfrastructure() error {
+func (c *Consumer) verifyInfrastructure(ctx context.Context) error {
 	c.recorder.RecordJSAPICall("stream_info")
-	if _, err := c.js.StreamInfo(c.streamName); err != nil {
+	if _, err := c.js.StreamInfo(c.streamName, nats.Context(ctx)); err != nil {
 		return fmt.Errorf("verify inbound stream %s: %w", c.streamName, err)
 	}
 
 	if c.cfg.Publisher.Topic != "" && c.publishStreamName != c.streamName {
 		c.recorder.RecordJSAPICall("stream_info")
-		if _, err := c.js.StreamInfo(c.publishStreamName); err != nil {
+		if _, err := c.js.StreamInfo(c.publishStreamName, nats.Context(ctx)); err != nil {
 			return fmt.Errorf("verify outbound stream %s: %w", c.publishStreamName, err)
 		}
 	}
 
 	c.recorder.RecordJSAPICall("consumer_info")
-	if _, err := c.js.ConsumerInfo(c.streamName, c.consumerName); err != nil {
+	info, err := c.js.ConsumerInfo(c.streamName, c.consumerName, nats.Context(ctx))
+	if err != nil {
 		return fmt.Errorf("verify consumer %s on stream %s: %w", c.consumerName, c.streamName, err)
 	}
+	c.syncMaxDeliver(info)
 
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if c.dlqHandler != nil {
-		if err := c.dlqHandler.ValidateDLQ(); err != nil {
+		if err := c.dlqHandler.ValidateDLQ(ctx); err != nil {
 			return fmt.Errorf("verify DLQ: %w", err)
 		}
 	}
@@ -500,9 +643,9 @@ func (c *Consumer) verifyInfrastructure() error {
 	return nil
 }
 
-func (c *Consumer) ensureStream(name string, subjects []string, retention nats.RetentionPolicy) error {
+func (c *Consumer) ensureStream(ctx context.Context, name string, subjects []string, retention nats.RetentionPolicy) error {
 	c.recorder.RecordJSAPICall("stream_info")
-	if _, err := c.js.StreamInfo(name); err == nil {
+	if _, err := c.js.StreamInfo(name, nats.Context(ctx)); err == nil {
 		return nil
 	} else if !isJetStreamResourceNotFound(err) {
 		return fmt.Errorf("inspect stream %s: %w", name, err)
@@ -526,7 +669,7 @@ func (c *Consumer) ensureStream(name string, subjects []string, retention nats.R
 	}
 
 	c.recorder.RecordJSAPICall("add_stream")
-	if _, err := c.js.AddStream(streamCfg); err != nil {
+	if _, err := c.js.AddStream(streamCfg, nats.Context(ctx)); err != nil {
 		return fmt.Errorf("add stream %s: %w", name, err)
 	}
 

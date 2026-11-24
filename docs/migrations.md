@@ -134,7 +134,7 @@ For simple deployments, you can create custom migration scripts that:
 
 ### 2. TimescaleDB Considerations
 
-- **Hypertables**: Be careful when modifying hypertable structure
+- **Hypertables**: Be careful when modifying hypertable structure. Converting an existing non-empty `aviation.telegrams_raw` table to a hypertable uses `create_hypertable(..., if_not_exists => TRUE, migrate_data => TRUE)` and acquires an exclusive lock during data migration, so schedule it during a maintenance window on large production tables.
 - **Retention policies**: Consider impact on existing data
 - **Compression**: Test compression policies with schema changes
 

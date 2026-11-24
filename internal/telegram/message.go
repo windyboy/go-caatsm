@@ -2,6 +2,7 @@ package telegram
 
 import (
 	"caatsm/internal/telegram/aviation"
+	"context"
 	"crypto/rand"
 	"fmt"
 	"time"
@@ -58,6 +59,9 @@ type Message struct {
 	Comments           string        `json:"comments,omitempty"`
 	Status             MessageStatus `json:"status"`
 	ErrorReason        string        `json:"errorReason,omitempty"`
+	// PublishID carries an optional deterministic idempotency key for downstream publishing
+	// (e.g., inbound transport message ID or business key) and is omitted from JSON output.
+	PublishID string `json:"-"`
 }
 
 // NewMessage initializes a Message with default unparsed status.
@@ -79,4 +83,25 @@ func NewUUID() string {
 	b[8] = (b[8] & 0x3f) | 0x80
 	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
 		b[0:4], b[4:6], b[6:8], b[8:10], b[10:16])
+}
+
+type publishIDContextKey struct{}
+
+// WithPublishID attaches a deterministic outbound publish deduplication key to ctx.
+func WithPublishID(ctx context.Context, publishID string) context.Context {
+	if publishID == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, publishIDContextKey{}, publishID)
+}
+
+// PublishIDFromContext extracts a deterministic outbound publish deduplication key from ctx.
+func PublishIDFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	if id, ok := ctx.Value(publishIDContextKey{}).(string); ok {
+		return id
+	}
+	return ""
 }
